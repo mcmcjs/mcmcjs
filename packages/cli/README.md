@@ -1,8 +1,7 @@
 # mcmcjs
 
-Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics with
-[Turing.jl](https://github.com/TuringLang/Turing.jl) and
-[JuliaBUGS.jl](https://github.com/TuringLang/JuliaBUGS.jl).
+Command-line tools for Bayesian modelling, MCMC inference, and post-inference
+diagnostics across probabilistic programming languages.
 
 > Early alpha — under active development. The CLI surface is not yet stable.
 
