@@ -1,0 +1,47 @@
+{
+  "name": "mcmcjs",
+  "version": "0.0.1",
+  "description": "Command-line tools for MCMC inference and post-inference diagnostics with Turing.jl and JuliaBUGS.",
+  "keywords": [
+    "mcmc",
+    "turing",
+    "juliabugs",
+    "julia",
+    "inference",
+    "diagnostics",
+    "convergence",
+    "posterior",
+    "sampling",
+    "cli",
+    "command-line",
+    "probabilistic-programming"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Shravan Goswami",
+    "email": "contact@shravangoswami.com",
+    "url": "https://shravangoswami.com"
+  },
+  "homepage": "https://github.com/mcmcjs/mcmcjs#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mcmcjs/mcmcjs.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/mcmcjs/mcmcjs/issues"
+  },
+  "type": "module",
+  "bin": {
+    "mcmc": "bin.mjs"
+  },
+  "files": [
+    "bin.mjs"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
