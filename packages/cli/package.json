@@ -1,9 +1,11 @@
 {
   "name": "mcmcjs",
   "version": "0.0.1",
-  "description": "Command-line tools for MCMC inference and post-inference diagnostics with Turing.jl and JuliaBUGS.",
+  "description": "Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics with Turing.jl and JuliaBUGS.",
   "keywords": [
     "mcmc",
+    "bayesian",
+    "bayesian-inference",
     "turing",
     "juliabugs",
     "julia",

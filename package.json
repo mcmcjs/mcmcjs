@@ -2,7 +2,7 @@
   "name": "mcmcjs-monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "Monorepo for the MCMC.js command-line tools.",
+  "description": "Monorepo for the MCMC.js command-line tools for Bayesian inference and diagnostics.",
   "license": "MIT",
   "author": {
     "name": "Shravan Goswami",
