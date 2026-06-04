@@ -1,0 +1,24 @@
+{
+  "name": "mcmcjs-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Monorepo for the MCMC.js command-line tools.",
+  "license": "MIT",
+  "author": {
+    "name": "Shravan Goswami",
+    "email": "contact@shravangoswami.com",
+    "url": "https://shravangoswami.com"
+  },
+  "homepage": "https://github.com/mcmcjs/mcmcjs#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mcmcjs/mcmcjs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mcmcjs/mcmcjs/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.5.1"
+}
