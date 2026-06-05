@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -e
+
+# Fast formatting + lint gate (Biome is near-instant).
+pnpm check
