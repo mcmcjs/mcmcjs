@@ -1,3 +1,4 @@
+export { parseSamples } from "./parse-samples";
 export { parseArvizJson } from "./parsers/arviz";
 export type { MCMCChainsJson } from "./parsers/mcmcchains";
 export { parseMCMCChainsJson, toMCMCChainsJson } from "./parsers/mcmcchains";
