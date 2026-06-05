@@ -31,6 +31,8 @@ importers:
 
   packages/core: {}
 
+  packages/diagnostics: {}
+
 packages:
 
   '@babel/helper-string-parser@7.29.7':
