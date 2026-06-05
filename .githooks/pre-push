@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
 set -e
 
-# Type-check and run the test suite before sharing.
+# Build, type-check, and run the test suite before sharing.
+pnpm build
 pnpm typecheck
 pnpm test
