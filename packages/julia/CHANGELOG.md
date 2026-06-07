@@ -1,5 +1,11 @@
 # @mcmcjs/julia
 
+## 0.2.0
+
+### Minor Changes
+
+- f94d19a: Add `runSetup`, `planSetup`, and `juliaupInstallCommand` to install the Julia toolchain (juliaup and Julia).
+
 ## 0.1.0
 
 ### Minor Changes

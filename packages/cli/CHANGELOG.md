@@ -1,5 +1,16 @@
 # mcmcjs
 
+## 0.3.0
+
+### Minor Changes
+
+- 3025e8f: Add the `mcmc setup` command, which installs the Julia toolchain (juliaup and Julia) needed for inference.
+
+### Patch Changes
+
+- Updated dependencies [f94d19a]
+  - @mcmcjs/julia@0.2.0
+
 ## 0.2.0
 
 ### Minor Changes
