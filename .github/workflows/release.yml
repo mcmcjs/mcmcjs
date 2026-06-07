@@ -22,7 +22,8 @@ jobs:
       # When that PR is merged (no changesets left), it publishes the changed
       # packages to npm with provenance, pushes per-package tags (name@version),
       # and creates a GitHub Release per package. Requires the NPM_TOKEN secret.
-      - uses: changesets/action@v1
+      - id: changesets
+        uses: changesets/action@v1
         with:
           version: pnpm version-packages
           publish: pnpm release
@@ -33,3 +34,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
+      # The action's title input is static, so refine it with the actual versions
+      # parsed from the release PR body (the "## name@version" headers it wrote).
+      - name: Add versions to the release PR title
+        if: steps.changesets.outputs.pullRequestNumber != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ steps.changesets.outputs.pullRequestNumber }}
+        run: |
+          versions=$(gh pr view "$PR" --json body --jq '.body' \
+            | grep -oE '^## .+@[0-9]+\.[0-9]+\.[0-9]+' | sed 's/^## //' | paste -sd, - | sed 's/,/, /g')
+          if [ -n "$versions" ]; then
+            gh pr edit "$PR" --title "Release: $versions"
+          fi
