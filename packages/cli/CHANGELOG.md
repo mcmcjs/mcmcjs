@@ -1,5 +1,16 @@
 # mcmcjs
 
+## 0.2.0
+
+### Minor Changes
+
+- 4cf6c51: Add the `mcmc doctor` command, which reports the installed Julia toolchain (juliaup and Julia).
+
+### Patch Changes
+
+- Updated dependencies [4cf6c51]
+  - @mcmcjs/julia@0.1.0
+
 ## 0.1.0
 
 ### Minor Changes
