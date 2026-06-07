@@ -9,6 +9,7 @@ concurrency: release-${{ github.ref }}
 permissions:
   contents: write
   pull-requests: write
+  id-token: write # for npm provenance
 
 jobs:
   release:
@@ -20,18 +21,20 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+          registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      # As changesets accumulate, this opens/updates a "Release packages" PR.
-      # Publishing is intentionally NOT enabled yet. For the first real release:
-      #   1. add the NPM_TOKEN repository secret,
-      #   2. add `publish: pnpm release` to the `with:` block below,
-      #   3. add `id-token: write` to permissions and the env vars
-      #      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} and NPM_CONFIG_PROVENANCE: "true".
+      # While changesets are pending → opens/updates the "Release packages" PR.
+      # When that PR is merged (no changesets left) → publishes the changed packages
+      # to npm with provenance, pushes per-package tags (name@version), and creates
+      # a GitHub Release per package. Requires the NPM_TOKEN repository secret.
       - uses: changesets/action@v1
         with:
           version: pnpm version-packages
+          publish: pnpm release
           title: "Release packages"
           commit: "release packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
