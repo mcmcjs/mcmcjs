@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import { registerDiagnose } from "./diagnose";
 import { registerDoctor } from "./doctor";
+import { registerSetup } from "./setup";
 
 declare const __MCMC_VERSION__: string;
 
@@ -13,8 +14,9 @@ program
   )
   .version(__MCMC_VERSION__);
 
-registerDiagnose(program);
+registerSetup(program);
 registerDoctor(program);
+registerDiagnose(program);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

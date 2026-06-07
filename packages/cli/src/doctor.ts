@@ -2,7 +2,7 @@ import { runDoctor, type ToolInfo } from "@mcmcjs/julia";
 import type { Command } from "commander";
 import pc from "picocolors";
 
-function formatTool(label: string, info: ToolInfo): string {
+export function formatTool(label: string, info: ToolInfo): string {
   if (!info.found) return `${label.padEnd(8)} ${pc.red("not found")}`;
   return `${label.padEnd(8)} ${pc.green(info.version ?? "found")}  ${pc.dim(info.path ?? "")}`;
 }
