@@ -15,10 +15,18 @@ export interface ToolInfo {
 /** Runs a command and resolves its stdout. Injectable so detection is testable. */
 export type CommandRunner = (command: string, args: string[]) => Promise<string>;
 
-const defaultRunner: CommandRunner = async (command, args) => {
-  const { stdout } = await execFileAsync(command, args, { timeout: 10_000 });
-  return stdout;
-};
+/** Creates a runner backed by execFile with the given timeout in milliseconds. */
+export function createRunner(timeoutMs = 10_000): CommandRunner {
+  return async (command, args) => {
+    const { stdout } = await execFileAsync(command, args, {
+      timeout: timeoutMs,
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    return stdout;
+  };
+}
+
+const defaultRunner = createRunner();
 
 // juliaup installs its shims here; we also fall back to whatever is on PATH.
 function candidates(binary: string): string[] {
