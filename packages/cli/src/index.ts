@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { registerDiagnose } from "./diagnose";
+import { registerDoctor } from "./doctor";
 
 declare const __MCMC_VERSION__: string;
 
@@ -13,6 +14,7 @@ program
   .version(__MCMC_VERSION__);
 
 registerDiagnose(program);
+registerDoctor(program);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

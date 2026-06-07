@@ -38,6 +38,9 @@ importers:
       '@mcmcjs/diagnostics':
         specifier: workspace:*
         version: link:../diagnostics
+      '@mcmcjs/julia':
+        specifier: workspace:*
+        version: link:../julia
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -48,6 +51,8 @@ importers:
   packages/core: {}
 
   packages/diagnostics: {}
+
+  packages/julia: {}
 
 packages:
 
