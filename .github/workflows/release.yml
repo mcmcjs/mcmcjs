@@ -16,12 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
       - run: pnpm build
       # While changesets are pending, this opens or updates the release PR.
       # When that PR is merged (no changesets left), it publishes the changed
@@ -33,6 +28,7 @@ jobs:
           publish: pnpm release
           title: "Release the next package versions"
           commit: "version packages"
+          commitMode: github-api # signed, verified version commits and tags
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
