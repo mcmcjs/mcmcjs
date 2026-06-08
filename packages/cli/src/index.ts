@@ -5,6 +5,7 @@ import { Command } from "commander";
 import { registerDiagnose } from "./diagnose";
 import { registerDoctor } from "./doctor";
 import { registerEngines } from "./engines";
+import { registerFit } from "./fit";
 import { registerJulia } from "./julia";
 import { registerSetup } from "./setup";
 
@@ -24,6 +25,7 @@ registry.register(juliaEngine);
 
 registerSetup(program);
 registerDoctor(program, registry, ctx);
+registerFit(program, ctx);
 registerDiagnose(program);
 registerEngines(program, registry, ctx);
 registerJulia(program, ctx);

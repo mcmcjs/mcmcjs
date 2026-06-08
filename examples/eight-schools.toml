@@ -1,0 +1,27 @@
+schema_version = "0"
+seed = 20260608
+
+[backend]
+id = "turing"
+runtime = "julia"
+version = "release"
+
+[sampler]
+algorithm = "NUTS"
+draws = 1000
+warmup = 1000
+chains = 4
+adapt_delta = 0.8
+
+[output]
+format = "mcmcchains-json"
+
+[model]
+kind = "file"
+path = "./eight_schools.jl"
+entry = "build_model"
+
+[data]
+J = 8
+y = [28, 8, -3, 7, -1, 1, 18, 12]
+sigma = [15, 10, 16, 11, 9, 11, 10, 18]

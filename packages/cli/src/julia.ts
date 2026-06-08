@@ -28,7 +28,7 @@ export function formatVersions(versions: RuntimeVersion[]): string {
     .join("\n");
 }
 
-async function juliaupBin(ctx: EngineContext): Promise<string> {
+export async function juliaupBin(ctx: EngineContext): Promise<string> {
   const info = await detectJuliaup(ctx.run);
   if (!info.found || !info.path) {
     throw new Error("juliaup not found. Run `mcmc setup` to install the Julia toolchain.");
