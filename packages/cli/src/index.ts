@@ -7,6 +7,7 @@ import { registerDoctor } from "./doctor";
 import { registerEngines } from "./engines";
 import { registerFit } from "./fit";
 import { registerJulia } from "./julia";
+import { registerPredict } from "./predict";
 import { registerSetup } from "./setup";
 
 declare const __MCMC_VERSION__: string;
@@ -26,6 +27,7 @@ registry.register(juliaEngine);
 registerSetup(program);
 registerDoctor(program, registry, ctx);
 registerFit(program, ctx);
+registerPredict(program, ctx);
 registerDiagnose(program);
 registerEngines(program, registry, ctx);
 registerJulia(program, ctx);
