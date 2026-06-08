@@ -7,6 +7,7 @@ using JSON
 using Random
 using StableRNGs
 using Turing
+using Turing: VarName
 using MCMCChains
 using SHA
 using Pkg
@@ -20,6 +21,35 @@ function build_sampler(sampler)
 end
 
 to_namedtuple(data) = (; (Symbol(k) => v for (k, v) in data)...)
+
+# JSON null arrives as `nothing`; map it to `missing` so a blanked outcome becomes
+# a sampling (predictive) statement in the model.
+to_missing(x) = x === nothing ? missing : (x isa AbstractVector ? map(to_missing, x) : x)
+predict_namedtuple(data) = (; (Symbol(k) => to_missing(v) for (k, v) in data)...)
+
+# Rebuild a posterior Chains (latents only) from our MCMCChains-JSON wire object so
+# it can feed Turing.predict. The varname_to_symbol map is required for VarName
+# indexing; target outcome columns are excluded.
+function chains_from_wire(wire, targets)
+    sz = wire["size"]
+    nIter, nParams, nChains = Int(sz[1]), Int(sz[2]), Int(sz[3])
+    flat = wire["value_flat"]
+    allnames = wire["parameters"]
+    is_target(n) = any(t -> n == t || startswith(n, t * "["), targets)
+    keep = [n for n in wire["name_map"]["parameters"] if !is_target(n)]
+    index = Dict(n => i for (i, n) in enumerate(allnames))
+    arr = Array{Float64,3}(undef, nIter, length(keep), nChains)
+    for (newp, n) in enumerate(keep)
+        p = index[n]
+        for c in 1:nChains, i in 1:nIter
+            v = flat[i + (p - 1) * nIter + (c - 1) * nIter * nParams]
+            arr[i, newp, c] = v === nothing ? NaN : Float64(v)
+        end
+    end
+    syms = Symbol.(keep)
+    vmap = Dict{VarName,Symbol}(eval(:(Turing.@varname($(Meta.parse(n))))) => Symbol(n) for n in keep)
+    return MCMCChains.Chains(arr, syms, Dict(:parameters => syms); info = (; varname_to_symbol = vmap))
+end
 
 # Build the model and sample in one call so both run in the latest world age:
 # the model methods are defined by `include` at runtime, so a plain call from
@@ -71,25 +101,36 @@ end
 function main()
     request = JSON.parsefile(ARGS[1])
     out = request["out"]
+    mode = get(request, "mode", "fit")
     stage = "compile"
     try
         Random.seed!(Int(request["seed"]))
         rng = StableRNG(Int(request["seed"]))
-        data = to_namedtuple(request["data"])
         include(abspath(request["model"]["file"]))
         entry = getfield(Main, Symbol(request["model"]["entry"]))
 
-        sampler = build_sampler(request["sampler"])
-        draws = Int(request["sampler"]["draws"])
-        chains = Int(get(request["sampler"], "chains", 4))
-
-        stage = "sample"
-        chn = Base.invokelatest(build_and_sample, entry, data, sampler, draws, chains, rng)
+        wire = if mode == "predict"
+            model = Base.invokelatest(entry, predict_namedtuple(request["data"]))
+            stage = "load_samples"
+            rchn = chains_from_wire(JSON.parsefile(request["samples"]), request["predict"]["targets"])
+            stage = "predict"
+            pp = Base.invokelatest(predict, rng, model, rchn)
+            isempty(names(pp)) &&
+                error("no variables predicted; check that [predict].targets name unconditioned outcomes")
+            chains_to_wire(pp)
+        else
+            data = to_namedtuple(request["data"])
+            sampler = build_sampler(request["sampler"])
+            draws = Int(request["sampler"]["draws"])
+            chains = Int(get(request["sampler"], "chains", 4))
+            stage = "sample"
+            chains_to_wire(Base.invokelatest(build_and_sample, entry, data, sampler, draws, chains, rng))
+        end
 
         stage = "write"
         tmp = out * ".tmp"
         open(tmp, "w") do io
-            JSON.print(io, chains_to_wire(chn))
+            JSON.print(io, wire)
         end
         mv(tmp, out; force = true)
 

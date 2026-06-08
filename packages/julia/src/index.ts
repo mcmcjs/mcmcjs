@@ -5,6 +5,8 @@ export type { CommandRunner, ToolInfo } from "./environment";
 export { detectJulia, detectJuliaup } from "./environment";
 export type { FitIo } from "./fit";
 export { runFit } from "./fit";
+export type { PredictIo } from "./predict";
+export { predictData, runPredict } from "./predict";
 export { ensureProject, managedProjectDir } from "./project";
 export type { MatrixEntry, MatrixIo, MatrixResult } from "./run-matrix";
 export { runMatrix } from "./run-matrix";

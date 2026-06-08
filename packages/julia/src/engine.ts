@@ -6,7 +6,7 @@ const JULIAUP_URL = "https://github.com/JuliaLang/juliaup";
 export const juliaEngine: Engine = {
   id: "julia",
   displayName: "Julia",
-  capabilities: { setup: true, versions: true, fit: true, predict: false },
+  capabilities: { setup: true, versions: true, fit: true, predict: true },
   async doctor(ctx: EngineContext): Promise<HealthReport> {
     const report = await runDoctor(ctx.run);
     return {
