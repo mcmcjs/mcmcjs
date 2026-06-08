@@ -6,6 +6,8 @@ export { detectJulia, detectJuliaup } from "./environment";
 export type { FitIo } from "./fit";
 export { runFit } from "./fit";
 export { ensureProject, managedProjectDir } from "./project";
+export type { MatrixEntry, MatrixIo, MatrixResult } from "./run-matrix";
+export { runMatrix } from "./run-matrix";
 export type {
   InstallCommand,
   SetupOptions,
