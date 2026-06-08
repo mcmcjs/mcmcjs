@@ -48,5 +48,8 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mcmcjs/engine": "workspace:*"
   }
 }
