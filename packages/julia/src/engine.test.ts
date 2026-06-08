@@ -8,7 +8,8 @@ describe("juliaEngine", () => {
   it("declares its id and capabilities", () => {
     expect(juliaEngine.id).toBe("julia");
     expect(juliaEngine.capabilities.versions).toBe(true);
-    expect(juliaEngine.capabilities.fit).toBe(false);
+    expect(juliaEngine.capabilities.fit).toBe(true);
+    expect(juliaEngine.capabilities.predict).toBe(false);
   });
 
   it("reports the juliaup and julia tools and readiness", async () => {

@@ -50,6 +50,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mcmcjs/core": "workspace:*",
     "@mcmcjs/engine": "workspace:*"
   }
 }
