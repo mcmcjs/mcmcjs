@@ -49,5 +49,9 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "smol-toml": "^1.6.1",
+    "zod": "^4.4.3"
   }
 }
