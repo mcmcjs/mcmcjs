@@ -38,6 +38,9 @@ importers:
       '@mcmcjs/diagnostics':
         specifier: workspace:*
         version: link:../diagnostics
+      '@mcmcjs/engine':
+        specifier: workspace:*
+        version: link:../engine
       '@mcmcjs/julia':
         specifier: workspace:*
         version: link:../julia
@@ -52,7 +55,13 @@ importers:
 
   packages/diagnostics: {}
 
-  packages/julia: {}
+  packages/engine: {}
+
+  packages/julia:
+    dependencies:
+      '@mcmcjs/engine':
+        specifier: workspace:*
+        version: link:../engine
 
 packages:
 
