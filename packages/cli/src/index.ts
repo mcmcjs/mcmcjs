@@ -1,7 +1,11 @@
 #!/usr/bin/env node
+import { createRegistry, createRunner, type EngineContext } from "@mcmcjs/engine";
+import { juliaEngine } from "@mcmcjs/julia";
 import { Command } from "commander";
 import { registerDiagnose } from "./diagnose";
 import { registerDoctor } from "./doctor";
+import { registerEngines } from "./engines";
+import { registerJulia } from "./julia";
 import { registerSetup } from "./setup";
 
 declare const __MCMC_VERSION__: string;
@@ -14,11 +18,17 @@ program
   )
   .version(__MCMC_VERSION__);
 
+const ctx: EngineContext = { run: createRunner(), platform: process.platform };
+const registry = createRegistry("julia");
+registry.register(juliaEngine);
+
 registerSetup(program);
-registerDoctor(program);
+registerDoctor(program, registry, ctx);
 registerDiagnose(program);
+registerEngines(program, registry, ctx);
+registerJulia(program, ctx);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exit(1);
+  process.exitCode = 1;
 });

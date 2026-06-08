@@ -1,30 +1,34 @@
-import { runDoctor, type ToolInfo } from "@mcmcjs/julia";
+import type { EngineContext, EngineRegistry, NamedToolInfo } from "@mcmcjs/engine";
 import type { Command } from "commander";
 import pc from "picocolors";
 
-export function formatTool(label: string, info: ToolInfo): string {
-  if (!info.found) return `${label.padEnd(8)} ${pc.red("not found")}`;
-  return `${label.padEnd(8)} ${pc.green(info.version ?? "found")}  ${pc.dim(info.path ?? "")}`;
+export function formatTool(tool: NamedToolInfo): string {
+  if (!tool.found) return `${tool.name.padEnd(8)} ${pc.red("not found")}`;
+  return `${tool.name.padEnd(8)} ${pc.green(tool.version ?? "found")}  ${pc.dim(tool.path ?? "")}`;
 }
 
-export function registerDoctor(program: Command): void {
+export function registerDoctor(
+  program: Command,
+  registry: EngineRegistry,
+  ctx: EngineContext,
+): void {
   program
     .command("doctor")
-    .description("Report the Julia toolchain that mcmc needs for inference")
+    .description("Report the toolchain that mcmc needs for inference")
+    .option("--engine <id>", "engine to check")
     .option("--json", "print the report as JSON")
-    .action(async (opts: { json?: boolean }) => {
-      const report = await runDoctor();
+    .action(async (opts: { engine?: string; json?: boolean }) => {
+      const report = await registry.resolve(opts.engine).doctor(ctx);
       if (opts.json) {
         process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       } else {
-        process.stdout.write(`${formatTool("juliaup", report.juliaup)}\n`);
-        process.stdout.write(`${formatTool("julia", report.julia)}\n\n`);
+        for (const tool of report.tools) process.stdout.write(`${formatTool(tool)}\n`);
         process.stdout.write(
           report.ready
-            ? `${pc.green("ready")} for inference\n`
-            : `${pc.red("not ready")}: Julia not found. Install it with juliaup (https://github.com/JuliaLang/juliaup).\n`,
+            ? `\n${pc.green("ready")} for inference\n`
+            : `\n${pc.red("not ready")}: ${report.hint ?? "toolchain not available"}\n`,
         );
       }
-      process.exit(report.ready ? 0 : 1);
+      process.exitCode = report.ready ? 0 : 1;
     });
 }

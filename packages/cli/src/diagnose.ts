@@ -142,6 +142,6 @@ export function registerDiagnose(program: Command): void {
         );
       }
 
-      process.exit(report.converged ? 0 : 2);
+      process.exitCode = report.converged ? 0 : 2;
     });
 }

@@ -26,8 +26,8 @@ export function formatSetupResult(result: SetupResult, dryRun = false): string {
   if (result.steps.length === 0) lines.push(pc.dim("toolchain already installed"));
 
   lines.push("");
-  lines.push(formatTool("juliaup", result.juliaup));
-  lines.push(formatTool("julia", result.julia));
+  lines.push(formatTool({ name: "juliaup", ...result.juliaup }));
+  lines.push(formatTool({ name: "julia", ...result.julia }));
   lines.push("");
   lines.push(
     result.ready
@@ -54,6 +54,6 @@ export function registerSetup(program: Command): void {
       } else {
         process.stdout.write(`${formatSetupResult(result, opts.dryRun)}\n`);
       }
-      process.exit(opts.dryRun || result.ready ? 0 : 1);
+      process.exitCode = opts.dryRun || result.ready ? 0 : 1;
     });
 }
