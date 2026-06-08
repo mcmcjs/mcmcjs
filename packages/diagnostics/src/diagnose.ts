@@ -55,6 +55,13 @@ export function isConverged(
   );
 }
 
+/** Counts divergent draws in a 0/1 sampler-stat series (e.g. `numerical_error`). */
+export function countDivergences(series: Float64Array): number {
+  let count = 0;
+  for (const value of series) if (value > 0) count += 1;
+  return count;
+}
+
 function concat(chains: Float64Array[]): Float64Array {
   let len = 0;
   for (const c of chains) len += c.length;

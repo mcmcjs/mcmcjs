@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_THRESHOLDS, diagnoseChains, isConverged } from "./diagnose";
+import { countDivergences, DEFAULT_THRESHOLDS, diagnoseChains, isConverged } from "./diagnose";
 import { uniformChain } from "./test-helpers";
+
+describe("countDivergences", () => {
+  it("counts the entries greater than zero", () => {
+    expect(countDivergences(new Float64Array([0, 1, 0, 1, 1]))).toBe(3);
+    expect(countDivergences(new Float64Array([0, 0, 0]))).toBe(0);
+  });
+});
 
 describe("diagnoseChains", () => {
   it("reports finite diagnostics and converges for well-mixed chains", () => {

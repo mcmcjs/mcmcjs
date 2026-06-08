@@ -1,5 +1,6 @@
 export {
   type ConvergenceThresholds,
+  countDivergences,
   DEFAULT_THRESHOLDS,
   diagnoseChains,
   isConverged,
