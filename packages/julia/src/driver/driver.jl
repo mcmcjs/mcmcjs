@@ -26,8 +26,10 @@ to_namedtuple(data) = (; (Symbol(k) => v for (k, v) in data)...)
 # this (older) world would fail with "method too new". invokelatest fixes that.
 function build_and_sample(entry, data, sampler, draws, chains, rng)
     model = entry(data)
-    return sample(rng, model, sampler, MCMCSerial(), draws, chains;
-        chain_type = MCMCChains.Chains, progress = false)
+    # Sample into Turing's default chain type (a FlexiChain), then convert to
+    # MCMCChains for serialization.
+    chn = sample(rng, model, sampler, MCMCSerial(), draws, chains; progress = false)
+    return MCMCChains.Chains(chn)
 end
 
 # Build the exact wire object parseMCMCChainsJson consumes: value_flat is indexed
