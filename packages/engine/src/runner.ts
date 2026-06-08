@@ -23,3 +23,30 @@ export function createRunner(timeoutMs = 10_000): CommandRunner {
     return stdout;
   };
 }
+
+/** Captures stdout, stderr, and exit code without throwing on a nonzero exit. */
+export type FitRunner = (
+  command: string,
+  args: string[],
+  opts?: { timeoutMs?: number },
+) => Promise<{ stdout: string; stderr: string; code: number }>;
+
+/** Creates a FitRunner backed by execFile, suited to long-running inference processes. */
+export function createFitRunner(timeoutMs = 30 * 60_000): FitRunner {
+  return async (command, args, opts) => {
+    try {
+      const { stdout, stderr } = await execFileAsync(command, args, {
+        timeout: opts?.timeoutMs ?? timeoutMs,
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      return { stdout, stderr, code: 0 };
+    } catch (error) {
+      const e = error as { stdout?: string; stderr?: string; code?: unknown; message?: string };
+      return {
+        stdout: e.stdout ?? "",
+        stderr: e.stderr ?? e.message ?? String(error),
+        code: typeof e.code === "number" ? e.code : 1,
+      };
+    }
+  };
+}
