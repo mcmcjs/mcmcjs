@@ -7,7 +7,7 @@ Vehtari et al. (2021).
 
 Operates on plain arrays of chains (`Float64Array[]`), so it has no dependencies.
 
-> Early alpha — the API is not yet stable.
+> Early alpha: the API is not yet stable.
 
 ## License
 

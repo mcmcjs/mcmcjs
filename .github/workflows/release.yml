@@ -21,20 +21,19 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      # While changesets are pending → opens/updates the "Release packages" PR.
-      # When that PR is merged (no changesets left) → publishes the changed packages
-      # to npm with provenance, pushes per-package tags (name@version), and creates
-      # a GitHub Release per package. Requires the NPM_TOKEN repository secret.
+      # While changesets are pending, this opens or updates the release PR.
+      # When that PR is merged (no changesets left), it publishes the changed
+      # packages to npm with provenance, pushes per-package tags (name@version),
+      # and creates a GitHub Release per package. Requires the NPM_TOKEN secret.
       - uses: changesets/action@v1
         with:
           version: pnpm version-packages
           publish: pnpm release
-          title: "Release packages"
-          commit: "release packages"
+          title: "Release the next package versions"
+          commit: "version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"

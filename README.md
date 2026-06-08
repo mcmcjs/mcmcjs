@@ -3,7 +3,7 @@
 Command-line tools for Bayesian modelling, MCMC inference, and post-inference
 diagnostics across probabilistic programming languages.
 
-> Early alpha — under active development. APIs and the CLI surface are not yet stable.
+> Early alpha: under active development. APIs and the CLI surface are not yet stable.
 
 ## Packages
 

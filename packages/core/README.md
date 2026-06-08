@@ -5,7 +5,7 @@ Core data model and samples-file parsers for [MCMC.js](https://github.com/mcmcjs
 Provides the in-memory `Samples` model and parsers for the supported samples-file
 formats (MCMCChains JSON and ArviZ InferenceData JSON).
 
-> Early alpha — the API is not yet stable.
+> Early alpha: the API is not yet stable.
 
 ## License
 
