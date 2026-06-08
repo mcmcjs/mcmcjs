@@ -41,6 +41,21 @@ describe("SpecSchema", () => {
   it("rejects a seed beyond the safe integer range", () => {
     expect(() => SpecSchema.parse({ ...VALID, seed: Number.MAX_SAFE_INTEGER + 2 })).toThrow();
   });
+
+  it("leaves predict undefined when absent", () => {
+    expect(SpecSchema.parse(VALID).predict).toBeUndefined();
+  });
+
+  it("parses a predict block with targets", () => {
+    expect(SpecSchema.parse({ ...VALID, predict: { targets: ["y"] } }).predict?.targets).toEqual([
+      "y",
+    ]);
+  });
+
+  it("requires at least one predict target and rejects unknown predict keys", () => {
+    expect(() => SpecSchema.parse({ ...VALID, predict: { targets: [] } })).toThrow();
+    expect(() => SpecSchema.parse({ ...VALID, predict: { targets: ["y"], bogus: 1 } })).toThrow();
+  });
 });
 
 describe("hashSpec", () => {

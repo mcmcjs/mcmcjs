@@ -5,7 +5,7 @@ export { parseMCMCChainsJson, toMCMCChainsJson } from "./parsers/mcmcchains";
 export { canonicalJson, hashSpec, normalizeSpec } from "./spec/normalize";
 export type { ResolvedSpec } from "./spec/parse";
 export { parseSpec } from "./spec/parse";
-export { SPEC_SCHEMA_VERSION, type Spec, SpecSchema } from "./spec/schema";
+export { type PredictSpec, SPEC_SCHEMA_VERSION, type Spec, SpecSchema } from "./spec/schema";
 export { RUN_RECORD_SCHEMA_VERSION, type RunRecord } from "./spec/sidecar";
 export type { Samples } from "./types";
 export { chainView } from "./types";

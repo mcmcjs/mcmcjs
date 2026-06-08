@@ -12,6 +12,9 @@ export interface RunRecord {
   packages?: Record<string, string>;
   model_sha256?: string;
   data_sha256?: string;
+  /** The posterior samples file consumed by a predict run. */
+  posterior_samples?: string;
+  posterior_samples_sha256?: string;
   samples_file: string;
   started_at: string;
   elapsed_ms: number;
