@@ -51,6 +51,7 @@
   "dependencies": {
     "@mcmcjs/core": "workspace:*",
     "@mcmcjs/diagnostics": "workspace:*",
+    "@mcmcjs/doodlebugs": "workspace:*",
     "@mcmcjs/engine": "workspace:*",
     "@mcmcjs/julia": "workspace:*",
     "commander": "^15.0.0",

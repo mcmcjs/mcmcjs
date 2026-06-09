@@ -2,6 +2,7 @@
 import { createRegistry, createRunner, type EngineContext } from "@mcmcjs/engine";
 import { juliaEngine } from "@mcmcjs/julia";
 import { Command } from "commander";
+import { registerConvert } from "./convert";
 import { registerDiagnose } from "./diagnose";
 import { registerDoctor } from "./doctor";
 import { registerEngines } from "./engines";
@@ -28,6 +29,7 @@ registerSetup(program);
 registerDoctor(program, registry, ctx);
 registerFit(program, ctx);
 registerPredict(program, ctx);
+registerConvert(program);
 registerDiagnose(program);
 registerEngines(program, registry, ctx);
 registerJulia(program, ctx);
