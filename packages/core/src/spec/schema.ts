@@ -3,7 +3,7 @@ import { z } from "zod";
 export const SPEC_SCHEMA_VERSION = "0";
 
 const Backend = z.object({
-  id: z.literal("turing"),
+  id: z.enum(["turing", "juliabugs"]),
   runtime: z.literal("julia").default("julia"),
   /** The juliaup channel the runtime resolves to (e.g. "release", "1.10"). */
   version: z.string().min(1).default("release"),

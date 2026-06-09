@@ -42,6 +42,13 @@ describe("SpecSchema", () => {
     expect(() => SpecSchema.parse({ ...VALID, seed: Number.MAX_SAFE_INTEGER + 2 })).toThrow();
   });
 
+  it("accepts a juliabugs backend and rejects an unknown one", () => {
+    expect(SpecSchema.parse({ ...VALID, backend: { id: "juliabugs" } }).backend.id).toBe(
+      "juliabugs",
+    );
+    expect(() => SpecSchema.parse({ ...VALID, backend: { id: "stan" } })).toThrow();
+  });
+
   it("leaves predict undefined when absent", () => {
     expect(SpecSchema.parse(VALID).predict).toBeUndefined();
   });
