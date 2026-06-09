@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { parseSpec } from "@mcmcjs/core";
 import { createFitRunner, createRunner, type EngineContext, type FitResult } from "@mcmcjs/engine";
 import {
   ensureProject,
   type MatrixResult,
-  managedProjectDir,
+  managedProjectReady,
   resolveVersion,
   runFit,
   runMatrix,
@@ -90,6 +90,11 @@ export function registerFit(program: Command, ctx: EngineContext): void {
               `none of the requested Julia versions are installed: ${versions.join(", ")}. Install one with: mcmc julia version add <version>`,
             );
           }
+          if (!opts.json && !managedProjectReady()) {
+            process.stdout.write(
+              "Preparing the Julia environment (first run can take a few minutes)...\n",
+            );
+          }
           const projectDir = await ensureProject(projectJulia.command, installer);
 
           if (!opts.json) {
@@ -115,7 +120,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
         const outPath = resolve(opts.out ?? defaultOut(specPath));
         const resolved = await resolveVersion(bin, channel, ctx.run);
 
-        if (!opts.json && !existsSync(join(managedProjectDir(), "Project.toml"))) {
+        if (!opts.json && !managedProjectReady()) {
           process.stdout.write(
             "Preparing the Julia environment (first run can take a few minutes)...\n",
           );

@@ -1,8 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { parseSamples, parseSpec } from "@mcmcjs/core";
 import { createFitRunner, createRunner, type EngineContext } from "@mcmcjs/engine";
-import { ensureProject, managedProjectDir, resolveVersion, runPredict } from "@mcmcjs/julia";
+import { ensureProject, managedProjectReady, resolveVersion, runPredict } from "@mcmcjs/julia";
 import type { Command } from "commander";
 import { formatFitResult } from "./fit";
 import { juliaupBin } from "./julia";
@@ -32,6 +32,9 @@ export function registerPredict(program: Command, ctx: EngineContext): void {
         if (!spec.predict) {
           throw new Error("spec has no [predict] block; add [predict].targets to predict");
         }
+        if (spec.backend.id !== "turing") {
+          throw new Error(`predict is not yet supported for backend ${spec.backend.id}`);
+        }
         // Fail fast if the posterior samples are unreadable, before spawning Julia.
         parseSamples(readFileSync(resolve(samplesPath), "utf8"));
 
@@ -40,7 +43,7 @@ export function registerPredict(program: Command, ctx: EngineContext): void {
         const bin = await juliaupBin(ctx);
         const resolved = await resolveVersion(bin, channel, ctx.run);
 
-        if (!opts.json && !existsSync(join(managedProjectDir(), "Project.toml"))) {
+        if (!opts.json && !managedProjectReady()) {
           process.stdout.write(
             "Preparing the Julia environment (first run can take a few minutes)...\n",
           );
