@@ -1,8 +1,9 @@
-# MCMC.js fit driver. Reads a run-request JSON, runs Turing inference, and writes
-# the draws as MCMCChains-JSON (the @mcmcjs/core samples artifact). On success a
-# single line of provenance JSON is printed to stdout; failures print one-line
-# JSON to stderr ({error, stage}) and exit nonzero. This is the only place that
-# touches Turing's chain type, so a chain-type change is contained here.
+# MCMC.js fit driver. Reads a run-request JSON, runs the spec's backend (Turing or
+# JuliaBUGS), and writes the draws as MCMCChains-JSON (the @mcmcjs/core samples
+# artifact). On success a single line of provenance JSON is printed to stdout;
+# failures print one-line JSON to stderr ({error, stage}) and exit nonzero. This is
+# the only place that touches the backend chain types, so a chain-type change is
+# contained here.
 using JSON
 using Random
 using StableRNGs
@@ -11,16 +12,37 @@ using Turing: VarName
 using MCMCChains
 using SHA
 using Pkg
+# Imported (not `using`) so they do not pull `@model` etc. into Main and clash
+# with Turing's exports, which would break Turing model files on include.
+import JuliaBUGS
+import AdvancedHMC
+import ForwardDiff
 
-function build_sampler(sampler)
+function build_sampler(sampler, backend)
     algorithm = get(sampler, "algorithm", "NUTS")
     algorithm == "NUTS" || error("unsupported sampler algorithm: $algorithm")
     warmup = Int(get(sampler, "warmup", 1000))
     adapt_delta = Float64(get(sampler, "adapt_delta", 0.8))
-    return NUTS(warmup, adapt_delta)
+    nuts = backend == "juliabugs" ? AdvancedHMC.NUTS(adapt_delta) : Turing.NUTS(warmup, adapt_delta)
+    return nuts, warmup
 end
 
 to_namedtuple(data) = (; (Symbol(k) => v for (k, v) in data)...)
+
+# JuliaBUGS requires dense arrays with a concrete numeric eltype, but JSON parses
+# them as Vector{Any} (and nested arrays as vectors of vectors). narrow promotes a
+# numeric array to a concrete eltype and stacks equal-sized nested arrays into a
+# dense array; an empty array becomes Float64[].
+function narrow(v::AbstractVector)
+    isempty(v) && return Float64[]
+    elems = [narrow(x) for x in v]
+    if all(e -> e isa AbstractArray, elems) && allequal(size.(elems))
+        return stack(elems; dims = 1)
+    end
+    return eltype(elems) <: Real && !isconcretetype(eltype(elems)) ? float.(elems) : elems
+end
+narrow(x) = x
+bugs_namedtuple(data) = (; (Symbol(k) => narrow(v) for (k, v) in data)...)
 
 # JSON null arrives as `nothing`; map it to `missing` so a blanked outcome becomes
 # a sampling (predictive) statement in the model.
@@ -62,6 +84,16 @@ function build_and_sample(entry, data, sampler, draws, chains, rng)
     return MCMCChains.Chains(chn)
 end
 
+# JuliaBUGS compiles the model at runtime, so building and sampling must run in
+# separate latest-world frames; merging them reintroduces a world-age error. The
+# result is already an MCMCChains.Chains, so it is not re-wrapped.
+function sample_bugs(model, sampler, warmup, draws, chains, rng)
+    return JuliaBUGS.AbstractMCMC.sample(
+        rng, model, sampler, JuliaBUGS.AbstractMCMC.MCMCSerial(), draws, chains;
+        chain_type = MCMCChains.Chains, n_adapts = warmup, discard_initial = warmup, progress = false,
+    )
+end
+
 # Build the exact wire object parseMCMCChainsJson consumes: value_flat is indexed
 # i + p*nIter + c*nIter*nParams (column-major over [iteration, parameter, chain]).
 function chains_to_wire(chn)
@@ -86,7 +118,9 @@ end
 function provenance()
     packages = Dict{String,String}()
     for (_, info) in Pkg.dependencies()
-        if info.name in ("Turing", "MCMCChains", "DynamicPPL", "AbstractMCMC") && info.version !== nothing
+        if info.name in
+           ("Turing", "MCMCChains", "DynamicPPL", "AbstractMCMC", "JuliaBUGS", "AdvancedHMC", "ForwardDiff", "ADTypes") &&
+           info.version !== nothing
             packages[info.name] = string(info.version)
         end
     end
@@ -102,6 +136,7 @@ function main()
     request = JSON.parsefile(ARGS[1])
     out = request["out"]
     mode = get(request, "mode", "fit")
+    backend = get(get(request, "backend", Dict()), "id", "turing")
     stage = "compile"
     try
         Random.seed!(Int(request["seed"]))
@@ -110,6 +145,7 @@ function main()
         entry = getfield(Main, Symbol(request["model"]["entry"]))
 
         wire = if mode == "predict"
+            backend == "turing" || error("predict is not yet supported for backend $backend")
             model = Base.invokelatest(entry, predict_namedtuple(request["data"]))
             stage = "load_samples"
             rchn = chains_from_wire(JSON.parsefile(request["samples"]), request["predict"]["targets"])
@@ -119,12 +155,18 @@ function main()
                 error("no variables predicted; check that [predict].targets name unconditioned outcomes")
             chains_to_wire(pp)
         else
-            data = to_namedtuple(request["data"])
-            sampler = build_sampler(request["sampler"])
+            data = backend == "juliabugs" ? bugs_namedtuple(request["data"]) : to_namedtuple(request["data"])
+            sampler, warmup = build_sampler(request["sampler"], backend)
             draws = Int(request["sampler"]["draws"])
             chains = Int(get(request["sampler"], "chains", 4))
             stage = "sample"
-            chains_to_wire(Base.invokelatest(build_and_sample, entry, data, sampler, draws, chains, rng))
+            chn = if backend == "juliabugs"
+                model = Base.invokelatest(entry, data)
+                Base.invokelatest(sample_bugs, model, sampler, warmup, draws, chains, rng)
+            else
+                Base.invokelatest(build_and_sample, entry, data, sampler, draws, chains, rng)
+            end
+            chains_to_wire(chn)
         end
 
         stage = "write"

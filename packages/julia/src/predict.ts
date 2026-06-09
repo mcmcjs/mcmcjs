@@ -54,6 +54,7 @@ export async function runPredict(
     JSON.stringify({
       mode: "predict",
       schema_version: spec.schema_version,
+      backend: { id: spec.backend.id },
       model: { file: spec.modelPath, entry: spec.model.entry },
       data,
       predict: { targets: spec.predict?.targets ?? [] },

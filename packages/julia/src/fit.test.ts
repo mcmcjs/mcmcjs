@@ -58,6 +58,7 @@ describe("runFit", () => {
     expect(argv.at(-1)?.endsWith("request.json")).toBe(true);
 
     const request = JSON.parse(readFileSync(argv.at(-1) as string, "utf8"));
+    expect(request.backend).toEqual({ id: "turing" });
     expect(request.model).toEqual({ file: "/x/m.jl", entry: "build_model" });
     expect(request.seed).toBe(42);
     expect(request.out).toBe(outPath);

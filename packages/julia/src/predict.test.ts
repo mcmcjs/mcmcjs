@@ -95,6 +95,7 @@ describe("runPredict", () => {
     expect(result.status).toBe("ok");
     const request = JSON.parse(readFileSync(argv.at(-1) as string, "utf8"));
     expect(request.mode).toBe("predict");
+    expect(request.backend).toEqual({ id: "turing" });
     expect(request.samples).toBe(samplesPath);
     expect(request.predict.targets).toEqual(["y"]);
     expect(request.data.y).toEqual([null, null]);

@@ -21,7 +21,7 @@ export interface FitIo {
   tmpDir?: string;
 }
 
-/** Runs one Turing inference for a resolved spec on a resolved runtime invocation. */
+/** Runs one inference for a resolved spec on a resolved runtime invocation. */
 export async function runFit(
   spec: ResolvedSpec,
   resolved: { command: string; args: string[] },
@@ -37,6 +37,7 @@ export async function runFit(
     requestPath,
     JSON.stringify({
       schema_version: spec.schema_version,
+      backend: { id: spec.backend.id },
       model: { file: spec.modelPath, entry: spec.model.entry },
       data: spec.data,
       sampler: spec.sampler,

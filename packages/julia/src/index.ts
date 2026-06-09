@@ -7,7 +7,7 @@ export type { FitIo } from "./fit";
 export { runFit } from "./fit";
 export type { PredictIo } from "./predict";
 export { predictData, runPredict } from "./predict";
-export { ensureProject, managedProjectDir } from "./project";
+export { ensureProject, managedProjectDir, managedProjectReady } from "./project";
 export type { MatrixEntry, MatrixIo, MatrixResult } from "./run-matrix";
 export { runMatrix } from "./run-matrix";
 export type {
