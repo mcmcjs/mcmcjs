@@ -38,6 +38,9 @@ importers:
       '@mcmcjs/diagnostics':
         specifier: workspace:*
         version: link:../diagnostics
+      '@mcmcjs/doodlebugs':
+        specifier: workspace:*
+        version: link:../doodlebugs
       '@mcmcjs/engine':
         specifier: workspace:*
         version: link:../engine
@@ -61,6 +64,8 @@ importers:
         version: 4.4.3
 
   packages/diagnostics: {}
+
+  packages/doodlebugs: {}
 
   packages/engine: {}
 

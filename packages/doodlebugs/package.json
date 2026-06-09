@@ -1,0 +1,52 @@
+{
+  "name": "@mcmcjs/doodlebugs",
+  "version": "0.0.0",
+  "description": "Turn DoodleBUGS graphs into BUGS/JuliaBUGS model code; the shared codegen for the DoodleBUGS editor and the MCMC.js CLI.",
+  "keywords": [
+    "doodlebugs",
+    "bugs",
+    "juliabugs",
+    "bayesian",
+    "graphical-models",
+    "codegen"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Shravan Goswami",
+    "email": "contact@shravangoswami.com",
+    "url": "https://shravangoswami.com"
+  },
+  "homepage": "https://github.com/mcmcjs/mcmcjs/tree/main/packages/doodlebugs#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mcmcjs/mcmcjs.git",
+    "directory": "packages/doodlebugs"
+  },
+  "bugs": {
+    "url": "https://github.com/mcmcjs/mcmcjs/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  }
+}
