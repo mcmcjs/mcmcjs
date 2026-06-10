@@ -1,5 +1,12 @@
 # mcmcjs
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [eaf569f]
+  - @mcmcjs/julia@0.4.0
+
 ## 0.5.0
 
 ### Minor Changes
