@@ -34,6 +34,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./stan": {
+      "types": "./dist/stan.d.ts",
+      "import": "./dist/stan.js",
+      "require": "./dist/stan.cjs"
     }
   },
   "files": [

@@ -1,0 +1,12 @@
+{
+  "beta_age": 0,
+  "beta_sex": 0,
+  "alpha": 0,
+  "r": 1,
+  "tau": 0.3,
+  "beta_dis_free": [
+    0,
+    0,
+    0
+  ]
+}
