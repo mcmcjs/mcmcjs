@@ -5,6 +5,8 @@ import { type CommandRunner, createRunner } from "@mcmcjs/engine";
 
 const PACKAGES = [
   "Turing",
+  "FlexiChains",
+  "DimensionalData",
   "MCMCChains",
   "JuliaBUGS",
   "AdvancedHMC",

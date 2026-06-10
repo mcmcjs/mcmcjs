@@ -17,6 +17,8 @@ using Pkg
 import JuliaBUGS
 import AdvancedHMC
 import ForwardDiff
+import FlexiChains
+import DimensionalData
 
 function build_sampler(sampler, backend)
     algorithm = get(sampler, "algorithm", "NUTS")
@@ -76,12 +78,45 @@ end
 # Build the model and sample in one call so both run in the latest world age:
 # the model methods are defined by `include` at runtime, so a plain call from
 # this (older) world would fail with "method too new". invokelatest fixes that.
+# Returns Turing's default chain type, a FlexiChain.
 function build_and_sample(entry, data, sampler, draws, chains, rng)
     model = entry(data)
-    # Sample into Turing's default chain type (a FlexiChain), then convert to
-    # MCMCChains for serialization.
-    chn = sample(rng, model, sampler, MCMCSerial(), draws, chains; progress = false)
-    return MCMCChains.Chains(chn)
+    return sample(rng, model, sampler, MCMCSerial(), draws, chains; progress = false)
+end
+
+# FlexiChains-native wire writer. DimArray(chn) splits array-valued parameters
+# into scalar leaves (theta -> theta[1], theta[2]) in the (iter, chain, param)
+# orientation; Real-valued extras become the internals section, matching what
+# the MCMCChains bridge produced.
+function vnchain_to_wire(chn)
+    da = DimensionalData.DimArray(chn)
+    pnames = string.(collect(DimensionalData.lookup(da, :param)))
+    arr = parent(da)
+    nIter, nChains, nParams = size(arr)
+
+    extras = [e for e in FlexiChains.extras(chn) if eltype(chn[e]) <: Union{Missing,Real}]
+    enames = [string(Symbol(e)) for e in extras]
+    total = nParams + length(extras)
+
+    flat = Vector{Union{Float64,Nothing}}(undef, nIter * total * nChains)
+    cell(v) = v === missing ? nothing : Float64(v)
+    for c in 1:nChains, p in 1:nParams, i in 1:nIter
+        flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(arr[i, c, p])
+    end
+    for (k, e) in enumerate(extras)
+        m = chn[e]
+        p = nParams + k
+        for c in 1:nChains, i in 1:nIter
+            flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(m[i, c])
+        end
+    end
+
+    return Dict(
+        "size" => [nIter, total, nChains],
+        "value_flat" => flat,
+        "parameters" => vcat(pnames, enames),
+        "name_map" => Dict("parameters" => pnames, "internals" => enames),
+    )
 end
 
 # JuliaBUGS compiles the model at runtime, so building and sampling must run in
@@ -119,7 +154,7 @@ function provenance()
     packages = Dict{String,String}()
     for (_, info) in Pkg.dependencies()
         if info.name in
-           ("Turing", "MCMCChains", "DynamicPPL", "AbstractMCMC", "JuliaBUGS", "AdvancedHMC", "ForwardDiff", "ADTypes") &&
+           ("Turing", "FlexiChains", "MCMCChains", "DynamicPPL", "AbstractMCMC", "JuliaBUGS", "AdvancedHMC", "ForwardDiff", "ADTypes") &&
            info.version !== nothing
             packages[info.name] = string(info.version)
         end
@@ -160,13 +195,14 @@ function main()
             draws = Int(request["sampler"]["draws"])
             chains = Int(get(request["sampler"], "chains", 4))
             stage = "sample"
-            chn = if backend == "juliabugs"
+            if backend == "juliabugs"
                 model = Base.invokelatest(entry, data)
-                Base.invokelatest(sample_bugs, model, sampler, warmup, draws, chains, rng)
+                chn = Base.invokelatest(sample_bugs, model, sampler, warmup, draws, chains, rng)
+                chains_to_wire(chn)
             else
-                Base.invokelatest(build_and_sample, entry, data, sampler, draws, chains, rng)
+                chn = Base.invokelatest(build_and_sample, entry, data, sampler, draws, chains, rng)
+                vnchain_to_wire(chn)
             end
-            chains_to_wire(chn)
         end
 
         stage = "write"
