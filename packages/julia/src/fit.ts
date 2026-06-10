@@ -18,6 +18,8 @@ export interface FitIo {
   projectDir: string;
   /** Where the samples file is written. */
   outPath: string;
+  /** Where the run record is written; defaults to `<outPath>.run.json`. */
+  recordPath?: string;
   tmpDir?: string;
 }
 
@@ -96,7 +98,7 @@ export async function runFit(
     started_at: startedAt,
     elapsed_ms: elapsedMs,
   };
-  writeFileSync(`${io.outPath}.run.json`, `${JSON.stringify(record, null, 2)}\n`);
+  writeFileSync(io.recordPath ?? `${io.outPath}.run.json`, `${JSON.stringify(record, null, 2)}\n`);
 
   return {
     status: "ok",

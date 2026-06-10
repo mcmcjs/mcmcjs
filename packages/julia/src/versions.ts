@@ -100,7 +100,7 @@ export async function resolveVersion(
   bin: string,
   channel: string,
   run: CommandRunner,
-): Promise<{ command: string; args: string[] }> {
+): Promise<{ command: string; args: string[]; version?: string }> {
   const config = parseGetconfig1(await run(bin, ["api", "getconfig1"]));
   const all = config.DefaultChannel
     ? [config.DefaultChannel, ...config.OtherChannels]
@@ -111,7 +111,7 @@ export async function resolveVersion(
       `Julia version "${channel}" is not installed. Add it with: mcmc julia version add ${channel}`,
     );
   }
-  return { command: match.File, args: match.Args ?? [] };
+  return { command: match.File, args: match.Args ?? [], version: match.Version };
 }
 
 /** Throws with an actionable message if any requested channel is not installed. */

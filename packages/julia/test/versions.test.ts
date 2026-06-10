@@ -128,11 +128,12 @@ describe("mutators issue the right juliaup commands", () => {
 });
 
 describe("resolveVersion", () => {
-  it("returns the channel's absolute binary path", async () => {
+  it("returns the channel's absolute binary path and concrete version", async () => {
     const resolved = await resolveVersion("juliaup", "1.10", constant(CONFIG));
     expect(resolved).toEqual({
       command: "/home/u/.julia/juliaup/julia-1.10.5/bin/julia",
       args: [],
+      version: "1.10.5",
     });
   });
 

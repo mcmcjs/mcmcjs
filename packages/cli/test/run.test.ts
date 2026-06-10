@@ -1,11 +1,20 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseSpec, serializeSpecToml } from "@mcmcjs/core";
+import { serializeSpecToml } from "@mcmcjs/core";
 import { describe, expect, it } from "vitest";
-import { detectBackend, resolveToSpec, scaffoldSpec } from "../src/run";
+import type { DiagnosticsReport } from "../src/diagnose";
+import { buildRunConfig, detectBackend, diagnosticsSummary } from "../src/run";
 
 const tmp = (): string => mkdtempSync(join(tmpdir(), "mcmcjs-run-"));
+
+const TURING_MODEL = "using Turing\n@model function f() end\nbuild_model(data) = f()\n";
+
+function writeModel(dir: string, name = "model.jl"): string {
+  const path = join(dir, name);
+  writeFileSync(path, TURING_MODEL);
+  return path;
+}
 
 const GRAPH = JSON.stringify({
   name: "Demo",
@@ -39,137 +48,214 @@ describe("detectBackend", () => {
   });
 });
 
-describe("scaffoldSpec", () => {
-  it("produces a spec that parseSpec accepts after TOML round-trip", () => {
-    const spec = scaffoldSpec({
-      modelFileName: "model.jl",
-      backend: "turing",
-      data: { J: 8, y: [28, 8, -3], sigma: [15, 10, 16] },
-      seed: 42,
-      draws: 500,
-      warmup: 250,
-      chains: 2,
-    });
+describe("buildRunConfig: model file with no spec", () => {
+  it("builds defaults, detects the backend, and never writes a sibling spec", () => {
     const dir = tmp();
-    writeFileSync(join(dir, "model.jl"), "using Turing");
-    const specPath = join(dir, "model.toml");
-    writeFileSync(specPath, serializeSpecToml(spec));
-
-    const parsed = parseSpec(specPath);
-    expect(parsed.backend.id).toBe("turing");
-    expect(parsed.seed).toBe(42);
-    expect(parsed.sampler).toMatchObject({ draws: 500, warmup: 250, chains: 2 });
-    expect(parsed.model.entry).toBe("build_model");
-    expect(parsed.data).toEqual({ J: 8, y: [28, 8, -3], sigma: [15, 10, 16] });
-    expect(parsed.modelPath).toBe(join(dir, "model.jl"));
+    const model = writeModel(dir);
+    const config = buildRunConfig(model, {});
+    expect(config.specSource).toBe("defaults");
+    expect(config.spec.backend.id).toBe("turing");
+    expect(config.spec.sampler).toMatchObject({ draws: 1000, warmup: 1000, chains: 4 });
+    expect(config.spec.seed).toBeGreaterThanOrEqual(0);
+    expect(config.modelPath).toBe(model);
+    expect(existsSync(join(dir, "model.toml"))).toBe(false);
   });
 
-  it("writes a custom entry only when given", () => {
-    const base = {
-      modelFileName: "m.jl",
-      backend: "juliabugs" as const,
-      data: {},
-      seed: 1,
-      draws: 100,
+  it("honors flags and loads --data", () => {
+    const dir = tmp();
+    const model = writeModel(dir);
+    const dataPath = join(dir, "data.csv");
+    writeFileSync(dataPath, "x,y\n1,2\n3,4\n");
+    const config = buildRunConfig(model, {
+      draws: 250,
       warmup: 100,
-      chains: 1,
-    };
-    const withEntry = scaffoldSpec({ ...base, entry: "make_model" });
-    expect((withEntry.model as Record<string, unknown>).entry).toBe("make_model");
-    expect("entry" in (scaffoldSpec(base).model as Record<string, unknown>)).toBe(false);
+      chains: 2,
+      seed: 7,
+      adaptDelta: 0.95,
+      data: dataPath,
+    });
+    expect(config.spec.sampler).toMatchObject({
+      draws: 250,
+      warmup: 100,
+      chains: 2,
+      adapt_delta: 0.95,
+    });
+    expect(config.spec.seed).toBe(7);
+    expect(config.spec.data).toMatchObject({ x: [1, 3], y: [2, 4], N: 2 });
+  });
+
+  it("fails fast on invalid settings", () => {
+    const dir = tmp();
+    const model = writeModel(dir);
+    expect(() => buildRunConfig(model, { draws: -5 })).toThrow(/invalid run settings/);
+  });
+
+  it("asks for --backend when detection fails", () => {
+    const dir = tmp();
+    const path = join(dir, "model.jl");
+    writeFileSync(path, "f(x) = x + 1");
+    expect(() => buildRunConfig(path, {})).toThrow(/--backend/);
   });
 });
 
-describe("resolveToSpec", () => {
-  it("scaffolds a sibling spec for a model file and reuses it next time", () => {
+describe("buildRunConfig: sibling spec", () => {
+  function writeSibling(dir: string, overrides: Record<string, unknown> = {}): string {
+    const specPath = join(dir, "model.toml");
+    writeFileSync(
+      specPath,
+      serializeSpecToml({
+        schema_version: "0",
+        seed: 11,
+        backend: { id: "turing" },
+        model: { kind: "file", path: "./model.jl" },
+        sampler: { algorithm: "NUTS", draws: 500, warmup: 200, chains: 2 },
+        data: { N: 1 },
+        ...overrides,
+      }),
+    );
+    return specPath;
+  }
+
+  it("uses the sibling's settings when no flags are given", () => {
     const dir = tmp();
-    const modelPath = join(dir, "model.jl");
-    writeFileSync(modelPath, "using Turing\n@model function f() end");
-
-    const first = resolveToSpec(modelPath, { seed: 7, draws: 200 });
-    expect(first.specPath).toBe(join(dir, "model.toml"));
-    expect(parseSpec(first.specPath).seed).toBe(7);
-    expect(parseSpec(first.specPath).sampler.draws).toBe(200);
-
-    const second = resolveToSpec(modelPath, {});
-    expect(second.specPath).toBe(first.specPath);
-    expect(second.notes.join("\n")).toContain("using existing spec");
+    const model = writeModel(dir);
+    writeSibling(dir);
+    const config = buildRunConfig(model, {});
+    expect(config.specSource).toBe("sibling");
+    expect(config.spec.seed).toBe(11);
+    expect(config.spec.sampler.draws).toBe(500);
+    expect(config.notes.join("\n")).toContain("flags override");
   });
 
-  it("rejects scaffold flags once the sibling spec exists, including sampler flags", () => {
+  it("lets flags override the sibling instead of rejecting them", () => {
     const dir = tmp();
-    const modelPath = join(dir, "model.jl");
-    writeFileSync(modelPath, "using Turing\n@model function f() end");
-    resolveToSpec(modelPath, { seed: 1 });
-
-    expect(() => resolveToSpec(modelPath, { seed: 2 })).toThrow(/only applies when scaffolding/);
-    expect(() => resolveToSpec(modelPath, { draws: 200 })).toThrow(/only applies when scaffolding/);
+    const model = writeModel(dir);
+    writeSibling(dir);
+    const config = buildRunConfig(model, { draws: 4000, seed: 9 });
+    expect(config.spec.sampler.draws).toBe(4000);
+    expect(config.spec.sampler.warmup).toBe(200);
+    expect(config.spec.seed).toBe(9);
   });
 
-  it("rejects scaffold flags for a spec input", () => {
+  it("forces the model named on the command line over the spec's model.path", () => {
     const dir = tmp();
-    writeFileSync(join(dir, "m.jl"), "using Turing");
+    const model = writeModel(dir);
+    writeModel(dir, "other.jl");
+    writeSibling(dir, { model: { kind: "file", path: "./other.jl" } });
+    const config = buildRunConfig(model, {});
+    expect(config.spec.model.path).toBe("./model.jl");
+    expect(config.modelPath).toBe(model);
+  });
+});
+
+describe("buildRunConfig: spec input", () => {
+  it("applies flag overrides on top of the spec", () => {
+    const dir = tmp();
+    writeModel(dir);
     const specPath = join(dir, "spec.toml");
     writeFileSync(
       specPath,
-      serializeSpecToml(
-        scaffoldSpec({
-          modelFileName: "m.jl",
-          backend: "turing",
-          data: {},
-          seed: 1,
-          draws: 10,
-          warmup: 10,
-          chains: 1,
-        }),
-      ),
+      serializeSpecToml({
+        schema_version: "0",
+        seed: 1,
+        backend: { id: "turing" },
+        model: { kind: "file", path: "./model.jl" },
+        sampler: { algorithm: "NUTS", draws: 10, warmup: 10, chains: 1 },
+        data: {},
+      }),
     );
-    expect(resolveToSpec(specPath, {}).specPath).toBe(specPath);
-    expect(() => resolveToSpec(specPath, { chains: 8 })).toThrow(/already a spec/);
+    const config = buildRunConfig(specPath, { chains: 8 });
+    expect(config.specSource).toBe("input");
+    expect(config.spec.sampler.chains).toBe(8);
+    expect(config.spec.sampler.draws).toBe(10);
   });
 
-  it("converts a graph once, honoring sampler flags, then reuses the spec", () => {
+  it("uses --julia-version as the channel without persisting it", () => {
+    const dir = tmp();
+    writeModel(dir);
+    const specPath = join(dir, "spec.toml");
+    writeFileSync(
+      specPath,
+      serializeSpecToml({
+        schema_version: "0",
+        seed: 1,
+        backend: { id: "turing" },
+        model: { kind: "file", path: "./model.jl" },
+        sampler: { algorithm: "NUTS", draws: 10 },
+        data: {},
+      }),
+    );
+    const config = buildRunConfig(specPath, { juliaVersion: "1.10" });
+    expect(config.channel).toBe("1.10");
+    expect(config.spec.backend.version).toBe("release");
+  });
+});
+
+describe("buildRunConfig: graph input", () => {
+  it("converts once, then reuses the written spec with flag overrides", () => {
     const dir = tmp();
     const graphPath = join(dir, "demo.json");
     writeFileSync(graphPath, GRAPH);
 
-    const first = resolveToSpec(graphPath, { seed: 5, draws: 250 });
-    expect(first.specPath).toBe(join(dir, "demo.toml"));
-    const parsed = parseSpec(first.specPath);
-    expect(parsed.seed).toBe(5);
-    expect(parsed.sampler.draws).toBe(250);
+    const first = buildRunConfig(graphPath, { seed: 5, draws: 250 });
+    expect(first.spec.seed).toBe(5);
+    expect(first.spec.sampler.draws).toBe(250);
     expect(existsSync(join(dir, "demo.jl"))).toBe(true);
+    expect(existsSync(join(dir, "demo.toml"))).toBe(true);
 
-    const before = readFileSync(first.specPath, "utf8");
-    const second = resolveToSpec(graphPath, {});
-    expect(second.notes.join("\n")).toContain("using existing spec");
-    expect(readFileSync(first.specPath, "utf8")).toBe(before);
-    expect(() => resolveToSpec(graphPath, { seed: 9 })).toThrow(/only applies when scaffolding/);
+    const second = buildRunConfig(graphPath, { draws: 999 });
+    expect(second.spec.sampler.draws).toBe(999);
+    expect(second.spec.seed).toBe(5);
   });
 
   it("rejects flags that cannot apply to a graph", () => {
     const dir = tmp();
     const graphPath = join(dir, "demo.json");
     writeFileSync(graphPath, GRAPH);
-    expect(() => resolveToSpec(graphPath, { backend: "turing" })).toThrow(
+    expect(() => buildRunConfig(graphPath, { backend: "turing" })).toThrow(
       /does not apply to a graph/,
     );
-  });
-
-  it("fails fast with a clear error instead of writing an invalid spec", () => {
-    const dir = tmp();
-    const modelPath = join(dir, "model.jl");
-    writeFileSync(modelPath, "using Turing");
-    expect(() => resolveToSpec(modelPath, { draws: -5, seed: 1 })).toThrow(
-      /cannot scaffold a valid spec/,
-    );
-    expect(existsSync(join(dir, "model.toml"))).toBe(false);
   });
 
   it("names the file when JSON input is malformed", () => {
     const dir = tmp();
     const path = join(dir, "broken.json");
     writeFileSync(path, "{not json");
-    expect(() => resolveToSpec(path, {})).toThrow(/invalid JSON in .*broken\.json/);
+    expect(() => buildRunConfig(path, {})).toThrow(/invalid JSON in .*broken\.json/);
+  });
+});
+
+describe("diagnosticsSummary", () => {
+  it("condenses a report into ledger fields", () => {
+    const report = {
+      converged: false,
+      divergences: 3,
+      variables: [
+        { rhat: 1.01, essBulk: 900, essTail: 800 },
+        { rhat: 1.2, essBulk: 120, essTail: 1500 },
+      ],
+    } as unknown as DiagnosticsReport;
+    expect(diagnosticsSummary(report)).toEqual({
+      converged: false,
+      rhat_max: 1.2,
+      ess_bulk_min: 120,
+      ess_tail_min: 800,
+      divergences: 3,
+    });
+  });
+
+  it("maps non-finite diagnostics to null", () => {
+    const report = {
+      converged: false,
+      divergences: null,
+      variables: [{ rhat: Number.NaN, essBulk: Number.NaN, essTail: Number.NaN }],
+    } as unknown as DiagnosticsReport;
+    expect(diagnosticsSummary(report)).toEqual({
+      converged: false,
+      rhat_max: null,
+      ess_bulk_min: null,
+      ess_tail_min: null,
+      divergences: null,
+    });
   });
 });
