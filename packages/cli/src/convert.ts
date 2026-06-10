@@ -29,18 +29,27 @@ export function juliaBugsModelFile(modelCode: string): string {
   ].join("\n");
 }
 
+export interface SamplerSettings {
+  draws: number;
+  warmup: number;
+  chains: number;
+}
+
+const DEFAULT_SAMPLER: SamplerSettings = { draws: 1000, warmup: 1000, chains: 4 };
+
 /** Build a minimal, fit-able juliabugs spec object referencing the generated model file. */
 export function buildSpec(
   modelFileName: string,
   data: Record<string, unknown>,
   seed: number,
+  sampler: SamplerSettings = DEFAULT_SAMPLER,
 ): Record<string, unknown> {
   return {
     schema_version: "0",
     seed,
     backend: { id: "juliabugs" },
     model: { kind: "file", path: `./${modelFileName}`, entry: "build_model" },
-    sampler: { algorithm: "NUTS", draws: 1000, warmup: 1000, chains: 4 },
+    sampler: { algorithm: "NUTS", ...sampler },
     data,
   };
 }
@@ -56,6 +65,7 @@ export function convertGraph(
   graphPath: string,
   out: string | undefined,
   seed: number,
+  sampler?: SamplerSettings,
 ): ConvertResult {
   const model = parseUnifiedModel(readFileSync(resolve(graphPath), "utf8"));
   const elements = getElements(model);
@@ -77,7 +87,7 @@ export function convertGraph(
 
   mkdirSync(dirname(modelPath), { recursive: true });
   writeFileSync(modelPath, juliaBugsModelFile(modelCode));
-  writeFileSync(specPath, serializeSpecToml(buildSpec(modelFileName, data, seed)));
+  writeFileSync(specPath, serializeSpecToml(buildSpec(modelFileName, data, seed, sampler)));
 
   return { name: model.name, modelPath, specPath };
 }

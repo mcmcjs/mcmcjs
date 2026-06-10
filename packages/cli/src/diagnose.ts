@@ -113,6 +113,18 @@ export function formatReportTable(report: DiagnosticsReport, color = true): stri
   return [header, rule, ...body].join("\n");
 }
 
+/** The full human-readable report: table, divergences, and the verdict line. */
+export function formatReportHuman(report: DiagnosticsReport): string {
+  let out = `${formatReportTable(report)}\n\n`;
+  if (report.divergences !== null) {
+    const line = `divergences: ${report.divergences}`;
+    out += `${report.divergences <= report.maxDivergences ? pc.green(line) : pc.red(line)}\n`;
+  }
+  const verdict = report.converged ? pc.green("converged") : pc.red("not converged");
+  const criteria = `R-hat <= ${report.thresholds.rhatMax}, ESS >= ${report.thresholds.essMin}${report.divergences !== null ? `, divergences <= ${report.maxDivergences}` : ""}`;
+  return `${out}${verdict} (${criteria})\n`;
+}
+
 function parseNumberOption(value: string): number {
   const n = Number.parseFloat(value);
   if (!Number.isFinite(n)) throw new Error(`expected a number, got "${value}"`);
@@ -159,16 +171,7 @@ export function registerDiagnose(program: Command): void {
       if (opts.json) {
         process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       } else {
-        process.stdout.write(`${formatReportTable(report)}\n\n`);
-        if (report.divergences !== null) {
-          const line = `divergences: ${report.divergences}`;
-          process.stdout.write(
-            `${report.divergences <= report.maxDivergences ? pc.green(line) : pc.red(line)}\n`,
-          );
-        }
-        const verdict = report.converged ? pc.green("converged") : pc.red("not converged");
-        const criteria = `R-hat <= ${report.thresholds.rhatMax}, ESS >= ${report.thresholds.essMin}${report.divergences !== null ? `, divergences <= ${report.maxDivergences}` : ""}`;
-        process.stdout.write(`${verdict} (${criteria})\n`);
+        process.stdout.write(formatReportHuman(report));
       }
 
       process.exitCode = report.converged ? 0 : 2;

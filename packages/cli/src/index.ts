@@ -9,6 +9,7 @@ import { registerEngines } from "./engines";
 import { registerFit } from "./fit";
 import { registerJulia } from "./julia";
 import { registerPredict } from "./predict";
+import { registerRun } from "./run";
 import { registerSetup } from "./setup";
 
 declare const __MCMC_VERSION__: string;
@@ -30,6 +31,7 @@ registerDoctor(program, registry, ctx);
 registerFit(program, ctx);
 registerPredict(program, ctx);
 registerConvert(program);
+registerRun(program, ctx);
 registerDiagnose(program);
 registerEngines(program, registry, ctx);
 registerJulia(program, ctx);
