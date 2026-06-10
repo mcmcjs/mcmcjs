@@ -17,6 +17,12 @@ import { registerShow } from "./show";
 
 declare const __MCMC_VERSION__: string;
 
+// Exit quietly when stdout closes early (e.g. piped through `head`).
+process.stdout.on("error", (error: NodeJS.ErrnoException) => {
+  if (error.code === "EPIPE") process.exit(0);
+  throw error;
+});
+
 const program = new Command();
 program
   .name("mcmc")
