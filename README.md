@@ -29,12 +29,21 @@ This installs the `mcmc` binary. The libraries are published under the
 ## Usage
 
 ```bash
-mcmc setup                       # provision the Julia toolchain via juliaup
-mcmc doctor                      # check the environment
-mcmc fit model.toml -o out.json  # run inference from a spec
-mcmc diagnose out.json           # diagnostics over the samples
-mcmc julia version list          # manage installed Julia versions
+mcmc setup                            # provision the Julia toolchain via juliaup
+mcmc doctor                           # check the environment
+mcmc run model.jl --data data.csv     # fit + diagnose; artifacts go to the hidden .mcmc/ store
+mcmc runs                             # list recorded runs and their verdicts
+mcmc show                             # one run's settings, provenance, and artifacts
+mcmc export samples                   # materialize a run's samples file when you need one
+mcmc diagnose                         # re-check the latest run (or a file, or a run ref)
+mcmc fit model.toml -o out.json       # plumbing: spec in, samples file out
+mcmc julia version list               # manage installed Julia versions
 ```
+
+`mcmc run` keeps the working directory clean: settings come from flags (or an
+optional spec file you author), every run is recorded in a project-local
+`.mcmc/` store, and re-running an unchanged model+data+settings reuses the
+previous result (`--refit` to force).
 
 Every command supports `--json` and uses exit codes 0 (ok), 1 (error), and 2
 (ran, but a domain check failed, such as non-convergence in `diagnose`).
