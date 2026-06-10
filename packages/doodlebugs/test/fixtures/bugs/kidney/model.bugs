@@ -1,0 +1,18 @@
+model {
+  for (i in 1:N) {
+    for (j in 1:M) {
+      t[i,j] ~ dweib(r, mu[i, j])C(t.cen[i, j],)
+      mu[i,j] <- exp(alpha + beta.age * age[i, j] + beta.sex * sex[i] + beta.dis[disease[i]] + b[i])
+    }
+    b[i] ~ dnorm(0.0, tau)
+  }
+  for (k in 2:4) {
+    beta.dis[k] ~ dnorm(0.0, 0.0001)
+  }
+  alpha ~ dnorm(0.0, 0.0001)
+  beta.age ~ dnorm(0.0, 0.0001)
+  beta.sex ~ dnorm(0.0, 0.0001)
+  tau ~ dgamma(1.0E-3, 1.0E-3)
+  r ~ dgamma(1.0, 1.0E-3)
+  sigma <- 1 / sqrt(tau)
+}

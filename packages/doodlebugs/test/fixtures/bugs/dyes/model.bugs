@@ -1,0 +1,13 @@
+model {
+  for (i in 1:batches) {
+    for (j in 1:samples) {
+      y[i,j] ~ dnorm(mu[i], tau.with)
+    }
+    mu[i] ~ dnorm(theta, tau.btw)
+  }
+  theta ~ dnorm(0.0, 1.0E-10)
+  tau.btw ~ dgamma(0.001, 0.001)
+  tau.with ~ dgamma(0.001, 0.001)
+  sigma2.btw <- 1 / tau.btw
+  sigma2.with <- 1 / tau.with
+}

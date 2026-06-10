@@ -1,0 +1,21 @@
+model {
+  for (j in 1:N) {
+    for (k in 1:T) {
+      b[j,k] ~ dnorm(0.0, tau.b)
+      y[j,k] ~ dpois(mu[j, k])
+      mu[j,k] <- exp(a0 + alpha.Base * (log(Base[j] / 4) - log.Base4.bar) + alpha.Trt * (Trt[j] - Trt.bar) + alpha.BT * (Trt[j] * log(Base[j] / 4) - BT.bar) + alpha.Age * (log(Age[j]) - log.Age.bar) + alpha.V4 * (V4[k] - V4.bar) + b1[j] + b[j, k])
+    }
+    b1[j] ~ dnorm(0.0, tau.b1)
+  }
+  a0 ~ dnorm(0.0, 1.0E-4)
+  alpha.Base ~ dnorm(0.0, 1.0E-4)
+  alpha.Trt ~ dnorm(0.0, 1.0E-4)
+  alpha.BT ~ dnorm(0.0, 1.0E-4)
+  alpha.Age ~ dnorm(0.0, 1.0E-4)
+  alpha.V4 ~ dnorm(0.0, 1.0E-4)
+  tau.b1 ~ dgamma(1.0E-3, 1.0E-3)
+  tau.b ~ dgamma(1.0E-3, 1.0E-3)
+  alpha0 <- a0 - alpha.Base * log.Base4.bar - alpha.Trt * Trt.bar - alpha.BT * BT.bar - alpha.Age * log.Age.bar - alpha.V4 * V4.bar
+  sigma.b1 <- 1.0 / sqrt(tau.b1)
+  sigma.b <- 1.0 / sqrt(tau.b)
+}

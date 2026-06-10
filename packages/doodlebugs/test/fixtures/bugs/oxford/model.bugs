@@ -1,0 +1,16 @@
+model {
+  for (i in 1:K) {
+    mu[i] ~ dnorm(0.0, 1.0E-6)
+    b[i] ~ dnorm(0, tau)
+    r0[i] ~ dbin(p0[i], n0[i])
+    r1[i] ~ dbin(p1[i], n1[i])
+    p0[i] <- ilogit(mu[i])
+    logPsi[i] <- alpha + beta1 * year[i] + beta2 * (year[i] * year[i] - 22) + b[i]
+    p1[i] <- ilogit(mu[i] + logPsi[i])
+  }
+  alpha ~ dnorm(0.0, 1.0E-6)
+  beta1 ~ dnorm(0.0, 1.0E-6)
+  beta2 ~ dnorm(0.0, 1.0E-6)
+  tau ~ dgamma(0.001, 0.001)
+  sigma <- 1 / sqrt(tau)
+}
