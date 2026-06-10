@@ -6,11 +6,14 @@ import { registerConvert } from "./convert";
 import { registerDiagnose } from "./diagnose";
 import { registerDoctor } from "./doctor";
 import { registerEngines } from "./engines";
+import { registerExport } from "./export";
 import { registerFit } from "./fit";
 import { registerJulia } from "./julia";
 import { registerPredict } from "./predict";
 import { registerRun } from "./run";
+import { registerRuns } from "./runs";
 import { registerSetup } from "./setup";
+import { registerShow } from "./show";
 
 declare const __MCMC_VERSION__: string;
 
@@ -32,6 +35,9 @@ registerFit(program, ctx);
 registerPredict(program, ctx);
 registerConvert(program);
 registerRun(program, ctx);
+registerRuns(program);
+registerShow(program);
+registerExport(program);
 registerDiagnose(program);
 registerEngines(program, registry, ctx);
 registerJulia(program, ctx);
