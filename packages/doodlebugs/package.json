@@ -1,6 +1,6 @@
 {
   "name": "@mcmcjs/doodlebugs",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Turn DoodleBUGS graphs into BUGS/JuliaBUGS model code; the shared codegen for the DoodleBUGS editor and the MCMC.js CLI.",
   "keywords": [
     "doodlebugs",
