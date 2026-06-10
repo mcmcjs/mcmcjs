@@ -6,6 +6,13 @@ export {
 export { BUGS_FUNCTIONS, DISTRIBUTIONS, type Distribution, getDistribution } from "./catalog";
 export { generateBugsModel } from "./codegen";
 export { getElements, parseModelData, parseUnifiedModel } from "./model";
+export {
+  GraphEdgeSchema,
+  GraphElementSchema,
+  GraphNodeSchema,
+  graphJsonSchema,
+  UnifiedModelDataSchema,
+} from "./schema";
 export { buildTopologicalOrder } from "./topo-sort";
 export type {
   GraphEdge,

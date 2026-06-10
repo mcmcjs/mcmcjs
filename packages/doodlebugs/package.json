@@ -39,7 +39,8 @@
       "types": "./dist/stan.d.ts",
       "import": "./dist/stan.js",
       "require": "./dist/stan.cjs"
-    }
+    },
+    "./graph.schema.json": "./dist/graph.schema.json"
   },
   "files": [
     "dist"
@@ -53,5 +54,8 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   }
 }
