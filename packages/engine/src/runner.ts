@@ -117,7 +117,7 @@ export function createFitRunner(timeoutMs = 30 * 60_000): FitRunner {
         if (pending) takeLine(pending);
         settle({
           stdout,
-          stderr: timedOut ? `${stderr}fit timed out and was killed\n` : stderr,
+          stderr: timedOut ? `${stderr}process timed out and was killed\n` : stderr,
           code: code ?? 1,
         });
       });

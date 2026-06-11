@@ -1,5 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   canonicalJson,
@@ -9,6 +8,7 @@ import {
   type RunRecord,
 } from "@mcmcjs/core";
 import type { FitResult, FitRunner } from "@mcmcjs/engine";
+import { makeRequestDir } from "./fit";
 import { driverPath, lastJsonLine, sha256, toStage } from "./runner-common";
 
 export interface PredictIo {
@@ -47,7 +47,8 @@ export async function runPredict(
   const runtimeRequested = spec.backend.version;
   const data = predictData(spec);
 
-  const tmp = io.tmpDir ?? mkdtempSync(join(tmpdir(), "mcmcjs-predict-"));
+  const ownTmp = io.tmpDir === undefined;
+  const tmp = io.tmpDir ?? makeRequestDir("predict");
   const requestPath = join(tmp, "request.json");
   writeFileSync(
     requestPath,
@@ -71,7 +72,14 @@ export async function runPredict(
     driverPath(),
     requestPath,
   ];
-  const { stdout, stderr, code } = await io.spawn(resolved.command, args);
+  let stdout: string;
+  let stderr: string;
+  let code: number;
+  try {
+    ({ stdout, stderr, code } = await io.spawn(resolved.command, args));
+  } finally {
+    if (ownTmp) rmSync(tmp, { recursive: true, force: true });
+  }
   const elapsedMs = Math.round(performance.now() - start);
 
   if (code !== 0 || !existsSync(io.outPath)) {

@@ -81,8 +81,11 @@ describe("runPredict", () => {
     const outPath = out();
     const samplesPath = postFile();
     let argv: string[] = [];
+    let request: Record<string, unknown> = {};
+    // The request file only exists while the driver runs; read it like the driver would.
     const spawn: FitRunner = async (_command, args) => {
       argv = args;
+      request = JSON.parse(readFileSync(args.at(-1) as string, "utf8"));
       writeFileSync(outPath, SAMPLES);
       return { stdout: PROVENANCE, stderr: "", code: 0 };
     };
@@ -93,12 +96,12 @@ describe("runPredict", () => {
     );
 
     expect(result.status).toBe("ok");
-    const request = JSON.parse(readFileSync(argv.at(-1) as string, "utf8"));
+    expect(existsSync(argv.at(-1) as string)).toBe(false);
     expect(request.mode).toBe("predict");
     expect(request.backend).toEqual({ id: "turing" });
     expect(request.samples).toBe(samplesPath);
-    expect(request.predict.targets).toEqual(["y"]);
-    expect(request.data.y).toEqual([null, null]);
+    expect((request.predict as { targets: string[] }).targets).toEqual(["y"]);
+    expect((request.data as Record<string, unknown>).y).toEqual([null, null]);
 
     const record = JSON.parse(readFileSync(`${outPath}.run.json`, "utf8"));
     expect(record.posterior_samples).toBe(samplesPath);

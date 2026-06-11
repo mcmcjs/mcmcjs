@@ -33,18 +33,26 @@ export function registerDaemon(program: Command): void {
     .option("--json", "print the result as JSON")
     .action(async (opts: { json?: boolean }) => {
       const workers = await listWorkers();
-      const stopped: string[] = [];
+      const outcomes = [];
       for (const worker of workers) {
-        if (await stopWorker(worker.socket)) stopped.push(worker.socket);
+        outcomes.push({ socket: worker.socket, outcome: await stopWorker(worker.socket) });
       }
       if (opts.json) {
-        process.stdout.write(`${JSON.stringify({ stopped, removed: workers.length }, null, 2)}\n`);
+        process.stdout.write(`${JSON.stringify(outcomes, null, 2)}\n`);
         return;
       }
-      process.stdout.write(
-        workers.length === 0
-          ? "no workers to stop\n"
-          : `stopped ${stopped.length} worker${stopped.length === 1 ? "" : "s"}, removed ${workers.length} socket${workers.length === 1 ? "" : "s"}\n`,
-      );
+      if (outcomes.length === 0) {
+        process.stdout.write("no workers to stop\n");
+        return;
+      }
+      for (const { socket, outcome } of outcomes) {
+        const note =
+          outcome === "stopped"
+            ? pc.green("stopped")
+            : outcome === "stale"
+              ? pc.dim("removed stale socket")
+              : pc.yellow("busy; will exit after the current fit");
+        process.stdout.write(`${note}  ${socket}\n`);
+      }
     });
 }

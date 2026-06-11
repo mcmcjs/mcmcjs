@@ -16,6 +16,7 @@ import { registerRuns } from "./runs";
 import { registerSandbox } from "./sandbox";
 import { registerSetup } from "./setup";
 import { registerShow } from "./show";
+import { maybeNotifyUpdate, registerUpdateCheck } from "./update-check";
 
 declare const __MCMC_VERSION__: string;
 
@@ -52,6 +53,9 @@ registerEngines(program, registry, ctx);
 registerJulia(program, ctx);
 registerDaemon(program);
 registerSandbox(program);
+registerUpdateCheck(program);
+
+if (process.argv[2] !== "__update-check") maybeNotifyUpdate(__MCMC_VERSION__);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

@@ -48,8 +48,9 @@ optional spec file you author), every run is recorded in a project-local
 `.mcmc/` store, and re-running an unchanged model+data+settings reuses the
 previous result (`--refit` to force).
 
-Every command supports `--json` and uses exit codes 0 (ok), 1 (error), and 2
-(ran, but a domain check failed, such as non-convergence in `diagnose`).
+Every command supports `--json` (except the interactive `sandbox`) and uses
+exit codes 0 (ok), 1 (error), and 2 (ran, but a domain check failed, such as
+non-convergence in `diagnose`).
 
 ## Development
 

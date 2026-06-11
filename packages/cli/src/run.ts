@@ -33,7 +33,7 @@ import { buildDiagnosticsReport, type DiagnosticsReport, formatReportHuman } fro
 import { formatFitResult } from "./fit";
 import { juliaupBin } from "./julia";
 import { parseFloatOption, parseIntOption } from "./options";
-import { createProgressRenderer, silentProgress } from "./progress";
+import { rendererFor } from "./progress";
 import { timeAgo } from "./store-cli";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
@@ -452,22 +452,21 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         modelPath: config.modelPath,
         specHash,
       };
-      const progress = opts.json
-        ? silentProgress
-        : createProgressRenderer({
-            tty: process.stderr.isTTY === true,
-            write: (text) => process.stderr.write(text),
-          });
-      const fit = await runFitAuto(resolvedSpec, resolved, {
-        spawn: createFitRunner(),
-        projectDir,
-        outPath: join(dir, "samples.json"),
-        recordPath: join(dir, "run.json"),
-        onProgress: progress.onProgress,
-        daemon: opts.daemon ?? process.env.MCMC_DAEMON === "1",
-        notify: (line) => say(line),
-      });
-      progress.finish();
+      const progress = rendererFor(opts.json);
+      let fit: Awaited<ReturnType<typeof runFitAuto>>;
+      try {
+        fit = await runFitAuto(resolvedSpec, resolved, {
+          spawn: createFitRunner(),
+          projectDir,
+          outPath: join(dir, "samples.json"),
+          recordPath: join(dir, "run.json"),
+          onProgress: progress.onProgress,
+          daemon: opts.daemon ?? process.env.MCMC_DAEMON === "1",
+          notify: (line) => say(line),
+        });
+      } finally {
+        progress.finish();
+      }
 
       const entry: LedgerEntry = {
         id: runId,

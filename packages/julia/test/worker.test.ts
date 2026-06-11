@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -121,6 +121,106 @@ describe("runFitViaWorker", () => {
     expect(result.stage).toBe("compile");
     expect(result.error).toBe("model did not compile");
     expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the one-shot driver on a worker-stage protocol error", async () => {
+    stubWorkersDir();
+    const socket = workerSocketPath("/bin/julia", "/proj");
+    fakeWorker(socket, () => [
+      JSON.stringify({ ok: false, error: "request line did not parse", stage: "worker" }),
+    ]);
+
+    const spawn = vi.fn(async () => ({
+      stdout: "",
+      stderr: '{"error":"boom","stage":"sample"}',
+      code: 1,
+    }));
+    const result = await runFitAuto(
+      spec(dir),
+      { command: "/bin/julia", args: [] },
+      { spawn, projectDir: "/proj", outPath: join(dir, "samples.json"), daemon: true },
+    );
+
+    expect(spawn).toHaveBeenCalledOnce();
+    expect(result.stage).toBe("sample");
+  });
+
+  it("reports a hung worker as a timeout instead of hanging or re-running", async () => {
+    stubWorkersDir();
+    vi.stubEnv("MCMC_WORKER_TIMEOUT_MS", "300");
+    const socket = workerSocketPath("/bin/julia", "/proj");
+    // Sends one progress line, then goes silent forever.
+    server = (await import("node:net")).createServer((sock) => {
+      sock.on("data", () => {
+        sock.write('{"mcmcjs":"progress","chain":1,"of":1,"fraction":0.1,"done":false}\n');
+      });
+    });
+    server.listen(socket);
+
+    const spawn = vi.fn(async () => ({ stdout: "", stderr: "", code: 1 }));
+    const result = await runFitAuto(
+      spec(dir),
+      { command: "/bin/julia", args: [] },
+      { spawn, projectDir: "/proj", outPath: join(dir, "samples.json"), daemon: true },
+    );
+
+    expect(spawn).not.toHaveBeenCalled();
+    expect(result.status).toBe("error");
+    expect(result.stage).toBe("worker");
+    expect(result.error).toMatch(/sent nothing/);
+  });
+
+  it("ensureWorker spawns a worker when none answers and the fit flows through it", async () => {
+    stubWorkersDir();
+    // A shim standing in for Julia: ignores the julia-style flags, serves one
+    // request on the socket path it finds in its last argument, then exits.
+    const shim = join(dir, "shim.cjs");
+    writeFileSync(
+      shim,
+      [
+        'const net = require("node:net");',
+        "const path = process.argv[process.argv.length - 1];",
+        "const server = net.createServer((sock) => {",
+        "  sock.on('data', () => {",
+        "    sock.end(JSON.stringify({ ok: false, error: 'shim declined', stage: 'compile' }) + '\\n');",
+        "    server.close();",
+        "  });",
+        "});",
+        "server.listen(path);",
+      ].join("\n"),
+    );
+
+    const result = await runFitViaWorker(
+      spec(dir),
+      { command: process.execPath, args: [shim] },
+      {
+        spawn: async () => ({ stdout: "", stderr: "", code: 1 }),
+        projectDir: "/proj",
+        outPath: join(dir, "samples.json"),
+      },
+    );
+
+    expect(result.status).toBe("error");
+    expect(result.stage).toBe("compile");
+    expect(result.error).toBe("shim declined");
+  });
+
+  it("stopWorker distinguishes acked, stale, and busy workers", async () => {
+    stubWorkersDir();
+    const { createServer } = await import("node:net");
+    const ackPath = join(dir, "ack.sock");
+    const ackServer = createServer((sock) => {
+      sock.on("data", () => sock.end('{"ok":true,"stopped":true}\n'));
+    });
+    ackServer.listen(ackPath);
+    const { stopWorker } = await import("../src/worker");
+    expect(await stopWorker(ackPath)).toBe("stopped");
+    await new Promise((resolve) => ackServer.close(resolve));
+
+    const stalePath = join(dir, "stale.sock");
+    writeFileSync(stalePath, "");
+    expect(await stopWorker(stalePath)).toBe("stale");
+    expect(existsSync(stalePath)).toBe(false);
   });
 
   it("runFitAuto without daemon goes straight to the one-shot driver", async () => {

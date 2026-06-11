@@ -13,7 +13,7 @@ import {
 import type { Command } from "commander";
 import pc from "picocolors";
 import { juliaupBin } from "./julia";
-import { createProgressRenderer, silentProgress } from "./progress";
+import { rendererFor } from "./progress";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
 
@@ -131,23 +131,22 @@ export function registerFit(program: Command, ctx: EngineContext): void {
         const projectDir = await ensureProject(resolved.command, installer);
 
         if (!opts.json) process.stdout.write(`Fitting ${spec.backend.id} on Julia ${channel}...\n`);
-        const progress = opts.json
-          ? silentProgress
-          : createProgressRenderer({
-              tty: process.stderr.isTTY === true,
-              write: (text) => process.stderr.write(text),
-            });
-        const result = await runFitAuto(spec, resolved, {
-          spawn: createFitRunner(),
-          projectDir,
-          outPath,
-          onProgress: progress.onProgress,
-          daemon: opts.daemon ?? process.env.MCMC_DAEMON === "1",
-          notify: (line) => {
-            if (!opts.json) process.stdout.write(`${line}\n`);
-          },
-        });
-        progress.finish();
+        const progress = rendererFor(opts.json);
+        let result: Awaited<ReturnType<typeof runFitAuto>>;
+        try {
+          result = await runFitAuto(spec, resolved, {
+            spawn: createFitRunner(),
+            projectDir,
+            outPath,
+            onProgress: progress.onProgress,
+            daemon: opts.daemon ?? process.env.MCMC_DAEMON === "1",
+            notify: (line) => {
+              if (!opts.json) process.stdout.write(`${line}\n`);
+            },
+          });
+        } finally {
+          progress.finish();
+        }
 
         process.stdout.write(
           opts.json

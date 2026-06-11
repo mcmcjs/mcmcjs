@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import { sharedTmpParent } from "@mcmcjs/julia";
 import type { Command } from "commander";
 import pc from "picocolors";
 
@@ -20,7 +20,7 @@ export function seedSandbox(dir: string, from = templatesDir()): string[] {
 }
 
 function makeSandboxDir(): string {
-  const parent = join(tmpdir(), "mcmcjs");
+  const parent = sharedTmpParent();
   mkdirSync(parent, { recursive: true });
   return mkdtempSync(join(parent, "sandbox-"));
 }

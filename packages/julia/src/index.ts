@@ -10,6 +10,7 @@ export { predictData, runPredict } from "./predict";
 export { ensureProject, managedProjectDir, managedProjectReady } from "./project";
 export type { MatrixEntry, MatrixIo, MatrixResult } from "./run-matrix";
 export { runMatrix } from "./run-matrix";
+export { sharedTmpParent } from "./runner-common";
 export type {
   InstallCommand,
   SetupOptions,
@@ -30,4 +31,4 @@ export {
   updateVersion,
 } from "./versions";
 export type { WorkerStatus } from "./worker";
-export { listWorkers, runFitAuto, stopWorker, workerSocketPath, workersDir } from "./worker";
+export { listWorkers, runFitAuto, stopWorker } from "./worker";

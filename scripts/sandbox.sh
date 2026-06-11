@@ -17,7 +17,7 @@ cd "$ROOT"
 echo "Building workspace packages..."
 pnpm build
 
-PARENT="${TMPDIR:-/tmp}/mcmcjs"
+PARENT="${TMPDIR:-/tmp}/mcmcjs-$(id -u)"
 mkdir -p "$PARENT"
 SANDBOX=$(mktemp -d "$PARENT/sandbox-dev-XXXXXX")
 LINK="$INVOKED_DIR/mcmcjs-sandbox"

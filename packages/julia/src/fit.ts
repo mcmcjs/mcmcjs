@@ -1,5 +1,4 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   canonicalJson,
@@ -9,7 +8,7 @@ import {
   type RunRecord,
 } from "@mcmcjs/core";
 import type { FitProgress, FitResult, FitRunner } from "@mcmcjs/engine";
-import { driverPath, lastJsonLine, sha256, toStage } from "./runner-common";
+import { driverPath, lastJsonLine, sha256, sharedTmpParent, toStage } from "./runner-common";
 
 export interface FitIo {
   /** Spawns the Julia process; injectable so runFit is testable without Julia. */
@@ -25,11 +24,11 @@ export interface FitIo {
   tmpDir?: string;
 }
 
-/** A fresh request dir under the shared tmpdir()/mcmcjs parent. */
-function makeRequestDir(): string {
-  const parent = join(tmpdir(), "mcmcjs");
+/** A fresh request dir under the shared per-user tmp parent. */
+export function makeRequestDir(kind: string): string {
+  const parent = sharedTmpParent();
   mkdirSync(parent, { recursive: true });
-  return mkdtempSync(join(parent, "fit-"));
+  return mkdtempSync(join(parent, `${kind}-`));
 }
 
 /** The driver/worker request object for one fit. */
@@ -118,7 +117,7 @@ export async function runFit(
   const runtimeRequested = spec.backend.version;
 
   const ownTmp = io.tmpDir === undefined;
-  const tmp = io.tmpDir ?? makeRequestDir();
+  const tmp = io.tmpDir ?? makeRequestDir("fit");
   const requestPath = join(tmp, "request.json");
   writeFileSync(requestPath, JSON.stringify(fitRequest(spec, io.outPath)));
 

@@ -8,20 +8,45 @@ using Sockets
 
 const IDLE_TIMEOUT_S = 30 * 60
 
+# True while this process still owns the socket path: another worker stealing
+# the path (by binding over it) changes the inode, and a worker that lost the
+# path must never delete its successor's socket.
+function owns_socket(path, ino)
+    try
+        return stat(path).inode == ino
+    catch
+        return false
+    end
+end
+
+function remove_if_owned(path, ino)
+    owns_socket(path, ino) && rm(path; force = true)
+end
+
 function serve(path)
     mkpath(dirname(path))
-    rm(path; force = true)
+    if ispath(path)
+        # A live worker already serving this path wins; a dead socket file is cleared.
+        try
+            close(Sockets.connect(path))
+            exit(0)
+        catch
+            rm(path; force = true)
+        end
+    end
     server = Sockets.listen(path)
-    atexit(() -> rm(path; force = true))
+    ino = stat(path).inode
+    atexit(() -> remove_if_owned(path, ino))
 
     last_activity = Ref(time())
     busy = Ref(false)
-    # Cooperative watchdog: it only runs while the main task is blocked on
-    # accept, and the busy guard keeps a long fit safe regardless.
+    # The watchdog task is cooperative: it gets scheduled while the main task
+    # blocks on accept. The busy guard is belt and braces for any future
+    # multithreaded scheduling.
     @async while true
         sleep(30)
         if !busy[] && time() - last_activity[] > IDLE_TIMEOUT_S
-            rm(path; force = true)
+            remove_if_owned(path, ino)
             exit(0)
         end
     end
@@ -61,7 +86,7 @@ function serve(path)
             last_activity[] = time()
         end
         if stopping
-            rm(path; force = true)
+            remove_if_owned(path, ino)
             exit(0)
         end
     end

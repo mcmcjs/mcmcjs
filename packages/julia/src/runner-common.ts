@@ -1,7 +1,18 @@
 import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FitResult } from "@mcmcjs/engine";
+
+/**
+ * The per-user parent for all mcmcjs temp state. The uid suffix keeps users
+ * on a shared /tmp out of each other's way (macOS tmpdir is per-user already,
+ * Linux /tmp is not).
+ */
+export function sharedTmpParent(): string {
+  const uid = typeof process.getuid === "function" ? `-${process.getuid()}` : "";
+  return join(tmpdir(), `mcmcjs${uid}`);
+}
 
 /** Path to the shipped Julia driver, resolved next to this module in dist/. */
 export function driverPath(): string {
