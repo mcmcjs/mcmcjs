@@ -1,5 +1,11 @@
 # @mcmcjs/core
 
+## 0.3.0
+
+### Minor Changes
+
+- 65484ab: Add the project-local run store: store discovery and layout under a hidden self-gitignored .mcmc directory, an append-only run ledger with cached convergence summaries, content-based run keys, and run refs (latest, @N, id prefix).
+
 ## 0.2.0
 
 ### Minor Changes

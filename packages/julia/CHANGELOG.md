@@ -1,5 +1,19 @@
 # @mcmcjs/julia
 
+## 0.5.0
+
+### Minor Changes
+
+- 65484ab: Let fit callers choose the run record path (FitIo.recordPath) and report the channel's concrete Julia version from resolveVersion.
+- 2a6e611: Stream per-chain sampling progress from the driver as JSON lines, clean up fit request dirs under a shared tmp parent, and add the opt-in persistent worker (runFitAuto, a Unix-socket worker.jl reusing the driver fit logic, automatic fallback to the one-shot driver).
+
+### Patch Changes
+
+- Updated dependencies [65484ab]
+- Updated dependencies [2a6e611]
+  - @mcmcjs/core@0.3.0
+  - @mcmcjs/engine@0.2.0
+
 ## 0.4.0
 
 ### Minor Changes
