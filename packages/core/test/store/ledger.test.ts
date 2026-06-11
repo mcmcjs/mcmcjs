@@ -1,4 +1,13 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -72,10 +81,21 @@ describe("ledger io", () => {
     expect(readLedger(store).runs.map((r) => r.id)).toEqual(["b"]);
   });
 
-  it("writes the file with a trailing newline (atomic tmp is gone)", () => {
+  it("leaves no tmp file or lock behind after a write", () => {
     appendLedgerEntry(store, entry("a"));
     const raw = readFileSync(join(store, "index.json"), "utf8");
     expect(raw.endsWith("}\n")).toBe(true);
+    expect(readdirSync(store).filter((f) => f !== "index.json")).toEqual([]);
+  });
+
+  it("takes over a stale lock instead of hanging", () => {
+    const lock = join(store, "index.lock");
+    mkdirSync(lock);
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lock, old, old);
+    appendLedgerEntry(store, entry("a"));
+    expect(readLedger(store).runs).toHaveLength(1);
+    expect(existsSync(lock)).toBe(false);
   });
 });
 

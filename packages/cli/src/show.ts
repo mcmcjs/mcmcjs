@@ -1,11 +1,19 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { type LedgerEntry, type RunRecord, readLedger, resolveRunRef, runDir } from "@mcmcjs/core";
 import type { Command } from "commander";
 import pc from "picocolors";
 import { locateStore, timeAgo } from "./store-cli";
 
-const ARTIFACTS = ["samples.json", "run.json", "spec.toml"] as const;
+/** Artifact files a run dir may hold, keyed for --json output. */
+function artifactFiles(entry: LedgerEntry): Array<{ key: string; file: string }> {
+  return [
+    { key: "samples", file: "samples.json" },
+    { key: "record", file: "run.json" },
+    { key: "spec", file: "spec.toml" },
+    { key: "model", file: basename(entry.model_path) },
+  ];
+}
 
 function readRecord(dir: string): RunRecord | undefined {
   const path = join(dir, "run.json");
@@ -69,10 +77,10 @@ export function formatRunDetail(
         .join(", "),
     );
   }
-  const present = ARTIFACTS.filter((name) => existsSync(join(dir, name)));
+  const present = artifactFiles(entry).filter(({ file }) => existsSync(join(dir, file)));
   if (present.length > 0) {
-    row("artifacts", join(dir, present[0] as string));
-    for (const name of present.slice(1)) row("", join(dir, name));
+    row("artifacts", join(dir, (present[0] as { file: string }).file));
+    for (const { file } of present.slice(1)) row("", join(dir, file));
   }
   return lines.join("\n");
 }
@@ -91,10 +99,9 @@ export function registerShow(program: Command): void {
       const record = readRecord(dir);
       if (opts.json) {
         const artifacts = Object.fromEntries(
-          ARTIFACTS.filter((name) => existsSync(join(dir, name))).map((name) => [
-            name.replace(/\..*$/, ""),
-            join(dir, name),
-          ]),
+          artifactFiles(entry)
+            .filter(({ file }) => existsSync(join(dir, file)))
+            .map(({ key, file }) => [key, join(dir, file)]),
         );
         process.stdout.write(`${JSON.stringify({ entry, record, artifacts }, null, 2)}\n`);
         return;

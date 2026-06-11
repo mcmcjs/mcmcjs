@@ -8,6 +8,7 @@ import {
 } from "@mcmcjs/core";
 import type { Command } from "commander";
 import pc from "picocolors";
+import { parseIntOption } from "./options";
 import { locateStore, timeAgo } from "./store-cli";
 
 function verdictOf(entry: LedgerEntry): string {
@@ -62,21 +63,11 @@ export function formatRunsTable(ledger: Ledger, color = true): string {
   return lines.join("\n");
 }
 
-/** Picks the oldest runs beyond `keep`, failed runs first, for pruning. */
+/** Picks everything older than the most recent `keep` runs. */
 export function pruneSelection(ledger: Ledger, keep: number): LedgerEntry[] {
   if (keep < 0) throw new Error("--keep must be >= 0");
   const excess = ledger.runs.length - keep;
-  if (excess <= 0) return [];
-  const oldestFirst = [...ledger.runs];
-  const failed = oldestFirst.filter((r) => r.status === "failed");
-  const ok = oldestFirst.filter((r) => r.status === "ok");
-  return [...failed, ...ok].slice(0, excess);
-}
-
-function parseIntOption(value: string): number {
-  const n = Number.parseInt(value, 10);
-  if (!Number.isInteger(n)) throw new Error(`expected an integer, got "${value}"`);
-  return n;
+  return excess > 0 ? ledger.runs.slice(0, excess) : [];
 }
 
 export function registerRuns(program: Command): void {
@@ -107,10 +98,12 @@ export function registerRuns(program: Command): void {
     .action((opts: { keep: number; store?: string; json?: boolean }) => {
       const storeDir = locateStore(opts.store);
       const selection = pruneSelection(readLedger(storeDir), opts.keep);
-      const removed = removeLedgerEntries(storeDir, new Set(selection.map((r) => r.id)));
-      for (const entry of removed) {
+      // Run dirs go first: a ledger entry pointing at a missing dir degrades
+      // gracefully, an orphaned dir would be unreachable forever.
+      for (const entry of selection) {
         rmSync(runDir(storeDir, entry.id), { recursive: true, force: true });
       }
+      const removed = removeLedgerEntries(storeDir, new Set(selection.map((r) => r.id)));
       if (opts.json) {
         process.stdout.write(
           `${JSON.stringify(

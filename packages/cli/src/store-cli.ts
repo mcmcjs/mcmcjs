@@ -1,13 +1,14 @@
 import { resolve } from "node:path";
 import { findStore, STORE_DIR_NAME } from "@mcmcjs/core";
 
-/** Locates the store for porcelain commands: --store wins, else the nearest store above cwd. */
+/** Locates the store for porcelain commands: --store, then MCMC_STORE, then the nearest store above cwd. */
 export function locateStore(override?: string): string {
-  if (override) return resolve(override);
+  const explicit = override ?? process.env.MCMC_STORE;
+  if (explicit) return resolve(explicit);
   const found = findStore(process.cwd());
   if (!found) {
     throw new Error(
-      `no ${STORE_DIR_NAME} store found here or above; run \`mcmc run <model>\` first or pass --store <dir>`,
+      `no ${STORE_DIR_NAME} store found at or above ${process.cwd()}; stores are created beside the model on first \`mcmc run\`, so cd next to the model or pass --store <dir>`,
     );
   }
   return found;

@@ -18,6 +18,7 @@ import {
 } from "@mcmcjs/diagnostics";
 import type { Command } from "commander";
 import pc from "picocolors";
+import { parseFloatOption } from "./options";
 import { locateStore } from "./store-cli";
 
 // Sampler-stat keys that flag a divergent draw, by source format.
@@ -134,12 +135,6 @@ export function formatReportHuman(report: DiagnosticsReport): string {
   return `${out}${verdict} (${criteria})\n`;
 }
 
-function parseNumberOption(value: string): number {
-  const n = Number.parseFloat(value);
-  if (!Number.isFinite(n)) throw new Error(`expected a number, got "${value}"`);
-  return n;
-}
-
 interface DiagnoseCliOptions {
   json?: boolean;
   store?: string;
@@ -152,6 +147,10 @@ interface DiagnoseCliOptions {
 /** Resolves the diagnose target: an on-disk samples file, else a store run ref. */
 export function resolveSamplesPath(target: string | undefined, storeOverride?: string): string {
   if (target !== undefined && existsSync(target)) return target;
+  // Anything path-shaped that does not exist is a typo'd file, not a run ref.
+  if (target !== undefined && (target.includes("/") || target.includes("."))) {
+    throw new Error(`samples file not found: ${target}`);
+  }
   const storeDir = locateStore(storeOverride);
   const entry = resolveRunRef(readLedger(storeDir), target);
   const path = join(runDir(storeDir, entry.id), "samples.json");
@@ -176,17 +175,17 @@ export function registerDiagnose(program: Command): void {
     .option(
       "--rhat-max <value>",
       "maximum acceptable R-hat",
-      parseNumberOption,
+      parseFloatOption,
       DEFAULT_THRESHOLDS.rhatMax,
     )
     .option(
       "--ess-min <value>",
       "minimum acceptable ESS",
-      parseNumberOption,
+      parseFloatOption,
       DEFAULT_THRESHOLDS.essMin,
     )
-    .option("--hdi-prob <value>", "HDI credible mass", parseNumberOption, 0.94)
-    .option("--max-divergences <value>", "maximum acceptable divergent draws", parseNumberOption, 0)
+    .option("--hdi-prob <value>", "HDI credible mass", parseFloatOption, 0.94)
+    .option("--max-divergences <value>", "maximum acceptable divergent draws", parseFloatOption, 0)
     .addHelpText("after", "\nExit codes: 0 = converged, 1 = error, 2 = ran but not converged.")
     .action((target: string | undefined, opts: DiagnoseCliOptions) => {
       const samples = parseSamples(readFileSync(resolveSamplesPath(target, opts.store), "utf8"));

@@ -78,14 +78,18 @@ describe("formatRunsTable", () => {
 });
 
 describe("pruneSelection", () => {
-  it("keeps the most recent runs and drops failed runs first", () => {
-    const ledger = ledgerOf(
-      entry("a", { status: "failed", diagnostics: undefined }),
-      entry("b"),
-      entry("c"),
-      entry("d"),
-    );
+  it("selects everything older than the most recent keep runs", () => {
+    const ledger = ledgerOf(entry("a"), entry("b"), entry("c"), entry("d"));
     expect(pruneSelection(ledger, 2).map((r) => r.id)).toEqual(["a", "b"]);
+  });
+
+  it("never selects the newest runs, even failed ones", () => {
+    const ledger = ledgerOf(
+      entry("a"),
+      entry("b"),
+      entry("c", { status: "failed", error: "boom", diagnostics: undefined }),
+    );
+    expect(pruneSelection(ledger, 2).map((r) => r.id)).toEqual(["a"]);
   });
 
   it("selects nothing when under the limit", () => {

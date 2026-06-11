@@ -1,10 +1,18 @@
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { serializeSpecToml } from "@mcmcjs/core";
+import { type LedgerEntry, serializeSpecToml } from "@mcmcjs/core";
 import { describe, expect, it } from "vitest";
 import type { DiagnosticsReport } from "../src/diagnose";
-import { buildRunConfig, detectBackend, diagnosticsSummary } from "../src/run";
+import {
+  buildRunConfig,
+  canReuse,
+  detectBackend,
+  diagnosticsSummary,
+  frozenSpecFor,
+  type RunInputs,
+  refitReasons,
+} from "../src/run";
 
 const tmp = (): string => mkdtempSync(join(tmpdir(), "mcmcjs-run-"));
 
@@ -206,6 +214,7 @@ describe("buildRunConfig: graph input", () => {
     const second = buildRunConfig(graphPath, { draws: 999 });
     expect(second.spec.sampler.draws).toBe(999);
     expect(second.spec.seed).toBe(5);
+    expect(second.notes.join("\n")).toContain("using settings from");
   });
 
   it("rejects flags that cannot apply to a graph", () => {
@@ -222,6 +231,91 @@ describe("buildRunConfig: graph input", () => {
     const path = join(dir, "broken.json");
     writeFileSync(path, "{not json");
     expect(() => buildRunConfig(path, {})).toThrow(/invalid JSON in .*broken\.json/);
+  });
+});
+
+const SAMPLER = { algorithm: "NUTS", draws: 1000, warmup: 1000, chains: 4, adapt_delta: 0.8 };
+
+function ledgerEntry(overrides: Partial<LedgerEntry> = {}): LedgerEntry {
+  return {
+    id: "20260611-000000-aaaaaa",
+    run_key: "k",
+    spec_hash: "s",
+    status: "ok",
+    model_path: "model.jl",
+    model_sha256: "m1",
+    data_sha256: "d1",
+    seed: 42,
+    backend: { id: "turing", version: "release" },
+    sampler: SAMPLER,
+    started_at: "2026-06-11T00:00:00.000Z",
+    elapsed_ms: 1,
+    ...overrides,
+  };
+}
+
+describe("canReuse", () => {
+  const prior = ledgerEntry({ seed: 42 });
+
+  it("reuses any prior seed when the seed is unpinned", () => {
+    expect(canReuse(prior, 999, false)).toBe(true);
+  });
+
+  it("requires a pinned seed to match", () => {
+    expect(canReuse(prior, 42, true)).toBe(true);
+    expect(canReuse(prior, 43, true)).toBe(false);
+  });
+
+  it("never reuses without a prior run", () => {
+    expect(canReuse(undefined, 42, false)).toBe(false);
+  });
+});
+
+describe("refitReasons", () => {
+  const next: RunInputs = {
+    model_sha256: "m1",
+    data_sha256: "d1",
+    sampler: SAMPLER,
+    channel: "release",
+    seed: 42,
+  };
+
+  it("is empty when nothing changed", () => {
+    expect(refitReasons(ledgerEntry(), next, true)).toEqual([]);
+  });
+
+  it("names each changed input", () => {
+    const prev = ledgerEntry({
+      model_sha256: "m0",
+      data_sha256: "d0",
+      sampler: { ...SAMPLER, draws: 500 },
+      backend: { id: "turing", version: "1.10" },
+      seed: 7,
+    });
+    expect(refitReasons(prev, next, true)).toEqual([
+      "the model changed",
+      "the data changed",
+      "draws 500 -> 1000",
+      "julia 1.10 -> release",
+      "seed 7 -> 42",
+    ]);
+  });
+
+  it("ignores the seed when it is unpinned", () => {
+    expect(refitReasons(ledgerEntry({ seed: 7 }), next, false)).toEqual([]);
+  });
+});
+
+describe("frozenSpecFor", () => {
+  it("pins the channel and points model.path at the snapshot", () => {
+    const dir = tmp();
+    const model = writeModel(dir);
+    const config = buildRunConfig(model, { seed: 1 });
+    const frozen = frozenSpecFor(config.spec, "1.10", "model.jl");
+    expect(frozen.backend.version).toBe("1.10");
+    expect(frozen.model.path).toBe("./model.jl");
+    expect(frozen.seed).toBe(1);
+    expect(config.spec.backend.version).toBe("release");
   });
 });
 

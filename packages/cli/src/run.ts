@@ -1,6 +1,6 @@
 import { createHash, randomInt } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, extname, join, relative, resolve } from "node:path";
+import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import {
   appendLedgerEntry,
   canonicalJson,
@@ -20,6 +20,7 @@ import {
   SpecSchema,
   serializeSpecToml,
   storeDirFor,
+  updateLedgerEntry,
 } from "@mcmcjs/core";
 import { createFitRunner, createRunner, type EngineContext } from "@mcmcjs/engine";
 import { ensureProject, managedProjectReady, resolveVersion, runFit } from "@mcmcjs/julia";
@@ -31,6 +32,7 @@ import { loadDataFile } from "./data-file";
 import { buildDiagnosticsReport, type DiagnosticsReport, formatReportHuman } from "./diagnose";
 import { formatFitResult } from "./fit";
 import { juliaupBin } from "./julia";
+import { parseFloatOption, parseIntOption } from "./options";
 import { timeAgo } from "./store-cli";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
@@ -80,18 +82,6 @@ export interface RunCliOptions {
   store?: string;
   juliaVersion?: string;
   json?: boolean;
-}
-
-function parseIntOption(value: string): number {
-  const n = Number.parseInt(value, 10);
-  if (!Number.isInteger(n)) throw new Error(`expected an integer, got "${value}"`);
-  return n;
-}
-
-function parseFloatOption(value: string): number {
-  const n = Number.parseFloat(value);
-  if (!Number.isFinite(n)) throw new Error(`expected a number, got "${value}"`);
-  return n;
 }
 
 function validated(spec: Record<string, unknown>): Spec {
@@ -159,6 +149,8 @@ export function buildRunConfig(inputPath: string, opts: RunCliOptions): RunConfi
       });
       notes.push(`converted ${basename(inputPath)} -> ${result.modelPath}`);
       notes.push(`wrote ${result.specPath}`);
+    } else {
+      notes.push(`using settings from ${specPath}; flags override`);
     }
     const config = fromSpecFile(specPath, opts);
     return { ...config, notes: [...notes, ...config.notes] };
@@ -259,6 +251,53 @@ export function diagnosticsSummary(report: DiagnosticsReport): LedgerDiagnostics
   };
 }
 
+/** The spec frozen into the run dir: effective channel, model path pointing at the snapshot. */
+export function frozenSpecFor(spec: Spec, channel: string, modelFileName: string): Spec {
+  return {
+    ...spec,
+    backend: { ...spec.backend, version: channel },
+    model: { ...spec.model, path: `./${modelFileName}` },
+  };
+}
+
+/**
+ * Whether a prior same-key run can be reused. A seed is "pinned" when it was
+ * given explicitly (--seed or any spec file); a pinned seed must match.
+ */
+export function canReuse(
+  prior: LedgerEntry | undefined,
+  seed: number,
+  seedPinned: boolean,
+): boolean {
+  if (!prior) return false;
+  return !seedPinned || prior.seed === seed;
+}
+
+export interface RunInputs {
+  model_sha256: string;
+  data_sha256: string;
+  sampler: LedgerEntry["sampler"];
+  channel: string;
+  seed: number;
+}
+
+/** What changed versus a previous run of the same model, for the refit message. */
+export function refitReasons(prev: LedgerEntry, next: RunInputs, seedPinned: boolean): string[] {
+  const reasons: string[] = [];
+  if (prev.model_sha256 !== next.model_sha256) reasons.push("the model changed");
+  if (prev.data_sha256 !== next.data_sha256) reasons.push("the data changed");
+  for (const field of ["draws", "warmup", "chains", "adapt_delta"] as const) {
+    if (prev.sampler[field] !== next.sampler[field]) {
+      reasons.push(`${field} ${prev.sampler[field]} -> ${next.sampler[field]}`);
+    }
+  }
+  if (prev.backend.version !== next.channel) {
+    reasons.push(`julia ${prev.backend.version} -> ${next.channel}`);
+  }
+  if (seedPinned && prev.seed !== next.seed) reasons.push(`seed ${prev.seed} -> ${next.seed}`);
+  return reasons;
+}
+
 function fitBanner(config: RunConfig, juliaLabel: string): string {
   const s = config.spec.sampler;
   const backend = BACKEND_NAMES[config.spec.backend.id] ?? config.spec.backend.id;
@@ -303,33 +342,47 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       const config = buildRunConfig(inputPath, opts);
       for (const note of config.notes) say(note);
 
-      const storeDir = storeDirFor(config.modelPath, opts.store);
+      const storeDir = storeDirFor(config.modelPath, opts.store ?? process.env.MCMC_STORE);
       ensureStore(storeDir);
 
       const modelSource = readFileSync(config.modelPath, "utf8");
-      const modelSha = sha256(modelSource);
-      const dataSha = sha256(canonicalJson(config.spec.data));
+      const inputs: RunInputs = {
+        model_sha256: sha256(modelSource),
+        data_sha256: sha256(canonicalJson(config.spec.data)),
+        sampler: config.spec.sampler,
+        channel: config.channel,
+        seed: config.spec.seed,
+      };
       const runKey = computeRunKey({
         backend: { id: config.spec.backend.id, version: config.channel },
-        model_sha256: modelSha,
+        model_sha256: inputs.model_sha256,
         entry: config.spec.model.entry,
         sampler: config.spec.sampler,
-        data_sha256: dataSha,
+        data_sha256: inputs.data_sha256,
       });
+      const seedPinned = opts.seed !== undefined || config.specSource !== "defaults";
+      const modelRel = relative(dirname(storeDir), config.modelPath).split(sep).join("/");
 
       const finish = (
         report: DiagnosticsReport,
         runId: string,
         cached: boolean,
-        fit?: unknown,
+        fit: unknown,
+        spec: Spec,
       ): void => {
         const dir = runDir(storeDir, runId);
         if (opts.out) {
-          copyFileSync(join(dir, "samples.json"), resolve(opts.out));
-          say(`exported samples to ${opts.out}`);
+          try {
+            copyFileSync(join(dir, "samples.json"), resolve(opts.out));
+            say(`exported samples to ${opts.out}`);
+          } catch (error) {
+            process.stderr.write(
+              `warning: could not export samples to ${opts.out}: ${(error as Error).message}\n`,
+            );
+          }
         }
         if (opts.json) {
-          const payload = { run: { id: runId, dir, cached }, spec: config.spec, fit, report };
+          const payload = { run: { id: runId, dir, cached }, spec, fit: fit ?? null, report };
           process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
         } else {
           process.stdout.write(formatReportHuman(report));
@@ -337,9 +390,10 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         process.exitCode = report.converged ? 0 : 2;
       };
 
+      const ledger = readLedger(storeDir);
       if (!opts.refit) {
-        const prior = latestOkEntry(readLedger(storeDir), runKey);
-        if (prior && (opts.seed === undefined || prior.seed === opts.seed)) {
+        const prior = latestOkEntry(ledger, runKey);
+        if (canReuse(prior, config.spec.seed, seedPinned) && prior) {
           const samplesPath = join(runDir(storeDir, prior.id), "samples.json");
           if (existsSync(samplesPath)) {
             say(
@@ -350,10 +404,20 @@ export function registerRun(program: Command, ctx: EngineContext): void {
               buildDiagnosticsReport(parseSamples(readFileSync(samplesPath, "utf8"))),
               prior.id,
               true,
+              null,
+              { ...config.spec, seed: prior.seed },
             );
             return;
           }
         }
+      }
+
+      const previous = [...ledger.runs]
+        .reverse()
+        .find((e) => e.status === "ok" && e.model_path === modelRel);
+      if (previous) {
+        const reasons = refitReasons(previous, inputs, seedPinned);
+        if (reasons.length > 0) say(`refitting: ${reasons.join(", ")} since run ${previous.id}`);
       }
 
       const bin = await juliaupBin(ctx);
@@ -366,15 +430,24 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       say(fitBanner(config, resolved.version ?? `channel "${config.channel}"`));
 
       const startedAt = new Date();
-      const runId = makeRunId(startedAt, runKey);
+      let runId = makeRunId(startedAt, runKey);
+      for (let n = 2; existsSync(runDir(storeDir, runId)); n += 1) {
+        runId = `${makeRunId(startedAt, runKey)}-${n}`;
+      }
       const dir = runDir(storeDir, runId);
       mkdirSync(dir, { recursive: true });
 
+      // Snapshot the inputs before fitting so even a failed run is debuggable.
+      const frozen = frozenSpecFor(config.spec, config.channel, basename(config.modelPath));
+      const specHash = hashSpec(frozen);
+      writeFileSync(join(dir, basename(config.modelPath)), modelSource);
+      writeFileSync(join(dir, "spec.toml"), serializeSpecToml(frozen));
+
       const resolvedSpec: ResolvedSpec = {
-        ...config.spec,
+        ...frozen,
         specPath: join(dir, "spec.toml"),
         modelPath: config.modelPath,
-        specHash: hashSpec(config.spec),
+        specHash,
       };
       const fit = await runFit(resolvedSpec, resolved, {
         spawn: createFitRunner(),
@@ -386,11 +459,11 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       const entry: LedgerEntry = {
         id: runId,
         run_key: runKey,
-        spec_hash: resolvedSpec.specHash,
+        spec_hash: specHash,
         status: fit.status === "ok" ? "ok" : "failed",
-        model_path: relative(dirname(storeDir), config.modelPath),
-        model_sha256: modelSha,
-        data_sha256: dataSha,
+        model_path: modelRel,
+        model_sha256: inputs.model_sha256,
+        data_sha256: inputs.data_sha256,
         seed: config.spec.seed,
         backend: { id: config.spec.backend.id, version: config.channel },
         sampler: config.spec.sampler,
@@ -410,22 +483,16 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         return;
       }
 
-      writeFileSync(join(dir, basename(config.modelPath)), modelSource);
-      const frozen = {
-        ...config.spec,
-        backend: { ...config.spec.backend, version: config.channel },
-        model: { ...config.spec.model, path: `./${basename(config.modelPath)}` },
-      };
-      writeFileSync(join(dir, "spec.toml"), serializeSpecToml(frozen));
-
+      // Record the run before diagnostics so a late failure cannot orphan it.
+      appendLedgerEntry(storeDir, entry);
       const samples = parseSamples(readFileSync(join(dir, "samples.json"), "utf8"));
       const report = buildDiagnosticsReport(samples);
-      appendLedgerEntry(storeDir, { ...entry, diagnostics: diagnosticsSummary(report) });
+      updateLedgerEntry(storeDir, { ...entry, diagnostics: diagnosticsSummary(report) });
 
       say(
         `${pc.green("ok:")} run ${runId} (${(fit.elapsedMs / 1000).toFixed(1)} s, Julia ${fit.runtimeActual ?? config.channel}) saved to ${displayPath(storeDir)}`,
       );
       say("");
-      finish(report, runId, false, fit);
+      finish(report, runId, false, fit, frozen);
     });
 }

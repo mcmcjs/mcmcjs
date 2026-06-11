@@ -1,6 +1,13 @@
-import { copyFileSync, existsSync } from "node:fs";
-import { basename, extname, join, resolve } from "node:path";
-import { type LedgerEntry, readLedger, resolveRunRef, runDir } from "@mcmcjs/core";
+import { copyFileSync, existsSync, writeFileSync } from "node:fs";
+import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
+import {
+  type LedgerEntry,
+  parseSpec,
+  readLedger,
+  resolveRunRef,
+  runDir,
+  serializeSpecToml,
+} from "@mcmcjs/core";
 import type { Command } from "commander";
 import { locateStore } from "./store-cli";
 
@@ -17,6 +24,26 @@ export function defaultExportName(kind: ExportKind, entry: LedgerEntry): string 
   const model = basename(entry.model_path);
   const stem = basename(model, extname(model));
   return `${stem}${KINDS[kind].suffix}`;
+}
+
+/** A ./-style relative path with "/" separators, for spec model.path fields. */
+export function specRelativePath(fromDir: string, toFile: string): string {
+  const rel = relative(fromDir, toFile).split(sep).join("/");
+  return rel.startsWith(".") ? rel : `./${rel}`;
+}
+
+/** Rewrites the frozen spec so model.path points at the live model from `destDir`. */
+function exportedSpecToml(source: string, destDir: string, liveModelPath: string): string {
+  const {
+    specPath: _specPath,
+    modelPath: _modelPath,
+    specHash: _specHash,
+    ...spec
+  } = parseSpec(source);
+  return serializeSpecToml({
+    ...spec,
+    model: { ...spec.model, path: specRelativePath(destDir, liveModelPath) },
+  });
 }
 
 export function registerExport(program: Command): void {
@@ -50,7 +77,12 @@ export function registerExport(program: Command): void {
         if (existsSync(dest) && !opts.force) {
           throw new Error(`${dest} already exists; pass --force to overwrite`);
         }
-        copyFileSync(source, dest);
+        if (kind === "spec") {
+          const liveModel = resolve(dirname(storeDir), entry.model_path);
+          writeFileSync(dest, exportedSpecToml(source, dirname(dest), liveModel));
+        } else {
+          copyFileSync(source, dest);
+        }
         if (opts.json) {
           process.stdout.write(`${JSON.stringify({ run: entry.id, [kind]: dest }, null, 2)}\n`);
           return;
