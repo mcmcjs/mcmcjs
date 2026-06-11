@@ -1,5 +1,23 @@
 # mcmcjs
 
+## 0.6.0
+
+### Minor Changes
+
+- 2a6e611: Show live per-chain sampling progress during run and fit, add --daemon (persistent Julia worker, 10x faster warm refits) with a daemon status/stop command group, and add mcmc sandbox: a throwaway shell seeded with a working example that is deleted on exit unless you choose to keep it.
+- 65484ab: Rework run around the hidden .mcmc run store: no more scaffolded model.toml or sibling samples files, settings flags always win over an optional spec, unchanged model+data+settings reuse the previous run (--refit to force), and new runs, show, and export commands plus diagnose defaulting to the latest run make the store the way to track models.
+- bbbc3bd: Notify about newer releases: a daily background check against the npm registry caches the latest version, and interactive commands end with a dim note when an update is available (stderr only, skipped without a TTY, in CI, and with MCMC_NO_UPDATE_CHECK=1).
+
+### Patch Changes
+
+- Updated dependencies [65484ab]
+- Updated dependencies [65484ab]
+- Updated dependencies [2a6e611]
+- Updated dependencies [2a6e611]
+  - @mcmcjs/core@0.3.0
+  - @mcmcjs/julia@0.5.0
+  - @mcmcjs/engine@0.2.0
+
 ## 0.5.1
 
 ### Patch Changes
