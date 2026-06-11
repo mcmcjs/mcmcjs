@@ -33,6 +33,7 @@ import { buildDiagnosticsReport, type DiagnosticsReport, formatReportHuman } fro
 import { formatFitResult } from "./fit";
 import { juliaupBin } from "./julia";
 import { parseFloatOption, parseIntOption } from "./options";
+import { createProgressRenderer, silentProgress } from "./progress";
 import { timeAgo } from "./store-cli";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
@@ -449,12 +450,20 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         modelPath: config.modelPath,
         specHash,
       };
+      const progress = opts.json
+        ? silentProgress
+        : createProgressRenderer({
+            tty: process.stderr.isTTY === true,
+            write: (text) => process.stderr.write(text),
+          });
       const fit = await runFit(resolvedSpec, resolved, {
         spawn: createFitRunner(),
         projectDir,
         outPath: join(dir, "samples.json"),
         recordPath: join(dir, "run.json"),
+        onProgress: progress.onProgress,
       });
+      progress.finish();
 
       const entry: LedgerEntry = {
         id: runId,

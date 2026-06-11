@@ -13,6 +13,7 @@ import {
 import type { Command } from "commander";
 import pc from "picocolors";
 import { juliaupBin } from "./julia";
+import { createProgressRenderer, silentProgress } from "./progress";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
 
@@ -128,11 +129,19 @@ export function registerFit(program: Command, ctx: EngineContext): void {
         const projectDir = await ensureProject(resolved.command, installer);
 
         if (!opts.json) process.stdout.write(`Fitting ${spec.backend.id} on Julia ${channel}...\n`);
+        const progress = opts.json
+          ? silentProgress
+          : createProgressRenderer({
+              tty: process.stderr.isTTY === true,
+              write: (text) => process.stderr.write(text),
+            });
         const result = await runFit(spec, resolved, {
           spawn: createFitRunner(),
           projectDir,
           outPath,
+          onProgress: progress.onProgress,
         });
+        progress.finish();
 
         process.stdout.write(
           opts.json

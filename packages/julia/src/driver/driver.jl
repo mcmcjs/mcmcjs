@@ -5,6 +5,7 @@
 # the only place that touches the backend chain types, so a chain-type change is
 # contained here.
 using JSON
+using Logging
 using Random
 using StableRNGs
 using Turing
@@ -19,6 +20,67 @@ import AdvancedHMC
 import ForwardDiff
 import FlexiChains
 import DimensionalData
+
+# AbstractMCMC reports sampling progress through ProgressLogging (reachable via
+# Turing's dependency, no extra package in the managed env).
+const ProgressLogging = Turing.AbstractMCMC.ProgressLogging
+
+# Translates ProgressLogging records into one JSON line per update on stderr
+# ({"mcmcjs":"progress",...}). The TypeScript runner filters these out of the
+# failure protocol's stderr buffer. Info-and-above records pass through to a
+# plain console logger; Debug records (AdvancedHMC step-size search) are dropped.
+struct JSONProgressLogger <: Logging.AbstractLogger
+    fallback::Logging.AbstractLogger
+    last::Dict{Int,Float64}
+end
+JSONProgressLogger() =
+    JSONProgressLogger(Logging.ConsoleLogger(stderr, Logging.Info), Dict{Int,Float64}())
+
+Logging.min_enabled_level(::JSONProgressLogger) = Logging.BelowMinLevel
+Logging.shouldlog(::JSONProgressLogger, args...) = true
+Logging.catch_exceptions(::JSONProgressLogger) = true
+
+function emit_progress(logger::JSONProgressLogger, name, fraction, done)
+    m = match(r"Chain (\d+) of (\d+)", String(name))
+    chain = m === nothing ? 1 : parse(Int, m.captures[1])
+    of = m === nothing ? 1 : parse(Int, m.captures[2])
+    f = done ? 1.0 : fraction === nothing ? 0.0 : Float64(fraction)
+    # AbstractMCMC already steps by 1%; the dedupe guards chattier emitters.
+    if done || f - get(logger.last, chain, -1.0) >= 0.01
+        logger.last[chain] = f
+        println(
+            stderr,
+            JSON.json(
+                Dict(
+                    "mcmcjs" => "progress",
+                    "chain" => chain,
+                    "of" => of,
+                    "fraction" => round(f; digits = 4),
+                    "done" => done,
+                ),
+            ),
+        )
+        flush(stderr)
+    end
+end
+
+function Logging.handle_message(
+    logger::JSONProgressLogger, level, message, _module, group, id, file, line; kwargs...
+)
+    progress = message isa ProgressLogging.ProgressString ? message.progress :
+        message isa ProgressLogging.Progress ? message : nothing
+    if progress !== nothing
+        emit_progress(logger, progress.name, progress.fraction, progress.done)
+        return
+    end
+    if haskey(kwargs, :progress) && (kwargs[:progress] isa Real || kwargs[:progress] == "done")
+        value = kwargs[:progress]
+        emit_progress(logger, string(message), value == "done" ? nothing : value, value == "done")
+        return
+    end
+    level >= Logging.Info || return
+    Logging.handle_message(logger.fallback, level, message, _module, group, id, file, line; kwargs...)
+end
 
 function build_sampler(sampler, backend)
     algorithm = get(sampler, "algorithm", "NUTS")
@@ -81,7 +143,9 @@ end
 # Returns Turing's default chain type, a FlexiChain.
 function build_and_sample(entry, data, sampler, draws, chains, rng)
     model = entry(data)
-    return sample(rng, model, sampler, MCMCSerial(), draws, chains; progress = false)
+    return Logging.with_logger(JSONProgressLogger()) do
+        sample(rng, model, sampler, MCMCSerial(), draws, chains; progress = true)
+    end
 end
 
 # FlexiChains-native wire writer. DimArray(chn) splits array-valued parameters
@@ -123,10 +187,12 @@ end
 # separate latest-world frames; merging them reintroduces a world-age error. The
 # result is already an MCMCChains.Chains, so it is not re-wrapped.
 function sample_bugs(model, sampler, warmup, draws, chains, rng)
-    return JuliaBUGS.AbstractMCMC.sample(
-        rng, model, sampler, JuliaBUGS.AbstractMCMC.MCMCSerial(), draws, chains;
-        chain_type = MCMCChains.Chains, n_adapts = warmup, discard_initial = warmup, progress = false,
-    )
+    return Logging.with_logger(JSONProgressLogger()) do
+        JuliaBUGS.AbstractMCMC.sample(
+            rng, model, sampler, JuliaBUGS.AbstractMCMC.MCMCSerial(), draws, chains;
+            chain_type = MCMCChains.Chains, n_adapts = warmup, discard_initial = warmup, progress = true,
+        )
+    end
 end
 
 # Build the exact wire object parseMCMCChainsJson consumes: value_flat is indexed

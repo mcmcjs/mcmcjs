@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -8,7 +8,7 @@ import {
   RUN_RECORD_SCHEMA_VERSION,
   type RunRecord,
 } from "@mcmcjs/core";
-import type { FitResult, FitRunner } from "@mcmcjs/engine";
+import type { FitProgress, FitResult, FitRunner } from "@mcmcjs/engine";
 import { driverPath, lastJsonLine, sha256, toStage } from "./runner-common";
 
 export interface FitIo {
@@ -20,7 +20,16 @@ export interface FitIo {
   outPath: string;
   /** Where the run record is written; defaults to `<outPath>.run.json`. */
   recordPath?: string;
+  /** Streamed per-chain sampling progress. */
+  onProgress?: (progress: FitProgress) => void;
   tmpDir?: string;
+}
+
+/** A fresh request dir under the shared tmpdir()/mcmcjs parent. */
+function makeRequestDir(): string {
+  const parent = join(tmpdir(), "mcmcjs");
+  mkdirSync(parent, { recursive: true });
+  return mkdtempSync(join(parent, "fit-"));
 }
 
 /** Runs one inference for a resolved spec on a resolved runtime invocation. */
@@ -33,7 +42,8 @@ export async function runFit(
   const start = performance.now();
   const runtimeRequested = spec.backend.version;
 
-  const tmp = io.tmpDir ?? mkdtempSync(join(tmpdir(), "mcmcjs-fit-"));
+  const ownTmp = io.tmpDir === undefined;
+  const tmp = io.tmpDir ?? makeRequestDir();
   const requestPath = join(tmp, "request.json");
   writeFileSync(
     requestPath,
@@ -55,7 +65,16 @@ export async function runFit(
     driverPath(),
     requestPath,
   ];
-  const { stdout, stderr, code } = await io.spawn(resolved.command, args);
+  let stdout: string;
+  let stderr: string;
+  let code: number;
+  try {
+    ({ stdout, stderr, code } = await io.spawn(resolved.command, args, {
+      onProgress: io.onProgress,
+    }));
+  } finally {
+    if (ownTmp) rmSync(tmp, { recursive: true, force: true });
+  }
   const elapsedMs = Math.round(performance.now() - start);
 
   if (code !== 0 || !existsSync(io.outPath)) {

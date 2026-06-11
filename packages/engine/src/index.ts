@@ -9,5 +9,5 @@ export type {
 export type { FitResult } from "./fit";
 export type { EngineRegistry } from "./registry";
 export { createRegistry } from "./registry";
-export type { CommandRunner, FitRunner, ToolInfo } from "./runner";
-export { createFitRunner, createRunner } from "./runner";
+export type { CommandRunner, FitProgress, FitRunner, ToolInfo } from "./runner";
+export { createFitRunner, createRunner, parseProgressLine } from "./runner";

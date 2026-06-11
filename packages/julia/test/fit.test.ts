@@ -40,8 +40,11 @@ describe("runFit", () => {
   it("writes a samples file and run record, and reports ok", async () => {
     const outPath = out();
     let argv: string[] = [];
+    let request: Record<string, unknown> = {};
+    // The request file only exists while the driver runs; read it like the driver would.
     const spawn: FitRunner = async (_command, args) => {
       argv = args;
+      request = JSON.parse(readFileSync(args.at(-1) as string, "utf8"));
       writeFileSync(outPath, SAMPLES);
       return { stdout: PROVENANCE, stderr: "", code: 0 };
     };
@@ -56,8 +59,8 @@ describe("runFit", () => {
     expect(argv).toContain("--project=/proj");
     expect(argv.some((a) => a.endsWith("driver.jl"))).toBe(true);
     expect(argv.at(-1)?.endsWith("request.json")).toBe(true);
+    expect(existsSync(argv.at(-1) as string)).toBe(false);
 
-    const request = JSON.parse(readFileSync(argv.at(-1) as string, "utf8"));
     expect(request.backend).toEqual({ id: "turing" });
     expect(request.model).toEqual({ file: "/x/m.jl", entry: "build_model" });
     expect(request.seed).toBe(42);
