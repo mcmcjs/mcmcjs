@@ -13,6 +13,7 @@ import { registerJulia } from "./julia";
 import { registerPredict } from "./predict";
 import { registerRun } from "./run";
 import { registerRuns } from "./runs";
+import { registerSandbox } from "./sandbox";
 import { registerSetup } from "./setup";
 import { registerShow } from "./show";
 
@@ -50,6 +51,7 @@ registerDiagnose(program);
 registerEngines(program, registry, ctx);
 registerJulia(program, ctx);
 registerDaemon(program);
+registerSandbox(program);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

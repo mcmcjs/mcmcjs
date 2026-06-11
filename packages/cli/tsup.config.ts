@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { cpSync, readFileSync } from "node:fs";
 import { defineConfig } from "tsup";
 
 const { version } = JSON.parse(
@@ -11,4 +11,8 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   define: { __MCMC_VERSION__: JSON.stringify(version) },
+  // The sandbox example files ship inside dist/ (the files allowlist).
+  onSuccess: async () => {
+    cpSync("templates", "dist/templates", { recursive: true });
+  },
 });

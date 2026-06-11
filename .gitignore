@@ -25,3 +25,6 @@ npm-debug.log*
 # editor / os
 .DS_Store
 .idea/
+
+# dev sandbox symlink (pnpm sandbox)
+mcmcjs-sandbox
