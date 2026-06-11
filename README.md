@@ -29,14 +29,17 @@ This installs the `mcmc` binary. The libraries are published under the
 ## Usage
 
 ```bash
+mcmc sandbox                          # try mcmcjs in a throwaway shell with a working example
 mcmc setup                            # provision the Julia toolchain via juliaup
 mcmc doctor                           # check the environment
-mcmc run model.jl --data data.csv     # fit + diagnose; artifacts go to the hidden .mcmc/ store
+mcmc run model.jl --data data.csv     # fit + diagnose, with live progress; artifacts go to .mcmc/
+mcmc run model.jl --daemon            # fit through a persistent Julia worker (fast warm refits)
 mcmc runs                             # list recorded runs and their verdicts
 mcmc show                             # one run's settings, provenance, and artifacts
 mcmc export samples                   # materialize a run's samples file when you need one
 mcmc diagnose                         # re-check the latest run (or a file, or a run ref)
 mcmc fit model.toml -o out.json       # plumbing: spec in, samples file out
+mcmc daemon status                    # manage the persistent workers
 mcmc julia version list               # manage installed Julia versions
 ```
 
