@@ -14,6 +14,8 @@ export default defineConfig({
   // dist/ (the files allowlist) carries it and runFit can resolve it at runtime.
   onSuccess: async () => {
     mkdirSync("dist", { recursive: true });
-    copyFileSync("src/driver/driver.jl", "dist/driver.jl");
+    for (const file of ["driver.jl", "worker.jl", "fitlib.jl"]) {
+      copyFileSync(`src/driver/${file}`, `dist/${file}`);
+    }
   },
 });

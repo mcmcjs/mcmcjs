@@ -9,6 +9,6 @@ export interface FitResult {
   runtimeActual?: string;
   elapsedMs: number;
   /** Where a failed run failed, when the runtime reports it. */
-  stage?: "compile" | "sample" | "load_samples" | "predict" | "write" | "spawn";
+  stage?: "compile" | "sample" | "load_samples" | "predict" | "write" | "spawn" | "worker";
   error?: string;
 }

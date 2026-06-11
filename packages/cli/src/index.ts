@@ -3,6 +3,7 @@ import { createRegistry, createRunner, type EngineContext } from "@mcmcjs/engine
 import { juliaEngine } from "@mcmcjs/julia";
 import { Command } from "commander";
 import { registerConvert } from "./convert";
+import { registerDaemon } from "./daemon";
 import { registerDiagnose } from "./diagnose";
 import { registerDoctor } from "./doctor";
 import { registerEngines } from "./engines";
@@ -48,6 +49,7 @@ registerExport(program);
 registerDiagnose(program);
 registerEngines(program, registry, ctx);
 registerJulia(program, ctx);
+registerDaemon(program);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

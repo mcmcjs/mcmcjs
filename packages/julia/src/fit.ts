@@ -32,6 +32,81 @@ function makeRequestDir(): string {
   return mkdtempSync(join(parent, "fit-"));
 }
 
+/** The driver/worker request object for one fit. */
+export function fitRequest(spec: ResolvedSpec, outPath: string): Record<string, unknown> {
+  return {
+    schema_version: spec.schema_version,
+    backend: { id: spec.backend.id },
+    model: { file: spec.modelPath, entry: spec.model.entry },
+    data: spec.data,
+    sampler: spec.sampler,
+    seed: spec.seed,
+    out: outPath,
+  };
+}
+
+/**
+ * Validates the written samples and records provenance; the success tail
+ * shared by the one-shot driver and the worker paths.
+ */
+export function finalizeOkFit(
+  spec: ResolvedSpec,
+  resolved: { command: string },
+  io: Pick<FitIo, "outPath" | "recordPath">,
+  provenance: Record<string, unknown> | undefined,
+  startedAt: string,
+  elapsedMs: number,
+): FitResult {
+  const runtimeRequested = spec.backend.version;
+  if (!existsSync(io.outPath)) {
+    return {
+      status: "error",
+      runtimeRequested,
+      elapsedMs,
+      stage: "write",
+      error: "the runtime reported success but wrote no samples file",
+    };
+  }
+  try {
+    parseSamples(readFileSync(io.outPath, "utf8"));
+  } catch (error) {
+    return {
+      status: "error",
+      runtimeRequested,
+      elapsedMs,
+      stage: "write",
+      error: `samples file did not parse: ${(error as Error).message}`,
+    };
+  }
+
+  const julia = provenance?.julia_version as string | undefined;
+  const record: RunRecord = {
+    schema_version: RUN_RECORD_SCHEMA_VERSION,
+    spec_hash: spec.specHash,
+    seed: spec.seed,
+    backend: { id: spec.backend.id, runtime: spec.backend.runtime },
+    runtime: { requested: runtimeRequested, actual: julia, path: resolved.command },
+    manifest_sha256: provenance?.manifest_sha256 as string | undefined,
+    packages: provenance?.packages as Record<string, string> | undefined,
+    model_sha256: existsSync(spec.modelPath)
+      ? sha256(readFileSync(spec.modelPath, "utf8"))
+      : undefined,
+    data_sha256: sha256(canonicalJson(spec.data)),
+    samples_file: io.outPath,
+    started_at: startedAt,
+    elapsed_ms: elapsedMs,
+  };
+  writeFileSync(io.recordPath ?? `${io.outPath}.run.json`, `${JSON.stringify(record, null, 2)}\n`);
+
+  return {
+    status: "ok",
+    samplesFile: io.outPath,
+    runtimeRequested,
+    runtimeActual: julia,
+    elapsedMs,
+  };
+}
+
 /** Runs one inference for a resolved spec on a resolved runtime invocation. */
 export async function runFit(
   spec: ResolvedSpec,
@@ -45,18 +120,7 @@ export async function runFit(
   const ownTmp = io.tmpDir === undefined;
   const tmp = io.tmpDir ?? makeRequestDir();
   const requestPath = join(tmp, "request.json");
-  writeFileSync(
-    requestPath,
-    JSON.stringify({
-      schema_version: spec.schema_version,
-      backend: { id: spec.backend.id },
-      model: { file: spec.modelPath, entry: spec.model.entry },
-      data: spec.data,
-      sampler: spec.sampler,
-      seed: spec.seed,
-      out: io.outPath,
-    }),
-  );
+  writeFileSync(requestPath, JSON.stringify(fitRequest(spec, io.outPath)));
 
   const args = [
     ...resolved.args,
@@ -87,43 +151,5 @@ export async function runFit(
     return { status: "error", runtimeRequested, elapsedMs, stage, error };
   }
 
-  try {
-    parseSamples(readFileSync(io.outPath, "utf8"));
-  } catch (error) {
-    return {
-      status: "error",
-      runtimeRequested,
-      elapsedMs,
-      stage: "write",
-      error: `samples file did not parse: ${(error as Error).message}`,
-    };
-  }
-
-  const provenance = lastJsonLine(stdout);
-  const julia = provenance?.julia_version as string | undefined;
-  const record: RunRecord = {
-    schema_version: RUN_RECORD_SCHEMA_VERSION,
-    spec_hash: spec.specHash,
-    seed: spec.seed,
-    backend: { id: spec.backend.id, runtime: spec.backend.runtime },
-    runtime: { requested: runtimeRequested, actual: julia, path: resolved.command },
-    manifest_sha256: provenance?.manifest_sha256 as string | undefined,
-    packages: provenance?.packages as Record<string, string> | undefined,
-    model_sha256: existsSync(spec.modelPath)
-      ? sha256(readFileSync(spec.modelPath, "utf8"))
-      : undefined,
-    data_sha256: sha256(canonicalJson(spec.data)),
-    samples_file: io.outPath,
-    started_at: startedAt,
-    elapsed_ms: elapsedMs,
-  };
-  writeFileSync(io.recordPath ?? `${io.outPath}.run.json`, `${JSON.stringify(record, null, 2)}\n`);
-
-  return {
-    status: "ok",
-    samplesFile: io.outPath,
-    runtimeRequested,
-    runtimeActual: julia,
-    elapsedMs,
-  };
+  return finalizeOkFit(spec, resolved, io, lastJsonLine(stdout), startedAt, elapsedMs);
 }

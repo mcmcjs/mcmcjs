@@ -8,6 +8,11 @@ export function driverPath(): string {
   return join(dirname(fileURLToPath(import.meta.url)), "driver.jl");
 }
 
+/** Path to the shipped persistent worker, resolved next to this module in dist/. */
+export function workerPath(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), "worker.jl");
+}
+
 export function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
@@ -33,6 +38,7 @@ const STAGES = new Set<NonNullable<FitResult["stage"]>>([
   "predict",
   "write",
   "spawn",
+  "worker",
 ]);
 
 /** Narrows a driver-reported stage string to the known set. */

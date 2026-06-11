@@ -7,7 +7,7 @@ import {
   type MatrixResult,
   managedProjectReady,
   resolveVersion,
-  runFit,
+  runFitAuto,
   runMatrix,
 } from "@mcmcjs/julia";
 import type { Command } from "commander";
@@ -51,6 +51,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
     .argument("<spec>", "inference spec file (TOML or JSON)")
     .description("Run MCMC inference for a spec and write a samples file")
     .option("-o, --out <path>", "samples output file, or directory when --versions is used")
+    .option("--daemon", "fit through a persistent Julia worker (or set MCMC_DAEMON=1)")
     .option("--julia-version <channel>", "Julia version/channel to run (overrides the spec)")
     .option("--versions <list>", "run the spec across these Julia versions (comma-separated)")
     .option("--keep-going", "with --versions, continue after a version fails")
@@ -60,6 +61,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
         specPath: string,
         opts: {
           out?: string;
+          daemon?: boolean;
           juliaVersion?: string;
           versions?: string;
           keepGoing?: boolean;
@@ -135,11 +137,15 @@ export function registerFit(program: Command, ctx: EngineContext): void {
               tty: process.stderr.isTTY === true,
               write: (text) => process.stderr.write(text),
             });
-        const result = await runFit(spec, resolved, {
+        const result = await runFitAuto(spec, resolved, {
           spawn: createFitRunner(),
           projectDir,
           outPath,
           onProgress: progress.onProgress,
+          daemon: opts.daemon ?? process.env.MCMC_DAEMON === "1",
+          notify: (line) => {
+            if (!opts.json) process.stdout.write(`${line}\n`);
+          },
         });
         progress.finish();
 

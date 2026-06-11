@@ -29,3 +29,5 @@ export {
   setDefaultVersion,
   updateVersion,
 } from "./versions";
+export type { WorkerStatus } from "./worker";
+export { listWorkers, runFitAuto, stopWorker, workerSocketPath, workersDir } from "./worker";

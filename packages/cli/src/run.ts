@@ -23,7 +23,7 @@ import {
   updateLedgerEntry,
 } from "@mcmcjs/core";
 import { createFitRunner, createRunner, type EngineContext } from "@mcmcjs/engine";
-import { ensureProject, managedProjectReady, resolveVersion, runFit } from "@mcmcjs/julia";
+import { ensureProject, managedProjectReady, resolveVersion, runFitAuto } from "@mcmcjs/julia";
 import type { Command } from "commander";
 import pc from "picocolors";
 import { ZodError } from "zod";
@@ -81,6 +81,7 @@ export interface RunCliOptions {
   entry?: string;
   refit?: boolean;
   store?: string;
+  daemon?: boolean;
   juliaVersion?: string;
   json?: boolean;
 }
@@ -325,6 +326,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .option("--backend <id>", "backend (default: detected from the model)")
     .option("--entry <name>", "model entry function (default build_model)")
     .option("--refit", "fit even when nothing changed since the last run")
+    .option("--daemon", "fit through a persistent Julia worker (or set MCMC_DAEMON=1)")
     .option("--store <dir>", "run store directory (default: nearest .mcmc, or beside the model)")
     .option("--julia-version <channel>", "Julia version/channel to run (overrides the spec)")
     .option("--json", "print results as JSON")
@@ -456,12 +458,14 @@ export function registerRun(program: Command, ctx: EngineContext): void {
             tty: process.stderr.isTTY === true,
             write: (text) => process.stderr.write(text),
           });
-      const fit = await runFit(resolvedSpec, resolved, {
+      const fit = await runFitAuto(resolvedSpec, resolved, {
         spawn: createFitRunner(),
         projectDir,
         outPath: join(dir, "samples.json"),
         recordPath: join(dir, "run.json"),
         onProgress: progress.onProgress,
+        daemon: opts.daemon ?? process.env.MCMC_DAEMON === "1",
+        notify: (line) => say(line),
       });
       progress.finish();
 
