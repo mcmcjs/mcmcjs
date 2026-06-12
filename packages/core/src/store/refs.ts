@@ -8,6 +8,8 @@ export interface RunKeyParts {
   entry: string;
   sampler: LedgerSampler;
   data_sha256: string;
+  /** Managed-package version pins, when any; omitted from the key when absent. */
+  packages?: Record<string, string>;
 }
 
 /** Stable same-experiment key; the seed is deliberately not part of it. */

@@ -4,10 +4,12 @@ import { parseSpec } from "@mcmcjs/core";
 import { createFitRunner, createRunner, type EngineContext, type FitResult } from "@mcmcjs/engine";
 import {
   ensureProject,
+  type MatrixEntry,
   type MatrixResult,
   managedProjectDir,
   managedProjectReady,
   resolveVersion,
+  runFit,
   runFitAuto,
   runMatrix,
 } from "@mcmcjs/julia";
@@ -17,6 +19,32 @@ import { juliaupBin } from "./julia";
 import { rendererFor } from "./progress";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
+
+/** Parses a `name=v1,v2,...` package-matrix argument. */
+export function parsePackageVersions(arg: string): { name: string; versions: string[] } {
+  const at = arg.indexOf("=");
+  if (at <= 0) throw new Error(`--package-versions expects name=v1,v2, got "${arg}"`);
+  const name = arg.slice(0, at).trim();
+  const versions = arg
+    .slice(at + 1)
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (versions.length === 0) throw new Error(`--package-versions: no versions listed for ${name}`);
+  return { name, versions };
+}
+
+/** The MatrixEntry fields carried over from a FitResult. */
+function resultFields(result: FitResult): Omit<MatrixEntry, "version"> {
+  return {
+    status: result.status,
+    samplesFile: result.samplesFile,
+    runtimeActual: result.runtimeActual,
+    elapsedMs: result.elapsedMs,
+    stage: result.stage,
+    error: result.error,
+  };
+}
 
 export function defaultOut(specPath: string): string {
   return join(dirname(specPath), `${basename(specPath, extname(specPath))}.samples.json`);
@@ -55,7 +83,11 @@ export function registerFit(program: Command, ctx: EngineContext): void {
     .option("--daemon", "fit through a persistent Julia worker (or set MCMC_DAEMON=1)")
     .option("--julia-version <channel>", "Julia version/channel to run (overrides the spec)")
     .option("--versions <list>", "run the spec across these Julia versions (comma-separated)")
-    .option("--keep-going", "with --versions, continue after a version fails")
+    .option(
+      "--package-versions <name=list>",
+      "run the spec across these versions of one managed package (e.g. Turing=0.44,0.45)",
+    )
+    .option("--keep-going", "with --versions/--package-versions, continue after a failure")
     .option("--json", "print the result as JSON")
     .action(
       async (
@@ -65,6 +97,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
           daemon?: boolean;
           juliaVersion?: string;
           versions?: string;
+          packageVersions?: string;
           keepGoing?: boolean;
           json?: boolean;
         },
@@ -108,17 +141,67 @@ export function registerFit(program: Command, ctx: EngineContext): void {
           return;
         }
 
+        if (opts.packageVersions) {
+          const { name, versions } = parsePackageVersions(opts.packageVersions);
+          const channel = opts.juliaVersion ?? spec.backend.version;
+          const resolved = await resolveVersion(bin, channel, ctx.run);
+          const outDir = resolve(opts.out ?? matrixOutDir(specPath));
+          mkdirSync(outDir, { recursive: true });
+          if (!opts.json) {
+            process.stdout.write(
+              `Fitting ${spec.backend.id} across ${versions.length} ${name} versions on Julia ${channel}...\n`,
+            );
+          }
+          const entries: MatrixEntry[] = [];
+          for (const v of versions) {
+            const pins = { ...spec.backend.packages, [name]: v };
+            const dir = managedProjectDir(resolved.version, pins);
+            let entry: MatrixEntry;
+            try {
+              if (!opts.json && !managedProjectReady(dir, pins)) {
+                process.stdout.write(`Preparing ${name} ${v} (this can take a few minutes)...\n`);
+              }
+              await ensureProject(resolved.command, installer, dir, pins);
+              const result = await runFit(spec, resolved, {
+                spawn: createFitRunner(),
+                projectDir: dir,
+                outPath: join(outDir, `${name}-${v}.samples.json`),
+              });
+              entry = { version: `${name}=${v}`, ...resultFields(result) };
+            } catch (error) {
+              entry = {
+                version: `${name}=${v}`,
+                status: "error",
+                elapsedMs: 0,
+                error: (error as Error).message,
+              };
+            }
+            entries.push(entry);
+            if (entry.status === "error" && !opts.keepGoing) break;
+          }
+          const result: MatrixResult = {
+            entries,
+            ok: entries.length === versions.length && entries.every((e) => e.status === "ok"),
+          };
+          process.stdout.write(
+            opts.json ? `${JSON.stringify(result, null, 2)}\n` : `${formatMatrix(result)}\n`,
+          );
+          process.exitCode = result.ok ? 0 : 1;
+          return;
+        }
+
         const channel = opts.juliaVersion ?? spec.backend.version;
         const outPath = resolve(opts.out ?? defaultOut(specPath));
         const resolved = await resolveVersion(bin, channel, ctx.run);
-        const projectDir = managedProjectDir(resolved.version);
+        const pins = spec.backend.packages;
+        const projectDir = managedProjectDir(resolved.version, pins);
 
-        if (!opts.json && !managedProjectReady(projectDir)) {
+        if (!opts.json && !managedProjectReady(projectDir, pins)) {
           process.stdout.write(
             "Preparing the Julia environment (first run can take a few minutes)...\n",
           );
         }
-        await ensureProject(resolved.command, installer, projectDir);
+        await ensureProject(resolved.command, installer, projectDir, pins);
 
         if (!opts.json) process.stdout.write(`Fitting ${spec.backend.id} on Julia ${channel}...\n`);
         const progress = rendererFor(opts.json);

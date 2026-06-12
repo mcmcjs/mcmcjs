@@ -27,6 +27,7 @@ import {
   ensureProject,
   managedProjectDir,
   managedProjectReady,
+  type PackagePins,
   resolveVersion,
   runFitAuto,
 } from "@mcmcjs/julia";
@@ -88,8 +89,32 @@ export interface RunCliOptions {
   refit?: boolean;
   store?: string;
   daemon?: boolean;
+  package?: string[];
   juliaVersion?: string;
   json?: boolean;
+}
+
+/** Parses repeated `name=version` flags into a pins record, or undefined when none. */
+export function parsePackagePins(flags: string[] | undefined): PackagePins | undefined {
+  if (!flags || flags.length === 0) return undefined;
+  const pins: PackagePins = {};
+  for (const flag of flags) {
+    const at = flag.indexOf("=");
+    if (at <= 0 || at === flag.length - 1) {
+      throw new Error(`--package expects name=version, got "${flag}"`);
+    }
+    pins[flag.slice(0, at).trim()] = flag.slice(at + 1).trim();
+  }
+  return pins;
+}
+
+/** Merges flag pins over any spec pins (flags win); undefined when the result is empty. */
+export function mergePins(
+  specPins: PackagePins | undefined,
+  flagPins: PackagePins | undefined,
+): PackagePins | undefined {
+  const merged = { ...specPins, ...flagPins };
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 function validated(spec: Record<string, unknown>): Spec {
@@ -333,6 +358,12 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .option("--entry <name>", "model entry function (default build_model)")
     .option("--refit", "fit even when nothing changed since the last run")
     .option("--daemon", "fit through a persistent Julia worker (or set MCMC_DAEMON=1)")
+    .option(
+      "--package <name=version>",
+      "pin a managed package version (repeatable, e.g. --package Turing=0.45)",
+      (value, prev: string[]) => [...prev, value],
+      [],
+    )
     .option("--store <dir>", "run store directory (default: nearest .mcmc, or beside the model)")
     .option("--julia-version <channel>", "Julia version/channel to run (overrides the spec)")
     .option("--json", "print results as JSON")
@@ -351,6 +382,11 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       const config = buildRunConfig(inputPath, opts);
       for (const note of config.notes) say(note);
 
+      // Flag pins win over spec pins; the effective pins are recorded in the run.
+      const pins = mergePins(config.spec.backend.packages, parsePackagePins(opts.package));
+      if (pins) config.spec.backend.packages = pins;
+      else delete config.spec.backend.packages;
+
       const storeDir = storeDirFor(config.modelPath, opts.store ?? process.env.MCMC_STORE);
       ensureStore(storeDir);
 
@@ -368,6 +404,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         entry: config.spec.model.entry,
         sampler: config.spec.sampler,
         data_sha256: inputs.data_sha256,
+        packages: pins,
       });
       const seedPinned = opts.seed !== undefined || config.specSource !== "defaults";
       const modelRel = relative(dirname(storeDir), config.modelPath).split(sep).join("/");
@@ -431,11 +468,11 @@ export function registerRun(program: Command, ctx: EngineContext): void {
 
       const bin = await juliaupBin(ctx);
       const resolved = await resolveVersion(bin, config.channel, ctx.run);
-      const projectDir = managedProjectDir(resolved.version);
-      if (!opts.json && !managedProjectReady(projectDir)) {
+      const projectDir = managedProjectDir(resolved.version, pins);
+      if (!opts.json && !managedProjectReady(projectDir, pins)) {
         say("Preparing the Julia environment (first run can take a few minutes)...");
       }
-      await ensureProject(resolved.command, createRunner(INSTALL_TIMEOUT_MS), projectDir);
+      await ensureProject(resolved.command, createRunner(INSTALL_TIMEOUT_MS), projectDir, pins);
 
       say(fitBanner(config, resolved.version ?? `channel "${config.channel}"`));
 

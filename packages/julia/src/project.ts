@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { canonicalJson } from "@mcmcjs/core";
 import { type CommandRunner, createRunner } from "@mcmcjs/engine";
+import { sha256 } from "./runner-common";
 
 const PACKAGES = [
   "Turing",
@@ -15,54 +17,96 @@ const PACKAGES = [
   "StableRNGs",
 ];
 
-/**
- * The per-user directory holding a managed Julia project (Project + Manifest).
- * Keyed by the concrete Julia version so each version resolves its own
- * compatible Manifest: a Manifest resolved by one Julia version can pin
- * package versions that fail to precompile under another (e.g. symbols that
- * exist in 1.12 but not 1.11), which is why a single shared env breaks
- * cross-version runs. A missing version falls back to the unversioned root.
- */
-export function managedProjectDir(version?: string): string {
-  const base = process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
-  const root = join(base, "mcmcjs", "julia", "env");
-  return version ? join(root, version.replace(/[^A-Za-z0-9._-]/g, "_")) : root;
+/** Version pins for managed packages, by name (e.g. { Turing: "0.45" }). */
+export type PackagePins = Record<string, string>;
+
+/** Rejects pins for packages mcmcjs does not manage, with the valid set listed. */
+export function validatePins(pins: PackagePins | undefined): void {
+  for (const name of Object.keys(pins ?? {})) {
+    if (!PACKAGES.includes(name)) {
+      throw new Error(
+        `cannot pin unknown package "${name}"; managed packages are: ${PACKAGES.join(", ")}`,
+      );
+    }
+  }
 }
 
-// Records the package set a managed dir was provisioned with, so an env from an
-// older package set is healed (Pkg.add is additive) rather than left incomplete.
+function hasPins(pins?: PackagePins): pins is PackagePins {
+  return pins !== undefined && Object.keys(pins).length > 0;
+}
+
+/**
+ * The per-user directory holding a managed Julia project (Project + Manifest).
+ * Keyed by the concrete Julia version AND any package pins, so each version
+ * resolves its own compatible Manifest and each distinct set of pins gets its
+ * own environment: a Manifest resolved by one Julia version (or package set)
+ * can pin versions that fail to precompile under another. A missing version
+ * and no pins falls back to the unversioned root.
+ */
+export function managedProjectDir(version?: string, pins?: PackagePins): string {
+  const base = process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
+  const root = join(base, "mcmcjs", "julia", "env");
+  if (!version && !hasPins(pins)) return root;
+  let leaf = (version ?? "default").replace(/[^A-Za-z0-9._-]/g, "_");
+  if (hasPins(pins)) leaf += `-${sha256(canonicalJson(pins)).slice(0, 8)}`;
+  return join(root, leaf);
+}
+
+// Records what a managed dir was provisioned with (package set + pins), so an
+// env from an older set is healed (Pkg.add is additive) rather than left stale.
 function sentinelPath(dir: string): string {
   return join(dir, ".mcmcjs-packages.json");
 }
 
-function provisioned(dir: string): boolean {
+function expectedSentinel(pins?: PackagePins): string {
+  return canonicalJson({ packages: [...PACKAGES].sort(), pins: pins ?? {} });
+}
+
+function provisioned(dir: string, pins?: PackagePins): boolean {
   try {
-    return readFileSync(sentinelPath(dir), "utf8").trim() === JSON.stringify([...PACKAGES].sort());
+    return readFileSync(sentinelPath(dir), "utf8").trim() === expectedSentinel(pins);
   } catch {
     return false;
   }
 }
 
-/** Whether the managed project is present and provisioned with the current package set. */
-export function managedProjectReady(dir: string = managedProjectDir()): boolean {
-  return existsSync(join(dir, "Project.toml")) && provisioned(dir);
+/** Whether the managed project is present and provisioned with the current package set and pins. */
+export function managedProjectReady(
+  dir: string = managedProjectDir(),
+  pins?: PackagePins,
+): boolean {
+  return existsSync(join(dir, "Project.toml")) && provisioned(dir, pins);
+}
+
+/** The `Pkg.add` argument: a PackageSpec per managed package, version-pinned where requested. */
+function packageSpecsCode(pins?: PackagePins): string {
+  const specs = PACKAGES.map((name) => {
+    const version = pins?.[name];
+    return version
+      ? `Pkg.PackageSpec(name=${JSON.stringify(name)}, version=${JSON.stringify(version)})`
+      : `Pkg.PackageSpec(name=${JSON.stringify(name)})`;
+  });
+  return `[${specs.join(", ")}]`;
 }
 
 /**
- * Ensures the managed Julia project exists with the inference packages installed.
- * Idempotent: returns immediately when already provisioned with the current set,
- * otherwise adds (and precompiles) the missing packages. The first run resolves
- * and precompiles the project, which can take several minutes.
+ * Ensures the managed Julia project exists with the inference packages installed
+ * (version-pinned where `pins` requests). Idempotent: returns immediately when
+ * already provisioned with the current set and pins, otherwise adds (and
+ * precompiles) the packages. The first run resolves and precompiles the project,
+ * which can take several minutes.
  */
 export async function ensureProject(
   juliaBin: string,
   run: CommandRunner = createRunner(30 * 60_000),
   dir: string = managedProjectDir(),
+  pins?: PackagePins,
 ): Promise<string> {
-  if (managedProjectReady(dir)) return dir;
+  validatePins(pins);
+  if (managedProjectReady(dir, pins)) return dir;
   mkdirSync(dir, { recursive: true });
-  const code = `using Pkg; Pkg.add(${JSON.stringify(PACKAGES)}); Pkg.precompile()`;
+  const code = `using Pkg; Pkg.add(${packageSpecsCode(pins)}); Pkg.precompile()`;
   await run(juliaBin, ["--startup-file=no", `--project=${dir}`, "-e", code]);
-  writeFileSync(sentinelPath(dir), JSON.stringify([...PACKAGES].sort()));
+  writeFileSync(sentinelPath(dir), expectedSentinel(pins));
   return dir;
 }

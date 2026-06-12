@@ -48,14 +48,15 @@ export function registerPredict(program: Command, ctx: EngineContext): void {
         const outPath = resolve(opts.out ?? defaultPredictOut(samplesPath));
         const bin = await juliaupBin(ctx);
         const resolved = await resolveVersion(bin, channel, ctx.run);
-        const projectDir = managedProjectDir(resolved.version);
+        const pins = spec.backend.packages;
+        const projectDir = managedProjectDir(resolved.version, pins);
 
-        if (!opts.json && !managedProjectReady(projectDir)) {
+        if (!opts.json && !managedProjectReady(projectDir, pins)) {
           process.stdout.write(
             "Preparing the Julia environment (first run can take a few minutes)...\n",
           );
         }
-        await ensureProject(resolved.command, createRunner(INSTALL_TIMEOUT_MS), projectDir);
+        await ensureProject(resolved.command, createRunner(INSTALL_TIMEOUT_MS), projectDir, pins);
 
         if (!opts.json) {
           process.stdout.write(

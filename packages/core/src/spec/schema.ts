@@ -7,6 +7,12 @@ const Backend = z.object({
   runtime: z.literal("julia").default("julia"),
   /** The juliaup channel the runtime resolves to (e.g. "release", "1.10"). */
   version: z.string().min(1).default("release"),
+  /**
+   * Optional version pins for managed Julia packages, by name (e.g.
+   * `{ Turing = "0.45" }`). Pinned packages provision into their own managed
+   * environment, so different pins can be compared without interfering.
+   */
+  packages: z.record(z.string(), z.string().min(1)).optional(),
 });
 
 const Sampler = z
