@@ -28,3 +28,6 @@ npm-debug.log*
 
 # dev sandbox symlink (pnpm sandbox)
 mcmcjs-sandbox
+
+# run store created by running the examples (or any `mcmc run`)
+.mcmc/
