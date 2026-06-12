@@ -21,6 +21,10 @@ describe("parsePackagePins", () => {
     expect(() => parsePackagePins(["=0.45"])).toThrow(/name=version/);
     expect(() => parsePackagePins(["Turing="])).toThrow(/name=version/);
   });
+
+  it("rejects a version string that could inject Julia code", () => {
+    expect(() => parsePackagePins(["Turing=$(run(`x`))"])).toThrow(/invalid version/);
+  });
 });
 
 describe("mergePins", () => {
@@ -48,6 +52,11 @@ describe("parsePackageVersions", () => {
   it("rejects malformed args", () => {
     expect(() => parsePackageVersions("Turing")).toThrow(/name=v1,v2/);
     expect(() => parsePackageVersions("Turing=")).toThrow(/no versions/);
+  });
+
+  it("rejects an unmanaged package or an unsafe version", () => {
+    expect(() => parsePackageVersions("Nope=0.1,0.2")).toThrow(/unknown package/);
+    expect(() => parsePackageVersions("Turing=0.45,$(x)")).toThrow(/invalid version/);
   });
 });
 

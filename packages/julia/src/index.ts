@@ -8,7 +8,13 @@ export { runFit } from "./fit";
 export type { PredictIo } from "./predict";
 export { predictData, runPredict } from "./predict";
 export type { PackagePins } from "./project";
-export { ensureProject, managedProjectDir, managedProjectReady, validatePins } from "./project";
+export {
+  ensureProject,
+  managedProjectDir,
+  managedProjectReady,
+  validatePins,
+  validateVersionString,
+} from "./project";
 export type { MatrixEntry, MatrixIo, MatrixResult } from "./run-matrix";
 export { runMatrix } from "./run-matrix";
 export { sharedTmpParent } from "./runner-common";

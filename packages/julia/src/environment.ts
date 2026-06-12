@@ -7,9 +7,12 @@ export { createRunner } from "@mcmcjs/engine";
 
 const defaultRunner = createRunner();
 
-// juliaup installs its shims here; we also fall back to whatever is on PATH.
+// juliaup installs its shims under the home directory; we also fall back to
+// whatever is on PATH. $HOME is honored first so a sandbox that redirects HOME
+// (mcmc sandbox --strict) finds its own juliaup, not the user's.
 function candidates(binary: string): string[] {
-  return [join(homedir(), ".juliaup", "bin", binary), binary];
+  const home = process.env.HOME || homedir();
+  return [join(home, ".juliaup", "bin", binary), binary];
 }
 
 async function detect(

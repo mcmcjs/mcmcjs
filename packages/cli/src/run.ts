@@ -30,6 +30,8 @@ import {
   type PackagePins,
   resolveVersion,
   runFitAuto,
+  validatePins,
+  validateVersionString,
 } from "@mcmcjs/julia";
 import type { Command } from "commander";
 import pc from "picocolors";
@@ -103,7 +105,10 @@ export function parsePackagePins(flags: string[] | undefined): PackagePins | und
     if (at <= 0 || at === flag.length - 1) {
       throw new Error(`--package expects name=version, got "${flag}"`);
     }
-    pins[flag.slice(0, at).trim()] = flag.slice(at + 1).trim();
+    const name = flag.slice(0, at).trim();
+    const version = flag.slice(at + 1).trim();
+    validateVersionString(name, version);
+    pins[name] = version;
   }
   return pins;
 }
@@ -400,6 +405,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
 
       // Flag pins win over spec pins; the effective pins are recorded in the run.
       const pins = mergePins(config.spec.backend.packages, parsePackagePins(opts.package));
+      validatePins(pins); // fail fast on a bad spec/flag pin
       if (pins) config.spec.backend.packages = pins;
       else delete config.spec.backend.packages;
 

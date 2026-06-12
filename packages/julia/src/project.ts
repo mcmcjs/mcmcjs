@@ -20,14 +20,30 @@ const PACKAGES = [
 /** Version pins for managed packages, by name (e.g. { Turing: "0.45" }). */
 export type PackagePins = Record<string, string>;
 
-/** Rejects pins for packages mcmcjs does not manage, with the valid set listed. */
+// Version strings are interpolated into Julia source for Pkg.add; this allows
+// only the characters of a Julia version specifier (digits, letters, and the
+// range operators) and notably excludes `$` and backticks, which would
+// otherwise let a shared spec run arbitrary Julia via string interpolation.
+const VERSION_RE = /^[0-9A-Za-z.+~^=<>,\s-]+$/;
+
+/** Rejects a version string that could break out of the generated Julia literal. */
+export function validateVersionString(name: string, version: string): void {
+  if (!VERSION_RE.test(version)) {
+    throw new Error(
+      `invalid version "${version}" for package ${name}; a version may contain only digits, letters, and . + ~ ^ = < > , - and spaces`,
+    );
+  }
+}
+
+/** Rejects pins for unmanaged packages or with unsafe version strings. */
 export function validatePins(pins: PackagePins | undefined): void {
-  for (const name of Object.keys(pins ?? {})) {
+  for (const [name, version] of Object.entries(pins ?? {})) {
     if (!PACKAGES.includes(name)) {
       throw new Error(
         `cannot pin unknown package "${name}"; managed packages are: ${PACKAGES.join(", ")}`,
       );
     }
+    validateVersionString(name, version);
   }
 }
 

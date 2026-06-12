@@ -12,6 +12,7 @@ import {
   runFit,
   runFitAuto,
   runMatrix,
+  validatePins,
 } from "@mcmcjs/julia";
 import type { Command } from "commander";
 import pc from "picocolors";
@@ -32,6 +33,8 @@ export function parsePackageVersions(arg: string): { name: string; versions: str
     .map((v) => v.trim())
     .filter(Boolean);
   if (versions.length === 0) throw new Error(`--package-versions: no versions listed for ${name}`);
+  // Fail fast on an unmanaged name or an unsafe version string.
+  for (const v of versions) validatePins({ [name]: v });
   return { name, versions };
 }
 
@@ -104,17 +107,23 @@ export function registerFit(program: Command, ctx: EngineContext): void {
         },
       ) => {
         const spec = parseSpec(specPath);
+        validatePins(spec.backend.packages); // fail fast on a bad spec pin
         // Load a referenced data file (recorded by path + hash, not inlined).
         const resolvedData = resolveData(spec.data, spec.dataFilePath);
         spec.data = resolvedData.data;
         const bin = await juliaupBin(ctx);
         const installer = createRunner(INSTALL_TIMEOUT_MS);
 
+        if (opts.versions && opts.packageVersions) {
+          throw new Error("use either --versions or --package-versions, not both");
+        }
+
         if (opts.versions) {
           const versions = opts.versions
             .split(",")
             .map((v) => v.trim())
             .filter(Boolean);
+          const pins = spec.backend.packages;
           const outDir = resolve(opts.out ?? matrixOutDir(specPath));
           mkdirSync(outDir, { recursive: true });
 
@@ -123,19 +132,21 @@ export function registerFit(program: Command, ctx: EngineContext): void {
               `Fitting ${spec.backend.id} across ${versions.length} Julia versions...\n`,
             );
           }
-          // Each version gets its own managed env so it resolves a Manifest it
-          // can actually precompile; provisioning happens per version below.
+          // Each version gets its own managed env (honoring any spec package
+          // pins) so it resolves a Manifest it can actually precompile.
           const result = await runMatrix(spec, versions, {
             spawn: createFitRunner(),
             outDir,
             resolve: (v) => resolveVersion(bin, v, ctx.run),
             ensure: async (r) => {
-              const dir = managedProjectDir(r.version);
-              if (!opts.json && !managedProjectReady(dir)) {
+              const dir = managedProjectDir(r.version, pins);
+              if (!opts.json && !managedProjectReady(dir, pins)) {
                 process.stdout.write(`Preparing the Julia ${r.version ?? ""} environment...\n`);
               }
-              return ensureProject(r.command, installer, dir);
+              return ensureProject(r.command, installer, dir, pins);
             },
+            dataFile: resolvedData.dataFile,
+            dataSha256: resolvedData.dataSha256,
             keepGoing: opts.keepGoing,
           });
           process.stdout.write(

@@ -33,6 +33,10 @@ export interface MatrixIo {
   resolve: (version: string) => Promise<ResolvedInvocation>;
   /** Provisions the managed env for a resolved version and returns its dir. */
   ensure: (resolved: ResolvedInvocation) => Promise<string>;
+  /** Source path when the data came from a referenced file; recorded per version. */
+  dataFile?: string;
+  /** Overrides the recorded data hash (the data file's bytes hash). */
+  dataSha256?: string;
   /** Continue after a version fails instead of stopping. */
   keepGoing?: boolean;
 }
@@ -54,6 +58,8 @@ export async function runMatrix(
         spawn: io.spawn,
         projectDir,
         outPath: join(io.outDir, `${version}.samples.json`),
+        dataFile: io.dataFile,
+        dataSha256: io.dataSha256,
       });
       entry = {
         version,

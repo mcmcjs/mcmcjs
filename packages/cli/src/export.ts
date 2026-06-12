@@ -37,6 +37,7 @@ function exportedSpecToml(source: string, destDir: string, liveModelPath: string
   const {
     specPath: _specPath,
     modelPath: _modelPath,
+    dataFilePath: _dataFilePath,
     specHash: _specHash,
     ...spec
   } = parseSpec(source);

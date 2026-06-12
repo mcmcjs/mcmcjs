@@ -38,7 +38,12 @@ export function strictEnv(dir: string): Record<string, string> {
     mkdirSync(p, { recursive: true, ...(mode ? { mode } : {}) });
     return p;
   };
+  const home = sub("home");
   return {
+    // HOME so the juliaup installer writes into the sandbox's ~/.juliaup and
+    // detection (which honors $HOME) finds it there rather than the real one.
+    HOME: home,
+    PATH: `${join(home, ".juliaup", "bin")}:${process.env.PATH ?? ""}`,
     XDG_DATA_HOME: sub("data"),
     XDG_CACHE_HOME: sub("cache"),
     XDG_RUNTIME_DIR: sub("run", 0o700),

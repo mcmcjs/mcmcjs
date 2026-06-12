@@ -8,6 +8,7 @@ import {
   managedProjectReady,
   resolveVersion,
   runPredict,
+  validatePins,
 } from "@mcmcjs/julia";
 import type { Command } from "commander";
 import { resolveData } from "./data-file";
@@ -36,6 +37,7 @@ export function registerPredict(program: Command, ctx: EngineContext): void {
         opts: { out?: string; juliaVersion?: string; json?: boolean },
       ) => {
         const spec = parseSpec(specPath);
+        validatePins(spec.backend.packages); // fail fast on a bad spec pin
         // Load a referenced data file so predict conditions on the same data.
         spec.data = resolveData(spec.data, spec.dataFilePath).data;
         if (!spec.predict) {

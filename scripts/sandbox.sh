@@ -51,20 +51,23 @@ ln -sfn "$SANDBOX" "$LINK"
 
 if [ -n "$STRICT" ]; then
   # Redirect every mcmcjs/Julia state path into the sandbox: a fresh, no-Julia
-  # environment that vanishes with the sandbox.
-  mkdir -p "$SANDBOX/env/data" "$SANDBOX/env/cache" "$SANDBOX/env/julia-depot" "$SANDBOX/env/juliaup"
+  # environment that vanishes with the sandbox. HOME so juliaup installs into
+  # the sandbox's ~/.juliaup; PATH so its shim is found once installed.
+  mkdir -p "$SANDBOX/env/data" "$SANDBOX/env/cache" "$SANDBOX/env/julia-depot" \
+    "$SANDBOX/env/juliaup" "$SANDBOX/env/home"
   mkdir -p -m 700 "$SANDBOX/env/run"
-  XDG_DATA_HOME="$SANDBOX/env/data"; XDG_CACHE_HOME="$SANDBOX/env/cache"
+  HOME="$SANDBOX/env/home"; XDG_DATA_HOME="$SANDBOX/env/data"; XDG_CACHE_HOME="$SANDBOX/env/cache"
   XDG_RUNTIME_DIR="$SANDBOX/env/run"; JULIA_DEPOT_PATH="$SANDBOX/env/julia-depot"
   JULIAUP_DEPOT_PATH="$SANDBOX/env/juliaup"
-  export XDG_DATA_HOME XDG_CACHE_HOME XDG_RUNTIME_DIR JULIA_DEPOT_PATH JULIAUP_DEPOT_PATH
+  PATH="$HOME/.juliaup/bin:$PATH"
+  export HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_RUNTIME_DIR JULIA_DEPOT_PATH JULIAUP_DEPOT_PATH PATH
 fi
 
 echo
 echo "  mcmcjs sandbox ready — an isolated install of your local build."
 echo "  Seeded with model.jl, data.csv, run_without_mcmcjs.jl."
 echo "  Symlinked at $LINK"
-[ -n "$STRICT" ] && echo "  strict: no Julia here yet — run 'mcmc setup' first (installs into the sandbox)."
+[ -n "$STRICT" ] && echo "  strict: no Julia here yet, run 'mcmc setup' first (installs into the sandbox)."
 echo "  Try:  mcmc run model.jl --data data.csv"
 echo "  Type 'exit' (or Ctrl+D) to leave; the sandbox and symlink are removed."
 echo
