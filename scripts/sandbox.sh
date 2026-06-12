@@ -7,8 +7,12 @@
 # the shell (exit or Ctrl+D) removes the sandbox and the symlink; so does the
 # script dying, via the EXIT trap.
 #
-#   pnpm sandbox
+#   pnpm sandbox            # isolated install of the local build
+#   pnpm sandbox --strict   # also a fresh Julia depot/managed env inside the sandbox
 set -e
+
+STRICT=""
+[ "$1" = "--strict" ] && STRICT=1
 
 INVOKED_DIR=$(pwd)
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -45,10 +49,22 @@ export PATH
 cp "$ROOT"/packages/cli/templates/* "$SANDBOX/"
 ln -sfn "$SANDBOX" "$LINK"
 
+if [ -n "$STRICT" ]; then
+  # Redirect every mcmcjs/Julia state path into the sandbox: a fresh, no-Julia
+  # environment that vanishes with the sandbox.
+  mkdir -p "$SANDBOX/env/data" "$SANDBOX/env/cache" "$SANDBOX/env/julia-depot" "$SANDBOX/env/juliaup"
+  mkdir -p -m 700 "$SANDBOX/env/run"
+  XDG_DATA_HOME="$SANDBOX/env/data"; XDG_CACHE_HOME="$SANDBOX/env/cache"
+  XDG_RUNTIME_DIR="$SANDBOX/env/run"; JULIA_DEPOT_PATH="$SANDBOX/env/julia-depot"
+  JULIAUP_DEPOT_PATH="$SANDBOX/env/juliaup"
+  export XDG_DATA_HOME XDG_CACHE_HOME XDG_RUNTIME_DIR JULIA_DEPOT_PATH JULIAUP_DEPOT_PATH
+fi
+
 echo
 echo "  mcmcjs sandbox ready — an isolated install of your local build."
 echo "  Seeded with model.jl, data.csv, run_without_mcmcjs.jl."
 echo "  Symlinked at $LINK"
+[ -n "$STRICT" ] && echo "  strict: no Julia here yet — run 'mcmc setup' first (installs into the sandbox)."
 echo "  Try:  mcmc run model.jl --data data.csv"
 echo "  Type 'exit' (or Ctrl+D) to leave; the sandbox and symlink are removed."
 echo
