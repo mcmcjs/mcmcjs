@@ -35,7 +35,7 @@ import type { Command } from "commander";
 import pc from "picocolors";
 import { ZodError } from "zod";
 import { convertGraph } from "./convert";
-import { loadDataFile } from "./data-file";
+import { resolveData } from "./data-file";
 import { buildDiagnosticsReport, type DiagnosticsReport, formatReportHuman } from "./diagnose";
 import { formatFitResult } from "./fit";
 import { juliaupBin } from "./julia";
@@ -145,8 +145,12 @@ function applyOverrides(spec: Spec, opts: RunCliOptions): Spec {
       ...(opts.chains !== undefined ? { chains: opts.chains } : {}),
       ...(opts.adaptDelta !== undefined ? { adapt_delta: opts.adaptDelta } : {}),
     },
-    ...(opts.data ? { data: loadDataFile(opts.data) } : {}),
   });
+}
+
+/** The effective data-file reference: a --data override wins over a spec's data_file. */
+function dataFileFor(opts: RunCliOptions, specDataFile?: string): string | undefined {
+  return opts.data ? resolve(opts.data) : specDataFile;
 }
 
 export interface RunConfig {
@@ -155,6 +159,8 @@ export interface RunConfig {
   modelPath: string;
   /** The juliaup channel the fit runs on. */
   channel: string;
+  /** Absolute path to a referenced data file, when the data is not inline. */
+  dataFile?: string;
   specSource: "input" | "sibling" | "defaults";
   notes: string[];
 }
@@ -204,6 +210,7 @@ export function buildRunConfig(inputPath: string, opts: RunCliOptions): RunConfi
       spec,
       modelPath,
       channel: config.channel,
+      dataFile: config.dataFile,
       specSource: "sibling",
       notes: [`using settings from ${sibling}; flags override`],
     };
@@ -232,12 +239,12 @@ export function buildRunConfig(inputPath: string, opts: RunCliOptions): RunConfi
       chains: opts.chains ?? 4,
       ...(opts.adaptDelta !== undefined ? { adapt_delta: opts.adaptDelta } : {}),
     },
-    data: opts.data ? loadDataFile(opts.data) : {},
   });
   return {
     spec,
     modelPath,
     channel: opts.juliaVersion ?? spec.backend.version,
+    dataFile: dataFileFor(opts),
     specSource: "defaults",
     notes: [],
   };
@@ -250,6 +257,7 @@ function fromSpecFile(specPath: string, opts: RunCliOptions): RunConfig {
     spec,
     modelPath: parsed.modelPath,
     channel: opts.juliaVersion ?? spec.backend.version,
+    dataFile: dataFileFor(opts, parsed.dataFilePath),
     specSource: "input",
     notes: [],
   };
@@ -285,12 +293,20 @@ export function diagnosticsSummary(report: DiagnosticsReport): LedgerDiagnostics
 }
 
 /** The spec frozen into the run dir: effective channel, model path pointing at the snapshot. */
-export function frozenSpecFor(spec: Spec, channel: string, modelFileName: string): Spec {
-  return {
+export function frozenSpecFor(
+  spec: Spec,
+  channel: string,
+  modelFileName: string,
+  dataFile?: string,
+): Spec {
+  const frozen: Spec = {
     ...spec,
     backend: { ...spec.backend, version: channel },
     model: { ...spec.model, path: `./${modelFileName}` },
   };
+  // A referenced data file is recorded by path, not inlined into the frozen spec.
+  if (dataFile) return { ...frozen, data: {}, data_file: dataFile };
+  return frozen;
 }
 
 /**
@@ -387,13 +403,18 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       if (pins) config.spec.backend.packages = pins;
       else delete config.spec.backend.packages;
 
+      // A referenced data file is loaded for the fit but recorded by path + hash,
+      // not inlined into the spec or the store.
+      const resolvedData = resolveData(config.spec.data, config.dataFile);
+      config.spec.data = resolvedData.data;
+
       const storeDir = storeDirFor(config.modelPath, opts.store ?? process.env.MCMC_STORE);
       ensureStore(storeDir);
 
       const modelSource = readFileSync(config.modelPath, "utf8");
       const inputs: RunInputs = {
         model_sha256: sha256(modelSource),
-        data_sha256: sha256(canonicalJson(config.spec.data)),
+        data_sha256: resolvedData.dataSha256 ?? sha256(canonicalJson(config.spec.data)),
         sampler: config.spec.sampler,
         channel: config.channel,
         seed: config.spec.seed,
@@ -485,13 +506,21 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       mkdirSync(dir, { recursive: true });
 
       // Snapshot the inputs before fitting so even a failed run is debuggable.
-      const frozen = frozenSpecFor(config.spec, config.channel, basename(config.modelPath));
+      // The frozen spec references a data file by path; the spec the fit runs
+      // on keeps the loaded data so the model still receives it.
+      const frozen = frozenSpecFor(
+        config.spec,
+        config.channel,
+        basename(config.modelPath),
+        config.dataFile,
+      );
       const specHash = hashSpec(frozen);
       writeFileSync(join(dir, basename(config.modelPath)), modelSource);
       writeFileSync(join(dir, "spec.toml"), serializeSpecToml(frozen));
 
       const resolvedSpec: ResolvedSpec = {
         ...frozen,
+        data: config.spec.data,
         specPath: join(dir, "spec.toml"),
         modelPath: config.modelPath,
         specHash,
@@ -507,6 +536,8 @@ export function registerRun(program: Command, ctx: EngineContext): void {
           onProgress: progress.onProgress,
           daemon: opts.daemon ?? process.env.MCMC_DAEMON === "1",
           notify: (line) => say(line),
+          dataFile: config.dataFile,
+          dataSha256: resolvedData.dataSha256,
         });
       } finally {
         progress.finish();

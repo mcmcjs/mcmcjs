@@ -21,6 +21,10 @@ export interface FitIo {
   recordPath?: string;
   /** Streamed per-chain sampling progress. */
   onProgress?: (progress: FitProgress) => void;
+  /** Source path when the data came from a referenced file; recorded, not copied. */
+  dataFile?: string;
+  /** Overrides the recorded data hash (e.g. the data file's bytes hash). */
+  dataSha256?: string;
   tmpDir?: string;
 }
 
@@ -51,7 +55,7 @@ export function fitRequest(spec: ResolvedSpec, outPath: string): Record<string, 
 export function finalizeOkFit(
   spec: ResolvedSpec,
   resolved: { command: string },
-  io: Pick<FitIo, "outPath" | "recordPath">,
+  io: Pick<FitIo, "outPath" | "recordPath" | "dataFile" | "dataSha256">,
   provenance: Record<string, unknown> | undefined,
   startedAt: string,
   elapsedMs: number,
@@ -90,7 +94,8 @@ export function finalizeOkFit(
     model_sha256: existsSync(spec.modelPath)
       ? sha256(readFileSync(spec.modelPath, "utf8"))
       : undefined,
-    data_sha256: sha256(canonicalJson(spec.data)),
+    data_sha256: io.dataSha256 ?? sha256(canonicalJson(spec.data)),
+    ...(io.dataFile ? { data_file: io.dataFile } : {}),
     samples_file: io.outPath,
     started_at: startedAt,
     elapsed_ms: elapsedMs,

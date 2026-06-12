@@ -10,6 +10,8 @@ export interface ResolvedSpec extends Spec {
   specPath: string;
   /** Absolute path to the model file (model.path resolved against the spec's directory). */
   modelPath: string;
+  /** Absolute path to the data file when the spec references one (data_file). */
+  dataFilePath?: string;
   /** sha256 of the canonical spec, over the authored (relative) model path. */
   specHash: string;
 }
@@ -46,6 +48,7 @@ export function parseSpec(path: string): ResolvedSpec {
     ...spec,
     specPath,
     modelPath: resolve(dirname(specPath), spec.model.path),
+    dataFilePath: spec.data_file ? resolve(dirname(specPath), spec.data_file) : undefined,
     specHash: hashSpec(spec),
   };
 }

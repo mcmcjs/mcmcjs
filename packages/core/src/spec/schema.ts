@@ -47,16 +47,28 @@ const Predict = z
 
 export type PredictSpec = z.infer<typeof Predict>;
 
-export const SpecSchema = z.object({
-  schema_version: z.literal(SPEC_SCHEMA_VERSION),
-  backend: Backend,
-  model: z.discriminatedUnion("kind", [ModelFile]),
-  sampler: Sampler,
-  data: z.record(z.string(), z.unknown()).default({}),
-  output: Output,
-  predict: Predict.optional(),
-  /** Bounded to the JS-safe integer range so it survives JSON without precision loss. */
-  seed: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-});
+export const SpecSchema = z
+  .object({
+    schema_version: z.literal(SPEC_SCHEMA_VERSION),
+    backend: Backend,
+    model: z.discriminatedUnion("kind", [ModelFile]),
+    sampler: Sampler,
+    data: z.record(z.string(), z.unknown()).default({}),
+    /**
+     * Path to a data file (.csv / .json), relative to the spec's directory,
+     * loaded in place of inline `[data]`. The reference (path + hash), not the
+     * contents, is recorded in the run, so large datasets are not copied into
+     * the spec or the run store.
+     */
+    data_file: z.string().min(1).optional(),
+    output: Output,
+    predict: Predict.optional(),
+    /** Bounded to the JS-safe integer range so it survives JSON without precision loss. */
+    seed: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  })
+  .refine((s) => !(s.data_file && Object.keys(s.data).length > 0), {
+    message: "set either inline [data] or data_file, not both",
+    path: ["data_file"],
+  });
 
 export type Spec = z.infer<typeof SpecSchema>;

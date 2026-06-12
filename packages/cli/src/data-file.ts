@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { extname } from "node:path";
 
@@ -135,4 +136,24 @@ export function loadDataFile(path: string): Record<string, unknown> {
   }
   if (ext === ".csv") return fromCsv(text, path);
   throw new Error(`unsupported data file extension (expected .json or .csv): ${path}`);
+}
+
+export interface ResolvedData {
+  /** The data passed to the model (loaded from the file, or the inline table). */
+  data: Record<string, unknown>;
+  /** The source file path, when the data came from a referenced file. */
+  dataFile?: string;
+  /** sha256 of the file's bytes, when file-referenced (recorded in place of inlining). */
+  dataSha256?: string;
+}
+
+/**
+ * Resolves a run's data: the contents of `filePath` when given (a reference,
+ * also hashed by its bytes so the run records the reference rather than a copy),
+ * otherwise the inline table.
+ */
+export function resolveData(inline: Record<string, unknown>, filePath?: string): ResolvedData {
+  if (!filePath) return { data: inline };
+  const dataSha256 = createHash("sha256").update(readFileSync(filePath)).digest("hex");
+  return { data: loadDataFile(filePath), dataFile: filePath, dataSha256 };
 }

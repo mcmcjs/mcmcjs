@@ -10,6 +10,7 @@ import {
   runPredict,
 } from "@mcmcjs/julia";
 import type { Command } from "commander";
+import { resolveData } from "./data-file";
 import { formatFitResult } from "./fit";
 import { juliaupBin } from "./julia";
 
@@ -35,6 +36,8 @@ export function registerPredict(program: Command, ctx: EngineContext): void {
         opts: { out?: string; juliaVersion?: string; json?: boolean },
       ) => {
         const spec = parseSpec(specPath);
+        // Load a referenced data file so predict conditions on the same data.
+        spec.data = resolveData(spec.data, spec.dataFilePath).data;
         if (!spec.predict) {
           throw new Error("spec has no [predict] block; add [predict].targets to predict");
         }

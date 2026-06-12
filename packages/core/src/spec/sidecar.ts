@@ -12,6 +12,8 @@ export interface RunRecord {
   packages?: Record<string, string>;
   model_sha256?: string;
   data_sha256?: string;
+  /** Source path when the data came from a referenced file rather than inline. */
+  data_file?: string;
   /** The posterior samples file consumed by a predict run. */
   posterior_samples?: string;
   posterior_samples_sha256?: string;

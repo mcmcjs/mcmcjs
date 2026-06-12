@@ -15,6 +15,7 @@ import {
 } from "@mcmcjs/julia";
 import type { Command } from "commander";
 import pc from "picocolors";
+import { resolveData } from "./data-file";
 import { juliaupBin } from "./julia";
 import { rendererFor } from "./progress";
 
@@ -103,6 +104,9 @@ export function registerFit(program: Command, ctx: EngineContext): void {
         },
       ) => {
         const spec = parseSpec(specPath);
+        // Load a referenced data file (recorded by path + hash, not inlined).
+        const resolvedData = resolveData(spec.data, spec.dataFilePath);
+        spec.data = resolvedData.data;
         const bin = await juliaupBin(ctx);
         const installer = createRunner(INSTALL_TIMEOUT_MS);
 
@@ -166,6 +170,8 @@ export function registerFit(program: Command, ctx: EngineContext): void {
                 spawn: createFitRunner(),
                 projectDir: dir,
                 outPath: join(outDir, `${name}-${v}.samples.json`),
+                dataFile: resolvedData.dataFile,
+                dataSha256: resolvedData.dataSha256,
               });
               entry = { version: `${name}=${v}`, ...resultFields(result) };
             } catch (error) {
@@ -216,6 +222,8 @@ export function registerFit(program: Command, ctx: EngineContext): void {
             notify: (line) => {
               if (!opts.json) process.stdout.write(`${line}\n`);
             },
+            dataFile: resolvedData.dataFile,
+            dataSha256: resolvedData.dataSha256,
           });
         } finally {
           progress.finish();

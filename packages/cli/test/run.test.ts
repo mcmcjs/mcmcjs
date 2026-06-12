@@ -69,7 +69,7 @@ describe("buildRunConfig: model file with no spec", () => {
     expect(existsSync(join(dir, "model.toml"))).toBe(false);
   });
 
-  it("honors flags and loads --data", () => {
+  it("honors flags and references --data by path (not inlined)", () => {
     const dir = tmp();
     const model = writeModel(dir);
     const dataPath = join(dir, "data.csv");
@@ -89,7 +89,9 @@ describe("buildRunConfig: model file with no spec", () => {
       adapt_delta: 0.95,
     });
     expect(config.spec.seed).toBe(7);
-    expect(config.spec.data).toMatchObject({ x: [1, 3], y: [2, 4], N: 2 });
+    // --data is recorded as a reference; the contents are loaded at run time.
+    expect(config.dataFile).toBe(dataPath);
+    expect(config.spec.data).toEqual({});
   });
 
   it("fails fast on invalid settings", () => {
