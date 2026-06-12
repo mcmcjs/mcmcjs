@@ -23,7 +23,13 @@ import {
   updateLedgerEntry,
 } from "@mcmcjs/core";
 import { createFitRunner, createRunner, type EngineContext } from "@mcmcjs/engine";
-import { ensureProject, managedProjectReady, resolveVersion, runFitAuto } from "@mcmcjs/julia";
+import {
+  ensureProject,
+  managedProjectDir,
+  managedProjectReady,
+  resolveVersion,
+  runFitAuto,
+} from "@mcmcjs/julia";
 import type { Command } from "commander";
 import pc from "picocolors";
 import { ZodError } from "zod";
@@ -425,10 +431,11 @@ export function registerRun(program: Command, ctx: EngineContext): void {
 
       const bin = await juliaupBin(ctx);
       const resolved = await resolveVersion(bin, config.channel, ctx.run);
-      if (!opts.json && !managedProjectReady()) {
+      const projectDir = managedProjectDir(resolved.version);
+      if (!opts.json && !managedProjectReady(projectDir)) {
         say("Preparing the Julia environment (first run can take a few minutes)...");
       }
-      const projectDir = await ensureProject(resolved.command, createRunner(INSTALL_TIMEOUT_MS));
+      await ensureProject(resolved.command, createRunner(INSTALL_TIMEOUT_MS), projectDir);
 
       say(fitBanner(config, resolved.version ?? `channel "${config.channel}"`));
 

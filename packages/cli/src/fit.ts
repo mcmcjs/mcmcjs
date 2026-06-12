@@ -5,6 +5,7 @@ import { createFitRunner, createRunner, type EngineContext, type FitResult } fro
 import {
   ensureProject,
   type MatrixResult,
+  managedProjectDir,
   managedProjectReady,
   resolveVersion,
   runFitAuto,
@@ -80,36 +81,24 @@ export function registerFit(program: Command, ctx: EngineContext): void {
           const outDir = resolve(opts.out ?? matrixOutDir(specPath));
           mkdirSync(outDir, { recursive: true });
 
-          // Provision the managed project once, using the first installed version.
-          let projectJulia: { command: string; args: string[] } | undefined;
-          for (const v of versions) {
-            try {
-              projectJulia = await resolveVersion(bin, v, ctx.run);
-              break;
-            } catch {}
-          }
-          if (!projectJulia) {
-            throw new Error(
-              `none of the requested Julia versions are installed: ${versions.join(", ")}. Install one with: mcmc julia version add <version>`,
-            );
-          }
-          if (!opts.json && !managedProjectReady()) {
-            process.stdout.write(
-              "Preparing the Julia environment (first run can take a few minutes)...\n",
-            );
-          }
-          const projectDir = await ensureProject(projectJulia.command, installer);
-
           if (!opts.json) {
             process.stdout.write(
               `Fitting ${spec.backend.id} across ${versions.length} Julia versions...\n`,
             );
           }
+          // Each version gets its own managed env so it resolves a Manifest it
+          // can actually precompile; provisioning happens per version below.
           const result = await runMatrix(spec, versions, {
             spawn: createFitRunner(),
-            projectDir,
             outDir,
             resolve: (v) => resolveVersion(bin, v, ctx.run),
+            ensure: async (r) => {
+              const dir = managedProjectDir(r.version);
+              if (!opts.json && !managedProjectReady(dir)) {
+                process.stdout.write(`Preparing the Julia ${r.version ?? ""} environment...\n`);
+              }
+              return ensureProject(r.command, installer, dir);
+            },
             keepGoing: opts.keepGoing,
           });
           process.stdout.write(
@@ -122,13 +111,14 @@ export function registerFit(program: Command, ctx: EngineContext): void {
         const channel = opts.juliaVersion ?? spec.backend.version;
         const outPath = resolve(opts.out ?? defaultOut(specPath));
         const resolved = await resolveVersion(bin, channel, ctx.run);
+        const projectDir = managedProjectDir(resolved.version);
 
-        if (!opts.json && !managedProjectReady()) {
+        if (!opts.json && !managedProjectReady(projectDir)) {
           process.stdout.write(
             "Preparing the Julia environment (first run can take a few minutes)...\n",
           );
         }
-        const projectDir = await ensureProject(resolved.command, installer);
+        await ensureProject(resolved.command, installer, projectDir);
 
         if (!opts.json) process.stdout.write(`Fitting ${spec.backend.id} on Julia ${channel}...\n`);
         const progress = rendererFor(opts.json);

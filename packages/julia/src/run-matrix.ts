@@ -19,13 +19,20 @@ export interface MatrixResult {
   ok: boolean;
 }
 
+export interface ResolvedInvocation {
+  command: string;
+  args: string[];
+  version?: string;
+}
+
 export interface MatrixIo {
   spawn: FitRunner;
-  projectDir: string;
   /** Directory the per-version samples files are written into. */
   outDir: string;
   /** Resolves a version/channel to a concrete invocation; injectable for tests. */
-  resolve: (version: string) => Promise<{ command: string; args: string[] }>;
+  resolve: (version: string) => Promise<ResolvedInvocation>;
+  /** Provisions the managed env for a resolved version and returns its dir. */
+  ensure: (resolved: ResolvedInvocation) => Promise<string>;
   /** Continue after a version fails instead of stopping. */
   keepGoing?: boolean;
 }
@@ -41,10 +48,11 @@ export async function runMatrix(
     let entry: MatrixEntry;
     try {
       const resolved = await io.resolve(version);
+      const projectDir = await io.ensure(resolved);
       const versioned = { ...spec, backend: { ...spec.backend, version } };
       const result = await runFit(versioned, resolved, {
         spawn: io.spawn,
-        projectDir: io.projectDir,
+        projectDir,
         outPath: join(io.outDir, `${version}.samples.json`),
       });
       entry = {

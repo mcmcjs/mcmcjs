@@ -2,7 +2,13 @@ import { readFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { parseSamples, parseSpec } from "@mcmcjs/core";
 import { createFitRunner, createRunner, type EngineContext } from "@mcmcjs/engine";
-import { ensureProject, managedProjectReady, resolveVersion, runPredict } from "@mcmcjs/julia";
+import {
+  ensureProject,
+  managedProjectDir,
+  managedProjectReady,
+  resolveVersion,
+  runPredict,
+} from "@mcmcjs/julia";
 import type { Command } from "commander";
 import { formatFitResult } from "./fit";
 import { juliaupBin } from "./julia";
@@ -42,13 +48,14 @@ export function registerPredict(program: Command, ctx: EngineContext): void {
         const outPath = resolve(opts.out ?? defaultPredictOut(samplesPath));
         const bin = await juliaupBin(ctx);
         const resolved = await resolveVersion(bin, channel, ctx.run);
+        const projectDir = managedProjectDir(resolved.version);
 
-        if (!opts.json && !managedProjectReady()) {
+        if (!opts.json && !managedProjectReady(projectDir)) {
           process.stdout.write(
             "Preparing the Julia environment (first run can take a few minutes)...\n",
           );
         }
-        const projectDir = await ensureProject(resolved.command, createRunner(INSTALL_TIMEOUT_MS));
+        await ensureProject(resolved.command, createRunner(INSTALL_TIMEOUT_MS), projectDir);
 
         if (!opts.json) {
           process.stdout.write(

@@ -15,10 +15,18 @@ const PACKAGES = [
   "StableRNGs",
 ];
 
-/** The per-user directory holding the managed Julia project (Project + Manifest). */
-export function managedProjectDir(): string {
+/**
+ * The per-user directory holding a managed Julia project (Project + Manifest).
+ * Keyed by the concrete Julia version so each version resolves its own
+ * compatible Manifest: a Manifest resolved by one Julia version can pin
+ * package versions that fail to precompile under another (e.g. symbols that
+ * exist in 1.12 but not 1.11), which is why a single shared env breaks
+ * cross-version runs. A missing version falls back to the unversioned root.
+ */
+export function managedProjectDir(version?: string): string {
   const base = process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
-  return join(base, "mcmcjs", "julia", "env");
+  const root = join(base, "mcmcjs", "julia", "env");
+  return version ? join(root, version.replace(/[^A-Za-z0-9._-]/g, "_")) : root;
 }
 
 // Records the package set a managed dir was provisioned with, so an env from an

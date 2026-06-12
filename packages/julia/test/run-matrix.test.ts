@@ -30,7 +30,8 @@ function spec(): ResolvedSpec {
 }
 
 const outDir = (): string => mkdtempSync(join(tmpdir(), "mcmcjs-matrix-"));
-const resolveOk = async () => ({ command: "/bin/julia", args: [] });
+const resolveOk = async () => ({ command: "/bin/julia", args: [], version: "1.12.6" });
+const ensureOk = async () => "/proj";
 
 // A spawn that writes the canned samples to the outPath named in the request.json.
 const writingSpawn: FitRunner = async (_command, args) => {
@@ -45,7 +46,7 @@ describe("runMatrix", () => {
     const result = await runMatrix(spec(), ["1.10", "release"], {
       spawn: writingSpawn,
       resolve: resolveOk,
-      projectDir: "/proj",
+      ensure: ensureOk,
       outDir: dir,
     });
     expect(result.ok).toBe(true);
@@ -59,9 +60,9 @@ describe("runMatrix", () => {
       spawn: writingSpawn,
       resolve: async (v) => {
         if (v === "1.9") throw new Error("Julia version not installed; add 1.9");
-        return { command: "/bin/julia", args: [] };
+        return { command: "/bin/julia", args: [], version: "1.12.6" };
       },
-      projectDir: "/proj",
+      ensure: ensureOk,
       outDir: outDir(),
       keepGoing: true,
     });
@@ -71,11 +72,25 @@ describe("runMatrix", () => {
     expect(result.entries[1]?.status).toBe("ok");
   });
 
+  it("provisions a managed env per version (one ensure call each)", async () => {
+    const ensured: Array<string | undefined> = [];
+    await runMatrix(spec(), ["1.10", "release"], {
+      spawn: writingSpawn,
+      resolve: async (v) => ({ command: "/bin/julia", args: [], version: `concrete-${v}` }),
+      ensure: async (r) => {
+        ensured.push(r.version);
+        return `/proj/${r.version}`;
+      },
+      outDir: outDir(),
+    });
+    expect(ensured).toEqual(["concrete-1.10", "concrete-release"]);
+  });
+
   it("stops at the first failure without keepGoing", async () => {
     const result = await runMatrix(spec(), ["1.10", "release"], {
       spawn: async () => ({ stdout: "", stderr: "", code: 1 }),
       resolve: resolveOk,
-      projectDir: "/proj",
+      ensure: ensureOk,
       outDir: outDir(),
     });
     expect(result.entries).toHaveLength(1);
