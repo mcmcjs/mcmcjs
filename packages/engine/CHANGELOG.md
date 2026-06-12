@@ -1,5 +1,11 @@
 # @mcmcjs/engine
 
+## 0.2.0
+
+### Minor Changes
+
+- 2a6e611: Stream runtime subprocesses instead of buffering them: the fit runner now spawns with line-wise stderr handling, routes mcmcjs progress lines to an onProgress callback, and keeps them out of the error buffer.
+
 ## 0.1.0
 
 ### Minor Changes
