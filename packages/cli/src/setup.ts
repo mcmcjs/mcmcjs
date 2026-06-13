@@ -2,8 +2,10 @@ import { runSetup, type SetupResult } from "@mcmcjs/julia";
 import type { Command } from "commander";
 import pc from "picocolors";
 import { formatTool } from "./doctor";
+import { installRunner } from "./julia";
 
 const JULIAUP_URL = "https://github.com/JuliaLang/juliaup";
+const INSTALL_TIMEOUT_MS = 15 * 60_000;
 
 /** Renders the outcome of `runSetup` as human-readable terminal output. */
 export function formatSetupResult(result: SetupResult, dryRun = false): string {
@@ -46,9 +48,14 @@ export function registerSetup(program: Command): void {
     .option("--json", "print the result as JSON")
     .action(async (opts: { dryRun?: boolean; json?: boolean }) => {
       if (!opts.json && !opts.dryRun) {
-        process.stdout.write("Setting up the Julia toolchain (this can take a few minutes)...\n\n");
+        process.stdout.write(
+          "Setting up the Julia toolchain (this can take a few minutes; live output below)...\n\n",
+        );
       }
-      const result = await runSetup({ dryRun: opts.dryRun });
+      const result = await runSetup({
+        dryRun: opts.dryRun,
+        installer: installRunner(opts.json, INSTALL_TIMEOUT_MS),
+      });
       if (opts.json) {
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       } else {

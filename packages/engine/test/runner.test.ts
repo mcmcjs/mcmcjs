@@ -1,5 +1,38 @@
 import { describe, expect, it } from "vitest";
-import { createFitRunner, type FitProgress, parseProgressLine } from "../src/runner";
+import {
+  createFitRunner,
+  createStreamingRunner,
+  type FitProgress,
+  parseProgressLine,
+} from "../src/runner";
+
+describe("createStreamingRunner", () => {
+  it("resolves on a zero exit (output streamed, not captured)", async () => {
+    const run = createStreamingRunner();
+    await expect(
+      run(process.execPath, ["-e", "process.stderr.write('precompiling...\\n')"]),
+    ).resolves.toBe("");
+  });
+
+  it("rejects with the exit code on a nonzero exit", async () => {
+    const run = createStreamingRunner();
+    await expect(run(process.execPath, ["-e", "process.exit(2)"])).rejects.toThrow(
+      /exited with code 2/,
+    );
+  });
+
+  it("rejects when the command cannot be spawned", async () => {
+    const run = createStreamingRunner();
+    await expect(run("/does/not/exist-mcmcjs", [])).rejects.toThrow();
+  });
+
+  it("kills and rejects on timeout", async () => {
+    const run = createStreamingRunner(200);
+    await expect(run(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"])).rejects.toThrow(
+      /timed out/,
+    );
+  });
+});
 
 describe("parseProgressLine", () => {
   it("parses an mcmcjs progress line", () => {

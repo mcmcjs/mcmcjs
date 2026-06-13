@@ -1,6 +1,8 @@
 import type { FitProgress } from "@mcmcjs/engine";
 
 export interface ProgressRenderer {
+  /** Shows an initial "starting" indicator before the first progress arrives. */
+  start?: () => void;
   onProgress: (progress: FitProgress) => void;
   finish: () => void;
 }
@@ -8,14 +10,19 @@ export interface ProgressRenderer {
 /** For --json runs: progress is consumed and nothing is rendered. */
 export const silentProgress: ProgressRenderer = { onProgress: () => {}, finish: () => {} };
 
+const STARTING = "starting Julia and loading Turing...";
+
 /** The renderer a command should use: silent under --json, stderr otherwise. */
 export function rendererFor(json: boolean | undefined): ProgressRenderer {
-  return json
-    ? silentProgress
-    : createProgressRenderer({
-        tty: process.stderr.isTTY === true,
-        write: (text) => process.stderr.write(text),
-      });
+  if (json) return silentProgress;
+  const renderer = createProgressRenderer({
+    tty: process.stderr.isTTY === true,
+    write: (text) => process.stderr.write(text),
+  });
+  // Julia start + Turing load is silent for ~15s before the first chain; show
+  // something so the wait is never a dead screen.
+  renderer.start?.();
+  return renderer;
 }
 
 const BAR_WIDTH = 24;
@@ -37,14 +44,17 @@ export function createProgressRenderer(opts: {
 }): ProgressRenderer {
   if (opts.tty) {
     let lastLength = 0;
+    const line = (text: string) => {
+      opts.write(`\r${text.padEnd(lastLength)}`);
+      lastLength = text.length;
+    };
     return {
+      start: () => line(STARTING),
       onProgress: (p) => {
         const fraction = clamp(p);
         const filled = Math.round(fraction * BAR_WIDTH);
         const bar = "#".repeat(filled) + ".".repeat(BAR_WIDTH - filled);
-        const text = `sampling chain ${p.chain} of ${p.of}  [${bar}] ${Math.round(fraction * 100)}%`;
-        opts.write(`\r${text.padEnd(lastLength)}`);
-        lastLength = text.length;
+        line(`sampling chain ${p.chain} of ${p.of}  [${bar}] ${Math.round(fraction * 100)}%`);
       },
       finish: () => {
         if (lastLength > 0) opts.write(`\r${" ".repeat(lastLength)}\r`);
@@ -55,6 +65,7 @@ export function createProgressRenderer(opts: {
 
   const nextStep = new Map<number, number>();
   return {
+    start: () => opts.write(`${STARTING}\n`),
     onProgress: (p) => {
       const fraction = clamp(p);
       let threshold = nextStep.get(p.chain) ?? STEP;

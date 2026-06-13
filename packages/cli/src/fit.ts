@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { parseSpec } from "@mcmcjs/core";
-import { createFitRunner, createRunner, type EngineContext, type FitResult } from "@mcmcjs/engine";
+import { createFitRunner, type EngineContext, type FitResult } from "@mcmcjs/engine";
 import {
   ensureProject,
   type MatrixEntry,
@@ -17,7 +17,7 @@ import {
 import type { Command } from "commander";
 import pc from "picocolors";
 import { resolveData } from "./data-file";
-import { juliaupBin } from "./julia";
+import { installRunner, juliaupBin } from "./julia";
 import { rendererFor } from "./progress";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
@@ -112,7 +112,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
         const resolvedData = resolveData(spec.data, spec.dataFilePath);
         spec.data = resolvedData.data;
         const bin = await juliaupBin(ctx);
-        const installer = createRunner(INSTALL_TIMEOUT_MS);
+        const installer = installRunner(opts.json, INSTALL_TIMEOUT_MS);
 
         if (opts.versions && opts.packageVersions) {
           throw new Error("use either --versions or --package-versions, not both");

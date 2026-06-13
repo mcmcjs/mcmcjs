@@ -22,7 +22,7 @@ import {
   storeDirFor,
   updateLedgerEntry,
 } from "@mcmcjs/core";
-import { createFitRunner, createRunner, type EngineContext } from "@mcmcjs/engine";
+import { createFitRunner, type EngineContext } from "@mcmcjs/engine";
 import {
   ensureProject,
   managedProjectDir,
@@ -40,7 +40,7 @@ import { convertGraph } from "./convert";
 import { resolveData } from "./data-file";
 import { buildDiagnosticsReport, type DiagnosticsReport, formatReportHuman } from "./diagnose";
 import { formatFitResult } from "./fit";
-import { juliaupBin } from "./julia";
+import { installRunner, juliaupBin } from "./julia";
 import { parseFloatOption, parseIntOption } from "./options";
 import { rendererFor } from "./progress";
 import { timeAgo } from "./store-cli";
@@ -499,7 +499,12 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       if (!opts.json && !managedProjectReady(projectDir, pins)) {
         say("Preparing the Julia environment (first run can take a few minutes)...");
       }
-      await ensureProject(resolved.command, createRunner(INSTALL_TIMEOUT_MS), projectDir, pins);
+      await ensureProject(
+        resolved.command,
+        installRunner(opts.json, INSTALL_TIMEOUT_MS),
+        projectDir,
+        pins,
+      );
 
       say(fitBanner(config, resolved.version ?? `channel "${config.channel}"`));
 

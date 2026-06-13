@@ -1,4 +1,10 @@
-import { createRunner, type EngineContext, type RuntimeVersion } from "@mcmcjs/engine";
+import {
+  type CommandRunner,
+  createRunner,
+  createStreamingRunner,
+  type EngineContext,
+  type RuntimeVersion,
+} from "@mcmcjs/engine";
 import {
   addVersion,
   detectJuliaup,
@@ -14,6 +20,15 @@ import pc from "picocolors";
 import { formatTool } from "./doctor";
 
 const INSTALL_TIMEOUT_MS = 15 * 60_000;
+
+/**
+ * The runner for a long install/provision step: streams the subprocess's native
+ * output live to stderr in human mode, stays buffered (silent) under --json so
+ * machine output is byte-stable.
+ */
+export function installRunner(json: boolean | undefined, timeoutMs: number): CommandRunner {
+  return json ? createRunner(timeoutMs) : createStreamingRunner(timeoutMs);
+}
 
 /** Renders installed Julia versions, marking the default with an asterisk. */
 export function formatVersions(versions: RuntimeVersion[]): string {
