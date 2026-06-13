@@ -1,5 +1,22 @@
 # @mcmcjs/julia
 
+## 0.6.0
+
+### Minor Changes
+
+- c678c9f: Support managed-package version pins: managedProjectDir/managedProjectReady/ensureProject take a PackagePins map, key the env by the pins, install pinned versions via Pkg.PackageSpec, and reject pins for unmanaged packages.
+- 3e6ab56: Key the managed Julia environment by version (managedProjectDir(version)) so each Julia version resolves its own compatible Manifest; runMatrix now provisions per version via an injected ensure callback instead of sharing one env.
+
+### Patch Changes
+
+- 9cdac38: runFit/finalizeOkFit accept a data-file reference (FitIo.dataFile) and an override data hash (FitIo.dataSha256), recording the reference rather than a copy of the data.
+- cf7f6d2: Harden the package-pin and matrix features from review: reject version strings that could inject Julia code (only safe version-spec characters allowed), make mcmc fit --versions honor a spec's package pins and record file-data references per version, reject --versions with --package-versions together, fail fast on unmanaged/unsafe pins, isolate juliaup under HOME in --strict sandboxes, and stop leaking the resolved dataFilePath into exported specs.
+- Updated dependencies [9cdac38]
+- Updated dependencies [c678c9f]
+- Updated dependencies [e11251f]
+  - @mcmcjs/core@0.4.0
+  - @mcmcjs/engine@0.3.0
+
 ## 0.5.0
 
 ### Minor Changes

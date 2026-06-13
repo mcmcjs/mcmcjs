@@ -1,5 +1,11 @@
 # @mcmcjs/engine
 
+## 0.3.0
+
+### Minor Changes
+
+- e11251f: Add createStreamingRunner: a CommandRunner that streams a long subprocess's stdout/stderr live to this process's stderr (for install/precompile logs) instead of buffering them.
+
 ## 0.2.0
 
 ### Minor Changes
