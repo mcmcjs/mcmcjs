@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createProgressRenderer } from "../src/progress";
+import { createProgressRenderer, rendererFor } from "../src/progress";
 
 function collect(): { out: string[]; write: (text: string) => void } {
   const out: string[] = [];
@@ -7,22 +7,34 @@ function collect(): { out: string[]; write: (text: string) => void } {
 }
 
 describe("createProgressRenderer start indicator", () => {
-  it("shows a starting line (tty) that the first progress overwrites and finish clears", () => {
+  it("prints a plain newline-terminated line (no parked cursor) on a tty", () => {
     const { out, write } = collect();
-    const r = createProgressRenderer({ tty: true, write });
+    const r = createProgressRenderer({ tty: true, write, starting: "starting Julia..." });
     r.start?.();
-    expect(out[0]).toMatch(/^\rstarting Julia/);
+    expect(out[0]).toBe("starting Julia...\n");
+    // The subsequent bar starts its own \r line, not colliding with the start line.
     r.onProgress({ chain: 1, of: 4, fraction: 0.5, done: false });
-    // The bar line is padded to overwrite the longer "starting" text.
-    expect((out[1] as string).length).toBeGreaterThanOrEqual((out[0] as string).length - 1);
-    r.finish();
-    expect(out.at(-1) as string).toMatch(/^\r +\r$/);
+    expect(out[1]).toMatch(/^\rsampling chain 1 of 4/);
   });
 
-  it("prints a plain starting line when not a tty", () => {
+  it("prints the same plain line when not a tty", () => {
     const { out, write } = collect();
-    createProgressRenderer({ tty: false, write }).start?.();
-    expect(out[0]).toBe("starting Julia and loading Turing...\n");
+    createProgressRenderer({ tty: false, write, starting: "go" }).start?.();
+    expect(out[0]).toBe("go\n");
+  });
+
+  it("has no start when no starting message is given", () => {
+    const r = createProgressRenderer({ tty: true, write: () => {} });
+    expect(r.start).toBeUndefined();
+  });
+});
+
+describe("rendererFor", () => {
+  it("names the backend in the start message and is silent under --json", () => {
+    expect(rendererFor(true)).toEqual({
+      onProgress: expect.any(Function),
+      finish: expect.any(Function),
+    });
   });
 });
 

@@ -22,6 +22,13 @@ import { rendererFor } from "./progress";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
 
+const BACKEND_NAMES: Record<string, string> = { turing: "Turing.jl", juliabugs: "JuliaBUGS" };
+
+/** A human display name for a backend id (e.g. "turing" -> "Turing.jl"). */
+export function backendLabel(id: string): string {
+  return BACKEND_NAMES[id] ?? id;
+}
+
 /** Parses a `name=v1,v2,...` package-matrix argument. */
 export function parsePackageVersions(arg: string): { name: string; versions: string[] } {
   const at = arg.indexOf("=");
@@ -221,7 +228,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
         await ensureProject(resolved.command, installer, projectDir, pins);
 
         if (!opts.json) process.stdout.write(`Fitting ${spec.backend.id} on Julia ${channel}...\n`);
-        const progress = rendererFor(opts.json);
+        const progress = rendererFor(opts.json, backendLabel(spec.backend.id));
         let result: Awaited<ReturnType<typeof runFitAuto>>;
         try {
           result = await runFitAuto(spec, resolved, {

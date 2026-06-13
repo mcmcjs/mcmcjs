@@ -56,7 +56,6 @@ function printJson(value: unknown): void {
 }
 
 export function registerJulia(program: Command, ctx: EngineContext): void {
-  const install = createRunner(INSTALL_TIMEOUT_MS);
   const julia = program.command("julia").description("Manage the Julia runtime");
   const version = julia
     .command("version")
@@ -104,7 +103,12 @@ export function registerJulia(program: Command, ctx: EngineContext): void {
     .option("--json", "print as JSON")
     .action(async (channel: string, opts: { default?: boolean; json?: boolean }) => {
       const bin = await juliaupBin(ctx);
-      await addVersion(bin, channel, { default: opts.default }, install);
+      await addVersion(
+        bin,
+        channel,
+        { default: opts.default },
+        installRunner(opts.json, INSTALL_TIMEOUT_MS),
+      );
       await reportAfter(bin, `${pc.green("added")} ${channel}`, opts.json);
     });
 
@@ -114,7 +118,7 @@ export function registerJulia(program: Command, ctx: EngineContext): void {
     .option("--json", "print as JSON")
     .action(async (channel: string, opts: { json?: boolean }) => {
       const bin = await juliaupBin(ctx);
-      await removeVersion(bin, channel, install);
+      await removeVersion(bin, channel, installRunner(opts.json, INSTALL_TIMEOUT_MS));
       await reportAfter(bin, `${pc.green("removed")} ${channel}`, opts.json);
     });
 
@@ -134,7 +138,7 @@ export function registerJulia(program: Command, ctx: EngineContext): void {
     .option("--json", "print as JSON")
     .action(async (channel: string | undefined, opts: { json?: boolean }) => {
       const bin = await juliaupBin(ctx);
-      await updateVersion(bin, channel, install);
+      await updateVersion(bin, channel, installRunner(opts.json, INSTALL_TIMEOUT_MS));
       await reportAfter(bin, pc.green("updated"), opts.json);
     });
 
@@ -144,7 +148,7 @@ export function registerJulia(program: Command, ctx: EngineContext): void {
     .option("--json", "print as JSON")
     .action(async (opts: { json?: boolean }) => {
       const bin = await juliaupBin(ctx);
-      await gcVersions(bin, install);
+      await gcVersions(bin, installRunner(opts.json, INSTALL_TIMEOUT_MS));
       await reportAfter(bin, pc.green("collected"), opts.json);
     });
 }

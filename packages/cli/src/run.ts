@@ -39,7 +39,7 @@ import { ZodError } from "zod";
 import { convertGraph } from "./convert";
 import { resolveData } from "./data-file";
 import { buildDiagnosticsReport, type DiagnosticsReport, formatReportHuman } from "./diagnose";
-import { formatFitResult } from "./fit";
+import { backendLabel, formatFitResult } from "./fit";
 import { installRunner, juliaupBin } from "./julia";
 import { parseFloatOption, parseIntOption } from "./options";
 import { rendererFor } from "./progress";
@@ -47,8 +47,6 @@ import { timeAgo } from "./store-cli";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
 const MAX_SEED = 2_147_483_647;
-
-const BACKEND_NAMES: Record<string, string> = { turing: "Turing.jl", juliabugs: "JuliaBUGS" };
 
 /** Guess the PPL from the model source; undefined when neither marker is found. */
 export function detectBackend(source: string): "turing" | "juliabugs" | undefined {
@@ -354,7 +352,7 @@ export function refitReasons(prev: LedgerEntry, next: RunInputs, seedPinned: boo
 
 function fitBanner(config: RunConfig, juliaLabel: string): string {
   const s = config.spec.sampler;
-  const backend = BACKEND_NAMES[config.spec.backend.id] ?? config.spec.backend.id;
+  const backend = backendLabel(config.spec.backend.id);
   return `Fitting ${basename(config.modelPath)} with ${backend} (${s.algorithm}, ${s.chains} chains x ${s.draws} draws + ${s.warmup} warmup, seed ${config.spec.seed}) on Julia ${juliaLabel}...`;
 }
 
@@ -536,7 +534,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         modelPath: config.modelPath,
         specHash,
       };
-      const progress = rendererFor(opts.json);
+      const progress = rendererFor(opts.json, backendLabel(config.spec.backend.id));
       let fit: Awaited<ReturnType<typeof runFitAuto>>;
       try {
         fit = await runFitAuto(resolvedSpec, resolved, {
