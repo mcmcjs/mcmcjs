@@ -1,5 +1,30 @@
 # mcmcjs
 
+## 0.7.0
+
+### Minor Changes
+
+- 9cdac38: Treat --data (and a spec's data_file) as a reference: the data is loaded for the fit but recorded by path + file hash, and the frozen spec in the run store references the file instead of inlining a copy, so large datasets no longer bloat the store.
+- e11251f: Stream live logs during the long phases instead of a static line: mcmc setup now shows juliaup's install output, and the "Preparing the Julia environment" step streams Pkg resolve/precompile output (both on stderr, so --json stays clean). A "starting Julia and loading Turing" indicator fills the brief silent gap before per-chain sampling progress.
+- c678c9f: Pin and compare package versions: `[backend.packages]` in a spec, `--package name=version` on run (repeatable, flags win), and `mcmc fit --package-versions Turing=0.44,0.45` to run a spec across versions of a managed package, each in its own environment.
+- fd302ac: Add `mcmc sandbox --strict` (and `pnpm sandbox --strict`): a fully isolated sandbox that redirects the managed environment, Julia/juliaup depots, caches, and worker sockets inside the throwaway directory, so it starts with no Julia installed and `mcmc setup` provisions a fresh toolchain that vanishes on exit.
+
+### Patch Changes
+
+- 3e6ab56: Fix mcmc fit --versions across Julia versions: each version now provisions its own managed environment, so a Manifest resolved by one Julia no longer fails to precompile under another.
+- b2fda34: Polish the live-logs work from review: the "starting" indicator is a plain newline-terminated line (no parked cursor, so it never garbles the daemon's worker notice on a shared terminal) and names the actual backend (Turing.jl or JuliaBUGS); and mcmc julia version add/remove/update/gc now stream juliaup's install output live like mcmc setup.
+- cf7f6d2: Harden the package-pin and matrix features from review: reject version strings that could inject Julia code (only safe version-spec characters allowed), make mcmc fit --versions honor a spec's package pins and record file-data references per version, reject --versions with --package-versions together, fail fast on unmanaged/unsafe pins, isolate juliaup under HOME in --strict sandboxes, and stop leaking the resolved dataFilePath into exported specs.
+- Updated dependencies [9cdac38]
+- Updated dependencies [c678c9f]
+- Updated dependencies [e11251f]
+- Updated dependencies [9cdac38]
+- Updated dependencies [c678c9f]
+- Updated dependencies [3e6ab56]
+- Updated dependencies [cf7f6d2]
+  - @mcmcjs/core@0.4.0
+  - @mcmcjs/engine@0.3.0
+  - @mcmcjs/julia@0.6.0
+
 ## 0.6.0
 
 ### Minor Changes
