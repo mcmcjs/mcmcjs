@@ -1,5 +1,15 @@
 # @mcmcjs/core
 
+## 0.4.0
+
+### Minor Changes
+
+- 9cdac38: Add a top-level spec `data_file` (mutually exclusive with inline `[data]`), resolved to `dataFilePath` by parseSpec, and a `data_file` field on the run record, so data can be referenced by path instead of inlined.
+
+### Patch Changes
+
+- c678c9f: Run keys can include managed-package version pins (RunKeyParts.packages); the key is unchanged when no pins are present, preserving cache hits for existing runs.
+
 ## 0.3.0
 
 ### Minor Changes
