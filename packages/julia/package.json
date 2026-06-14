@@ -1,6 +1,6 @@
 {
   "name": "@mcmcjs/julia",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Julia toolchain detection and the inference runner for MCMC.js.",
   "keywords": [
     "mcmc",
