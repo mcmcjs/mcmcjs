@@ -5,7 +5,6 @@ import { createFitRunner, type EngineContext } from "@mcmcjs/engine";
 import {
   ensureProject,
   managedProjectDir,
-  managedProjectReady,
   resolveVersion,
   runPredict,
   validatePins,
@@ -29,12 +28,13 @@ export function registerPredict(program: Command, ctx: EngineContext): void {
     .description("Draw posterior-predictive samples from a fitted model")
     .option("-o, --out <file>", "samples output path")
     .option("--julia-version <channel>", "Julia version/channel to run (overrides the spec)")
+    .option("--verbose", "show the full raw install/precompile output")
     .option("--json", "print the result as JSON")
     .action(
       async (
         specPath: string,
         samplesPath: string,
-        opts: { out?: string; juliaVersion?: string; json?: boolean },
+        opts: { out?: string; juliaVersion?: string; verbose?: boolean; json?: boolean },
       ) => {
         const spec = parseSpec(specPath);
         validatePins(spec.backend.packages); // fail fast on a bad spec pin
@@ -55,15 +55,14 @@ export function registerPredict(program: Command, ctx: EngineContext): void {
         const resolved = await resolveVersion(bin, channel, ctx.run);
         const pins = spec.backend.packages;
         const projectDir = managedProjectDir(resolved.version, pins);
-
-        if (!opts.json && !managedProjectReady(projectDir, pins)) {
-          process.stdout.write(
-            "Preparing the Julia environment (first run can take a few minutes)...\n",
-          );
-        }
         await ensureProject(
           resolved.command,
-          installRunner(opts.json, INSTALL_TIMEOUT_MS),
+          installRunner({
+            label: "preparing the Julia environment",
+            timeoutMs: INSTALL_TIMEOUT_MS,
+            json: opts.json,
+            verbose: opts.verbose,
+          }),
           projectDir,
           pins,
         );

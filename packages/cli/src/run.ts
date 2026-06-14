@@ -26,7 +26,6 @@ import { createFitRunner, type EngineContext } from "@mcmcjs/engine";
 import {
   ensureProject,
   managedProjectDir,
-  managedProjectReady,
   type PackagePins,
   resolveVersion,
   runFitAuto,
@@ -90,6 +89,7 @@ export interface RunCliOptions {
   store?: string;
   daemon?: boolean;
   package?: string[];
+  verbose?: boolean;
   juliaVersion?: string;
   json?: boolean;
 }
@@ -377,6 +377,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .option("--entry <name>", "model entry function (default build_model)")
     .option("--refit", "fit even when nothing changed since the last run")
     .option("--daemon", "fit through a persistent Julia worker (or set MCMC_DAEMON=1)")
+    .option("--verbose", "show the full raw install/precompile output, not a collapsed spinner")
     .option(
       "--package <name=version>",
       "pin a managed package version (repeatable, e.g. --package Turing=0.45)",
@@ -494,12 +495,14 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       const bin = await juliaupBin(ctx);
       const resolved = await resolveVersion(bin, config.channel, ctx.run);
       const projectDir = managedProjectDir(resolved.version, pins);
-      if (!opts.json && !managedProjectReady(projectDir, pins)) {
-        say("Preparing the Julia environment (first run can take a few minutes)...");
-      }
       await ensureProject(
         resolved.command,
-        installRunner(opts.json, INSTALL_TIMEOUT_MS),
+        installRunner({
+          label: "preparing the Julia environment",
+          timeoutMs: INSTALL_TIMEOUT_MS,
+          json: opts.json,
+          verbose: opts.verbose,
+        }),
         projectDir,
         pins,
       );

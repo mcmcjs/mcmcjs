@@ -45,16 +45,17 @@ export function registerSetup(program: Command): void {
     .command("setup")
     .description("Install the Julia toolchain (juliaup and Julia) that mcmc needs for inference")
     .option("--dry-run", "show what would be installed without making changes")
+    .option("--verbose", "show the full raw install output instead of a collapsed spinner")
     .option("--json", "print the result as JSON")
-    .action(async (opts: { dryRun?: boolean; json?: boolean }) => {
-      if (!opts.json && !opts.dryRun) {
-        process.stdout.write(
-          "Setting up the Julia toolchain (this can take a few minutes; live output below)...\n\n",
-        );
-      }
+    .action(async (opts: { dryRun?: boolean; verbose?: boolean; json?: boolean }) => {
       const result = await runSetup({
         dryRun: opts.dryRun,
-        installer: installRunner(opts.json, INSTALL_TIMEOUT_MS),
+        installer: installRunner({
+          label: "setting up the Julia toolchain",
+          timeoutMs: INSTALL_TIMEOUT_MS,
+          json: opts.json,
+          verbose: opts.verbose,
+        }),
       });
       if (opts.json) {
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

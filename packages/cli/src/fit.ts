@@ -7,7 +7,6 @@ import {
   type MatrixEntry,
   type MatrixResult,
   managedProjectDir,
-  managedProjectReady,
   resolveVersion,
   runFit,
   runFitAuto,
@@ -99,6 +98,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
       "run the spec across these versions of one managed package (e.g. Turing=0.44,0.45)",
     )
     .option("--keep-going", "with --versions/--package-versions, continue after a failure")
+    .option("--verbose", "show the full raw install/precompile output, not a collapsed spinner")
     .option("--json", "print the result as JSON")
     .action(
       async (
@@ -110,6 +110,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
           versions?: string;
           packageVersions?: string;
           keepGoing?: boolean;
+          verbose?: boolean;
           json?: boolean;
         },
       ) => {
@@ -119,7 +120,13 @@ export function registerFit(program: Command, ctx: EngineContext): void {
         const resolvedData = resolveData(spec.data, spec.dataFilePath);
         spec.data = resolvedData.data;
         const bin = await juliaupBin(ctx);
-        const installer = installRunner(opts.json, INSTALL_TIMEOUT_MS);
+        const provision = (label: string) =>
+          installRunner({
+            label,
+            timeoutMs: INSTALL_TIMEOUT_MS,
+            json: opts.json,
+            verbose: opts.verbose,
+          });
 
         if (opts.versions && opts.packageVersions) {
           throw new Error("use either --versions or --package-versions, not both");
@@ -145,13 +152,13 @@ export function registerFit(program: Command, ctx: EngineContext): void {
             spawn: createFitRunner(),
             outDir,
             resolve: (v) => resolveVersion(bin, v, ctx.run),
-            ensure: async (r) => {
-              const dir = managedProjectDir(r.version, pins);
-              if (!opts.json && !managedProjectReady(dir, pins)) {
-                process.stdout.write(`Preparing the Julia ${r.version ?? ""} environment...\n`);
-              }
-              return ensureProject(r.command, installer, dir, pins);
-            },
+            ensure: (r) =>
+              ensureProject(
+                r.command,
+                provision(`preparing the Julia ${r.version ?? ""} environment`),
+                managedProjectDir(r.version, pins),
+                pins,
+              ),
             dataFile: resolvedData.dataFile,
             dataSha256: resolvedData.dataSha256,
             keepGoing: opts.keepGoing,
@@ -180,10 +187,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
             const dir = managedProjectDir(resolved.version, pins);
             let entry: MatrixEntry;
             try {
-              if (!opts.json && !managedProjectReady(dir, pins)) {
-                process.stdout.write(`Preparing ${name} ${v} (this can take a few minutes)...\n`);
-              }
-              await ensureProject(resolved.command, installer, dir, pins);
+              await ensureProject(resolved.command, provision(`preparing ${name} ${v}`), dir, pins);
               const result = await runFit(spec, resolved, {
                 spawn: createFitRunner(),
                 projectDir: dir,
@@ -219,13 +223,12 @@ export function registerFit(program: Command, ctx: EngineContext): void {
         const resolved = await resolveVersion(bin, channel, ctx.run);
         const pins = spec.backend.packages;
         const projectDir = managedProjectDir(resolved.version, pins);
-
-        if (!opts.json && !managedProjectReady(projectDir, pins)) {
-          process.stdout.write(
-            "Preparing the Julia environment (first run can take a few minutes)...\n",
-          );
-        }
-        await ensureProject(resolved.command, installer, projectDir, pins);
+        await ensureProject(
+          resolved.command,
+          provision("preparing the Julia environment"),
+          projectDir,
+          pins,
+        );
 
         if (!opts.json) process.stdout.write(`Fitting ${spec.backend.id} on Julia ${channel}...\n`);
         const progress = rendererFor(opts.json, backendLabel(spec.backend.id));

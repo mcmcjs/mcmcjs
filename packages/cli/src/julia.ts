@@ -18,16 +18,35 @@ import {
 import type { Command } from "commander";
 import pc from "picocolors";
 import { formatTool } from "./doctor";
+import { createCollapsingRunner } from "./install-progress";
 
 const INSTALL_TIMEOUT_MS = 15 * 60_000;
 
+export interface InstallRunnerOpts {
+  /** A short description of the work, shown by the spinner / header. */
+  label: string;
+  timeoutMs: number;
+  /** Buffered and silent (for machine output). */
+  json?: boolean;
+  /** Stream the full raw subprocess output instead of collapsing it. */
+  verbose?: boolean;
+}
+
 /**
- * The runner for a long install/provision step: streams the subprocess's native
- * output live to stderr in human mode, stays buffered (silent) under --json so
- * machine output is byte-stable.
+ * The runner for a long install/provision step. Default: a collapsing spinner
+ * that erases itself when done (no firehose). --verbose: the full raw stream.
+ * --json: buffered and silent so machine output stays byte-stable.
  */
-export function installRunner(json: boolean | undefined, timeoutMs: number): CommandRunner {
-  return json ? createRunner(timeoutMs) : createStreamingRunner(timeoutMs);
+export function installRunner(opts: InstallRunnerOpts): CommandRunner {
+  if (opts.json) return createRunner(opts.timeoutMs);
+  if (opts.verbose) {
+    const stream = createStreamingRunner(opts.timeoutMs);
+    return (command, args) => {
+      process.stderr.write(`${opts.label} (live output)...\n`);
+      return stream(command, args);
+    };
+  }
+  return createCollapsingRunner({ label: opts.label, timeoutMs: opts.timeoutMs });
 }
 
 /** Renders installed Julia versions, marking the default with an asterisk. */
@@ -100,25 +119,36 @@ export function registerJulia(program: Command, ctx: EngineContext): void {
     .command("add <version>")
     .description("Install a Julia version or channel, e.g. 1.10 or release")
     .option("--default", "also set it as the default")
+    .option("--verbose", "show the full raw juliaup output")
     .option("--json", "print as JSON")
-    .action(async (channel: string, opts: { default?: boolean; json?: boolean }) => {
-      const bin = await juliaupBin(ctx);
-      await addVersion(
-        bin,
-        channel,
-        { default: opts.default },
-        installRunner(opts.json, INSTALL_TIMEOUT_MS),
-      );
-      await reportAfter(bin, `${pc.green("added")} ${channel}`, opts.json);
-    });
+    .action(
+      async (channel: string, opts: { default?: boolean; verbose?: boolean; json?: boolean }) => {
+        const bin = await juliaupBin(ctx);
+        const run = installRunner({
+          label: `installing Julia ${channel}`,
+          timeoutMs: INSTALL_TIMEOUT_MS,
+          json: opts.json,
+          verbose: opts.verbose,
+        });
+        await addVersion(bin, channel, { default: opts.default }, run);
+        await reportAfter(bin, `${pc.green("added")} ${channel}`, opts.json);
+      },
+    );
 
   version
     .command("remove <version>")
     .description("Uninstall a Julia version or channel")
+    .option("--verbose", "show the full raw juliaup output")
     .option("--json", "print as JSON")
-    .action(async (channel: string, opts: { json?: boolean }) => {
+    .action(async (channel: string, opts: { verbose?: boolean; json?: boolean }) => {
       const bin = await juliaupBin(ctx);
-      await removeVersion(bin, channel, installRunner(opts.json, INSTALL_TIMEOUT_MS));
+      const run = installRunner({
+        label: `removing Julia ${channel}`,
+        timeoutMs: INSTALL_TIMEOUT_MS,
+        json: opts.json,
+        verbose: opts.verbose,
+      });
+      await removeVersion(bin, channel, run);
       await reportAfter(bin, `${pc.green("removed")} ${channel}`, opts.json);
     });
 
@@ -135,20 +165,34 @@ export function registerJulia(program: Command, ctx: EngineContext): void {
   version
     .command("update [version]")
     .description("Update one channel, or all installed channels")
+    .option("--verbose", "show the full raw juliaup output")
     .option("--json", "print as JSON")
-    .action(async (channel: string | undefined, opts: { json?: boolean }) => {
+    .action(async (channel: string | undefined, opts: { verbose?: boolean; json?: boolean }) => {
       const bin = await juliaupBin(ctx);
-      await updateVersion(bin, channel, installRunner(opts.json, INSTALL_TIMEOUT_MS));
+      const run = installRunner({
+        label: "updating Julia",
+        timeoutMs: INSTALL_TIMEOUT_MS,
+        json: opts.json,
+        verbose: opts.verbose,
+      });
+      await updateVersion(bin, channel, run);
       await reportAfter(bin, pc.green("updated"), opts.json);
     });
 
   version
     .command("gc")
     .description("Reclaim disk from uninstalled Julia versions")
+    .option("--verbose", "show the full raw juliaup output")
     .option("--json", "print as JSON")
-    .action(async (opts: { json?: boolean }) => {
+    .action(async (opts: { verbose?: boolean; json?: boolean }) => {
       const bin = await juliaupBin(ctx);
-      await gcVersions(bin, installRunner(opts.json, INSTALL_TIMEOUT_MS));
+      const run = installRunner({
+        label: "reclaiming disk",
+        timeoutMs: INSTALL_TIMEOUT_MS,
+        json: opts.json,
+        verbose: opts.verbose,
+      });
+      await gcVersions(bin, run);
       await reportAfter(bin, pc.green("collected"), opts.json);
     });
 }
