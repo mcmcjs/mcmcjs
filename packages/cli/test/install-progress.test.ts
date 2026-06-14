@@ -64,19 +64,45 @@ describe("createCollapsingRunner (non-tty)", () => {
 });
 
 describe("createCollapsingRunner (tty)", () => {
-  it("renders an in-place spinner line and erases it on success", async () => {
+  it("shows a live window of recent output and erases the region on success", async () => {
     const out: string[] = [];
     const run = createCollapsingRunner({
       label: "preparing",
       timeoutMs: 60_000,
       isTTY: true,
       columns: 80,
+      rows: 24,
       write: (t) => out.push(t),
     });
-    await run(process.execPath, ["-e", "console.error('Precompiling packages...')"]);
-    // Every render is an in-place carriage-return update (no scrolling lines).
-    expect(out.every((s) => s.startsWith("\r"))).toBe(true);
-    // The last write clears the line (carriage return + spaces + carriage return).
-    expect(out.at(-1)).toMatch(/^\r +\r$/);
+    await run(process.execPath, [
+      "-e",
+      "console.error('Resolving package versions'); console.error('Precompiling MyPkg');",
+    ]);
+    const all = out.join("");
+    // The real log lines were shown live (the header carries the phase).
+    expect(all).toContain("Resolving package versions");
+    expect(all).toContain("preparing: precompiling");
+    // The region is cleared on success: the final write is a clear-to-end-of-display.
+    const esc = String.fromCharCode(27);
+    const last = out.at(-1) ?? "";
+    expect(last.endsWith(`${esc}[0J`)).toBe(true);
+    // Nothing is left drawn after the clear.
+    expect(last).not.toContain("preparing");
+  });
+
+  it("dumps the captured tail on failure (region cleared first)", async () => {
+    const out: string[] = [];
+    const run = createCollapsingRunner({
+      label: "preparing",
+      timeoutMs: 60_000,
+      isTTY: true,
+      columns: 80,
+      rows: 24,
+      write: (t) => out.push(t),
+    });
+    await expect(
+      run(process.execPath, ["-e", "console.error('ERROR: boom'); process.exit(1);"]),
+    ).rejects.toThrow(/exited with code 1/);
+    expect(out.at(-1)).toContain("ERROR: boom");
   });
 });

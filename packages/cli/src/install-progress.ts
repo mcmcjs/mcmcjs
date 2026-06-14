@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process";
 import type { CommandRunner } from "@mcmcjs/engine";
+import pc from "picocolors";
 
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const TICK_MS = 120;
-const TAIL_LINES = 40;
+const WINDOW = 8; // recent log lines kept visible in the live tail
+const TAIL_LINES = 40; // lines kept for the failure dump
 
-// Coarse phase labels derived from juliaup/Pkg output, so the spinner can say
-// what the long wait is doing. Order matters only within a single line.
+// Coarse phase labels derived from juliaup/Pkg output, shown in the live header
+// (and, off a TTY, as one line per change). Order matters only within a line.
 const PHASES: Array<[RegExp, string]> = [
   [/installing julia|checking for new julia/i, "installing Julia"],
   [/resolving package/i, "resolving packages"],
@@ -27,41 +29,66 @@ export interface CollapsingOpts {
   /** Short description of the work (e.g. "preparing the Julia environment"). */
   label: string;
   timeoutMs: number;
-  /** Injectable for tests; defaults to the real terminal. */
+  /** Injectable for tests; default to the real terminal. */
   isTTY?: boolean;
   columns?: number;
+  rows?: number;
   write?: (text: string) => void;
 }
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching ANSI escapes
+const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g;
+
 /**
- * A CommandRunner that collapses a long, chatty subprocess into a single live
- * indicator. On a TTY it shows a spinner with the detected phase and elapsed
- * time, erased on success so no firehose is left in the scrollback. Off a TTY
- * it prints one line per phase change. Either way the output is captured and,
- * on failure, its tail is printed so the real error stays visible. Use
- * createStreamingRunner (--verbose) to see the full raw output instead.
+ * A CommandRunner that shows a long, chatty subprocess live but cleans up after
+ * itself. On a TTY it keeps a small fixed region in place: a spinner header with
+ * the detected phase and elapsed time, above the last few real output lines.
+ * The whole region is erased on success, so the firehose is shown while it
+ * matters and gone once it is done. Off a TTY (no cursor control) it prints one
+ * line per phase instead. Either way the output is captured and, on failure, its
+ * tail is printed so the real error stays visible. Use createStreamingRunner
+ * (--verbose) to keep the full raw output on screen.
  */
 export function createCollapsingRunner(opts: CollapsingOpts): CommandRunner {
   const isTTY = opts.isTTY ?? process.stderr.isTTY === true;
   const write = opts.write ?? ((text: string) => void process.stderr.write(text));
   const columns = () => opts.columns ?? process.stderr.columns ?? 80;
+  const windowCap = () =>
+    Math.max(1, Math.min(WINDOW, (opts.rows ?? process.stderr.rows ?? 24) - 2));
+
+  // One log line, stripped of escapes and any in-place redraw, clipped to width.
+  const clip = (line: string) => {
+    const visible = line.replace(ANSI, "").replace(/.*\r/, "").trimEnd();
+    const max = Math.max(1, columns() - 1);
+    return visible.length > max ? visible.slice(0, max) : visible;
+  };
 
   return (command, args) =>
     new Promise<string>((resolve, reject) => {
       let phase = "";
       let pending = "";
       let frame = 0;
-      let lastLen = 0;
+      let renderedRows = 0;
       let settled = false;
-      const tail: string[] = [];
+      const recent: string[] = []; // live tail window
+      const tail: string[] = []; // failure dump
       const start = performance.now();
       const elapsed = () => Math.round((performance.now() - start) / 1000);
 
-      const renderTty = () => {
-        const text = `${FRAMES[frame % FRAMES.length]} ${opts.label}${phase ? `: ${phase}` : ""}  ${elapsed()}s`;
-        const clipped = text.length > columns() - 1 ? text.slice(0, columns() - 1) : text;
-        write(`\r${clipped.padEnd(lastLen)}`);
-        lastLen = clipped.length;
+      // Move to the top of the region and clear downward (log-update style).
+      const reset = () =>
+        renderedRows > 0 ? `${renderedRows > 1 ? `\x1b[${renderedRows - 1}A` : ""}\r\x1b[0J` : "";
+      const render = () => {
+        const head = `${FRAMES[frame % FRAMES.length]} ${opts.label}${phase ? `: ${phase}` : ""}  ${elapsed()}s`;
+        const lines = [head, ...recent.map((l) => pc.dim(clip(l)))];
+        write(`${reset()}${lines.join("\n")}`);
+        renderedRows = lines.length;
+      };
+      const clearRegion = () => {
+        if (renderedRows > 0) {
+          write(reset());
+          renderedRows = 0;
+        }
       };
 
       let timer: ReturnType<typeof setInterval> | undefined;
@@ -70,7 +97,7 @@ export function createCollapsingRunner(opts: CollapsingOpts): CommandRunner {
         settled = true;
         if (timer) clearInterval(timer);
         clearTimeout(killer);
-        if (isTTY && lastLen > 0) write(`\r${" ".repeat(lastLen)}\r`);
+        if (isTTY) clearRegion();
         fn();
       };
 
@@ -85,10 +112,10 @@ export function createCollapsingRunner(opts: CollapsingOpts): CommandRunner {
       }, opts.timeoutMs);
 
       if (isTTY) {
-        renderTty();
+        render();
         timer = setInterval(() => {
           frame += 1;
-          renderTty();
+          render();
         }, TICK_MS);
       } else {
         write(`${opts.label}...\n`);
@@ -100,10 +127,17 @@ export function createCollapsingRunner(opts: CollapsingOpts): CommandRunner {
           tail.push(text);
           if (tail.length > TAIL_LINES) tail.shift();
         }
-        const next = detectPhase(line, phase);
-        if (next !== phase) {
-          phase = next;
-          if (!isTTY) write(`  ${phase}...\n`);
+        const prev = phase;
+        phase = detectPhase(line, phase);
+        if (isTTY) {
+          if (text) {
+            recent.push(line);
+            while (recent.length > windowCap()) recent.shift();
+          }
+          render();
+        } else if (phase && phase !== prev) {
+          // Off a TTY there is no in-place region; mark each phase change once.
+          write(`  ${phase}...\n`);
         }
       };
       const onData = (chunk: Buffer) => {
