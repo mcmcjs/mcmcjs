@@ -155,7 +155,11 @@ export function registerFit(program: Command, ctx: EngineContext): void {
             ensure: (r) =>
               ensureProject(
                 r.command,
-                provision(`preparing the Julia ${r.version ?? ""} environment`),
+                provision(
+                  r.version
+                    ? `preparing the Julia ${r.version} environment`
+                    : "preparing the Julia environment",
+                ),
                 managedProjectDir(r.version, pins),
                 pins,
               ),
