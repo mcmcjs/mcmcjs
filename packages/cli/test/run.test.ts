@@ -5,6 +5,7 @@ import { type LedgerEntry, serializeSpecToml } from "@mcmcjs/core";
 import { describe, expect, it } from "vitest";
 import type { DiagnosticsReport } from "../src/diagnose";
 import {
+  autoDetectDataFile,
   buildRunConfig,
   canReuse,
   detectBackend,
@@ -56,6 +57,21 @@ describe("detectBackend", () => {
   });
 });
 
+describe("autoDetectDataFile", () => {
+  it("prefers a model-named CSV over the generic data.csv", () => {
+    const dir = tmp();
+    const model = writeModel(dir);
+    writeFileSync(join(dir, "data.csv"), "x\n1\n");
+    writeFileSync(join(dir, "model.csv"), "x\n2\n");
+    expect(autoDetectDataFile(model)).toBe(join(dir, "model.csv"));
+  });
+
+  it("returns undefined when nothing matches", () => {
+    const dir = tmp();
+    expect(autoDetectDataFile(join(dir, "model.jl"))).toBeUndefined();
+  });
+});
+
 describe("buildRunConfig: model file with no spec", () => {
   it("builds defaults, detects the backend, and never writes a sibling spec", () => {
     const dir = tmp();
@@ -92,6 +108,34 @@ describe("buildRunConfig: model file with no spec", () => {
     // --data is recorded as a reference; the contents are loaded at run time.
     expect(config.dataFile).toBe(dataPath);
     expect(config.spec.data).toEqual({});
+  });
+
+  it("auto-detects a sibling data.csv when no --data is given", () => {
+    const dir = tmp();
+    const model = writeModel(dir);
+    const dataPath = join(dir, "data.csv");
+    writeFileSync(dataPath, "x,y\n1,2\n3,4\n");
+    const config = buildRunConfig(model, {});
+    expect(config.dataFile).toBe(dataPath);
+    expect(config.notes.some((n) => n.includes("using data from"))).toBe(true);
+  });
+
+  it("does not auto-detect when there is no sibling data file", () => {
+    const dir = tmp();
+    const model = writeModel(dir);
+    const config = buildRunConfig(model, {});
+    expect(config.dataFile).toBeUndefined();
+    expect(config.notes).toEqual([]);
+  });
+
+  it("lets --data win over an auto-detectable sibling", () => {
+    const dir = tmp();
+    const model = writeModel(dir);
+    writeFileSync(join(dir, "data.csv"), "x,y\n1,2\n");
+    const chosen = join(dir, "other.csv");
+    writeFileSync(chosen, "x,y\n9,9\n");
+    const config = buildRunConfig(model, { data: chosen });
+    expect(config.dataFile).toBe(chosen);
   });
 
   it("fails fast on invalid settings", () => {

@@ -112,7 +112,7 @@ export function registerSandbox(program: Command): void {
                 `  ${pc.yellow("strict:")} no Julia here yet, run ${pc.bold("mcmc setup")} first (installs into the sandbox)`,
               ]
             : []),
-          `  try:    ${pc.bold("mcmc run model.jl --data data.csv")}`,
+          `  try:    ${pc.bold("mcmc run model.jl")}  ${pc.dim("(picks up data.csv automatically)")}`,
           "  leaving the shell deletes the sandbox (you will be asked first)",
           "",
         ].join("\n"),

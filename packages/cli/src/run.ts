@@ -156,6 +156,17 @@ function dataFileFor(opts: RunCliOptions, specDataFile?: string): string | undef
   return opts.data ? resolve(opts.data) : specDataFile;
 }
 
+/** A sibling data file conventionally paired with a bare model, when one exists. */
+export function autoDetectDataFile(modelPath: string): string | undefined {
+  const dir = dirname(modelPath);
+  const base = basename(modelPath, extname(modelPath));
+  for (const name of [`${base}.csv`, "data.csv", "data.json"]) {
+    const candidate = join(dir, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 export interface RunConfig {
   spec: Spec;
   /** Absolute path to the model file that will run. */
@@ -243,13 +254,23 @@ export function buildRunConfig(inputPath: string, opts: RunCliOptions): RunConfi
       ...(opts.adaptDelta !== undefined ? { adapt_delta: opts.adaptDelta } : {}),
     },
   });
+  // With no spec and no --data, fall back to a sibling data file (e.g. data.csv
+  // next to the model) so the bare `mcmc run model.jl` works; --data still wins.
+  let dataFile = dataFileFor(opts);
+  if (!dataFile) {
+    const detected = autoDetectDataFile(modelPath);
+    if (detected) {
+      dataFile = detected;
+      notes.push(`using data from ${displayPath(detected)} (pass --data to override)`);
+    }
+  }
   return {
     spec,
     modelPath,
     channel: opts.juliaVersion ?? spec.backend.version,
-    dataFile: dataFileFor(opts),
+    dataFile,
     specSource: "defaults",
-    notes: [],
+    notes,
   };
 }
 
@@ -401,6 +422,12 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       const inputPath = resolve(input);
       const config = buildRunConfig(inputPath, opts);
       for (const note of config.notes) say(note);
+
+      // Fail clearly on a missing data file (a --data typo or a stale data_file)
+      // rather than letting the loader throw a raw ENOENT mid-run.
+      if (config.dataFile && !existsSync(config.dataFile)) {
+        throw new Error(`data file not found: ${displayPath(config.dataFile)}`);
+      }
 
       // Flag pins win over spec pins; the effective pins are recorded in the run.
       const pins = mergePins(config.spec.backend.packages, parsePackagePins(opts.package));
@@ -573,11 +600,26 @@ export function registerRun(program: Command, ctx: EngineContext): void {
 
       if (fit.status !== "ok") {
         appendLedgerEntry(storeDir, { ...entry, error: fit.error });
-        process.stdout.write(
-          opts.json
-            ? `${JSON.stringify({ run: { id: runId, dir, cached: false }, fit }, null, 2)}\n`
-            : `${formatFitResult(fit, config.channel, join(dir, "run.json"))}\n`,
-        );
+        if (opts.json) {
+          process.stdout.write(
+            `${JSON.stringify({ run: { id: runId, dir, cached: false }, fit }, null, 2)}\n`,
+          );
+        } else {
+          process.stdout.write(`${formatFitResult(fit, config.channel, join(dir, "run.json"))}\n`);
+          // A data-field error with no data provided almost always means the
+          // model needs data nobody passed; point at the fix instead of the raw error.
+          const noData = !config.dataFile && Object.keys(config.spec.data).length === 0;
+          if (noData && /has no field|NamedTuple has no fields/i.test(fit.error ?? "")) {
+            const detected = autoDetectDataFile(config.modelPath);
+            process.stdout.write(
+              `${pc.dim(
+                detected
+                  ? `hint: this model needs data; try: mcmc run ${basename(config.modelPath)} --data ${displayPath(detected)}`
+                  : "hint: this model reads data fields, but no --data or [data] block was provided",
+              )}\n`,
+            );
+          }
+        }
         process.exitCode = 1;
         return;
       }
