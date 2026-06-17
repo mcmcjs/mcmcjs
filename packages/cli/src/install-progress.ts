@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
-import type { CommandRunner } from "@mcmcjs/engine";
+import { type CommandRunner, interruptGuard, killTree } from "@mcmcjs/engine";
 import pc from "picocolors";
 
+// Match the engine's detached spawn so killTree can take down the whole group.
+const DETACHED = process.platform !== "win32";
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const TICK_MS = 120;
 const WINDOW = 8; // recent log lines kept visible in the live tail
@@ -97,13 +99,16 @@ export function createCollapsingRunner(opts: CollapsingOpts): CommandRunner {
         settled = true;
         if (timer) clearInterval(timer);
         clearTimeout(killer);
+        dispose();
         if (isTTY) clearRegion();
         fn();
       };
 
-      const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+      const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], detached: DETACHED });
+      // On Ctrl+C, erase the live region before the kill so the terminal is left clean.
+      const dispose = interruptGuard(child, () => isTTY && clearRegion());
       const killer = setTimeout(() => {
-        child.kill("SIGKILL");
+        killTree(child);
         finish(() =>
           reject(
             new Error(`${command} timed out after ${Math.round(opts.timeoutMs / 60_000)} min`),

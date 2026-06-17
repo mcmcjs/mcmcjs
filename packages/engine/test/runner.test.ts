@@ -1,10 +1,42 @@
+import { spawn } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import {
   createFitRunner,
   createStreamingRunner,
   type FitProgress,
+  interruptGuard,
+  killTree,
   parseProgressLine,
 } from "../src/runner";
+
+const DETACHED = process.platform !== "win32";
+
+describe("interruptGuard", () => {
+  it("registers SIGINT/SIGTERM handlers and removes them on dispose", () => {
+    const before = process.listenerCount("SIGINT");
+    const beforeTerm = process.listenerCount("SIGTERM");
+    // A fake child: the guard only kills it on a signal, which this test never sends.
+    const dispose = interruptGuard({ pid: undefined, kill: () => true } as never);
+    expect(process.listenerCount("SIGINT")).toBe(before + 1);
+    expect(process.listenerCount("SIGTERM")).toBe(beforeTerm + 1);
+    dispose();
+    expect(process.listenerCount("SIGINT")).toBe(before);
+    expect(process.listenerCount("SIGTERM")).toBe(beforeTerm);
+  });
+});
+
+describe("killTree", () => {
+  it("force-kills a running child", async () => {
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      detached: DETACHED,
+      stdio: "ignore",
+    });
+    const closed = new Promise<void>((res) => child.on("close", () => res()));
+    // A live child never closes on its own here; resolution proves the kill worked.
+    killTree(child);
+    await expect(closed).resolves.toBeUndefined();
+  });
+});
 
 describe("createStreamingRunner", () => {
   it("resolves on a zero exit (output streamed, not captured)", async () => {

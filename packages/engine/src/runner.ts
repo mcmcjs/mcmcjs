@@ -1,7 +1,47 @@
-import { execFile, spawn } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+
+// On POSIX the child is its own process group leader (detached), so Ctrl+C can
+// take down the whole tree (Julia plus any precompile workers) in one signal.
+const DETACHED = process.platform !== "win32";
+
+/** Force-kills a child and, on POSIX, its whole process group. */
+export function killTree(child: ChildProcess): void {
+  const pid = child.pid;
+  if (pid === undefined) return;
+  try {
+    if (DETACHED) process.kill(-pid, "SIGKILL");
+    else child.kill("SIGKILL");
+  } catch {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // already gone
+    }
+  }
+}
+
+/**
+ * Force-kills the child (and its group) when this process is interrupted, then
+ * exits 130. Without it, Ctrl+C takes Node's default exit while a Julia child
+ * that defers SIGINT (mid-sampling or mid-precompile) keeps running. Returns a
+ * disposer that removes the handlers once the child has settled.
+ */
+export function interruptGuard(child: ChildProcess, cleanup?: () => void): () => void {
+  const onSignal = () => {
+    cleanup?.();
+    killTree(child);
+    process.exit(130);
+  };
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
+  return () => {
+    process.removeListener("SIGINT", onSignal);
+    process.removeListener("SIGTERM", onSignal);
+  };
+}
 
 /** Information about a detected command-line tool. */
 export interface ToolInfo {
@@ -36,15 +76,17 @@ export function createStreamingRunner(timeoutMs = 30 * 60_000): CommandRunner {
   return (command, args) =>
     new Promise<string>((resolve, reject) => {
       let settled = false;
+      const child = spawn(command, args, { stdio: ["ignore", 2, 2], detached: DETACHED });
+      const dispose = interruptGuard(child);
       const settle = (fn: () => void) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        dispose();
         fn();
       };
-      const child = spawn(command, args, { stdio: ["ignore", 2, 2] });
       const timer = setTimeout(() => {
-        child.kill("SIGKILL");
+        killTree(child);
         settle(() =>
           reject(new Error(`${command} timed out after ${Math.round(timeoutMs / 60_000)} min`)),
         );
@@ -110,17 +152,19 @@ export function createFitRunner(timeoutMs = 30 * 60_000): FitRunner {
       let timedOut = false;
       let settled = false;
 
+      const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], detached: DETACHED });
+      const dispose = interruptGuard(child);
       const settle = (result: { stdout: string; stderr: string; code: number }) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        dispose();
         done(result);
       };
 
-      const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
       const timer = setTimeout(() => {
         timedOut = true;
-        child.kill("SIGKILL");
+        killTree(child);
       }, opts?.timeoutMs ?? timeoutMs);
 
       const takeLine = (line: string) => {

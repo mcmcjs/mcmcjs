@@ -14,5 +14,7 @@ export {
   createFitRunner,
   createRunner,
   createStreamingRunner,
+  interruptGuard,
+  killTree,
   parseProgressLine,
 } from "./runner";
