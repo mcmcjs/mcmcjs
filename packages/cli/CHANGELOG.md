@@ -1,5 +1,18 @@
 # mcmcjs
 
+## 0.9.0
+
+### Minor Changes
+
+- c0ae99c: `mcmc run model.jl` now picks up a sibling data file automatically: with no `--data` and no spec, it uses `<model>.csv`, `data.csv`, or `data.json` from the model's directory (a note says which; `--data` still overrides). A missing `--data`/`data_file` path now fails with a clear "data file not found" message, and a fit that fails reading data fields with no data provided prints a hint pointing at `--data`. The sandbox's seeded model runs with a bare `mcmc run model.jl`.
+
+### Patch Changes
+
+- acacc1a: Ctrl+C during a fit or install now aborts cleanly: the Julia process group is killed and the CLI exits 130, rather than the run continuing in the background. The live install region is erased before exit so the terminal is left clean.
+- Updated dependencies [acacc1a]
+  - @mcmcjs/engine@0.4.0
+  - @mcmcjs/julia@0.6.1
+
 ## 0.8.0
 
 ### Minor Changes
