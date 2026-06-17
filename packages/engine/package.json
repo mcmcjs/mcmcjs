@@ -1,6 +1,6 @@
 {
   "name": "@mcmcjs/engine",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Runtime and PPL engine contract and registry for MCMC.js.",
   "keywords": [
     "mcmc",

@@ -1,5 +1,12 @@
 # @mcmcjs/julia
 
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [acacc1a]
+  - @mcmcjs/engine@0.4.0
+
 ## 0.6.0
 
 ### Minor Changes
