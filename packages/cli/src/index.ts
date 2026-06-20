@@ -18,8 +18,10 @@ import { registerSandbox } from "./sandbox";
 import { registerSetup } from "./setup";
 import { registerShow } from "./show";
 import { maybeNotifyUpdate, registerUpdateCheck } from "./update-check";
+import { type VersionMeta, versionText } from "./version";
 
 declare const __MCMC_VERSION__: string;
+declare const __MCMC_META__: VersionMeta;
 
 // Exit quietly when stdout closes early (e.g. piped through `head`),
 // preserving any exit code the command already decided on.
@@ -34,7 +36,7 @@ program
   .description(
     "Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics",
   )
-  .version(__MCMC_VERSION__);
+  .version(versionText(__MCMC_VERSION__, __MCMC_META__));
 
 const ctx: EngineContext = { run: createRunner(), platform: process.platform };
 const registry = createRegistry("julia");

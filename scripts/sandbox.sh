@@ -19,7 +19,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 
 echo "Building workspace packages..."
-pnpm build
+# append-only so the parallel per-package tsup logs stack instead of garbling.
+pnpm --reporter=append-only build
 
 PARENT="${TMPDIR:-/tmp}/mcmcjs-$(id -u)"
 mkdir -p "$PARENT"
@@ -45,6 +46,10 @@ echo "Installing into an isolated prefix at $SANDBOX ..."
 )
 PATH="$SANDBOX/node_modules/.bin:$PATH"
 export PATH
+# You are testing this local build on purpose; don't nag to `npm install -g`
+# the published release (which would replace the very thing under test).
+MCMC_NO_UPDATE_CHECK=1
+export MCMC_NO_UPDATE_CHECK
 
 cp "$ROOT"/packages/cli/templates/* "$SANDBOX/"
 ln -sfn "$SANDBOX" "$LINK"
