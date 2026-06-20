@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { sharedTmpParent } from "@mcmcjs/julia";
@@ -66,17 +66,96 @@ function runShell(dir: string, extraEnv: Record<string, string> = {}): Promise<n
   });
 }
 
-function askKeep(dir: string): Promise<boolean> {
+/**
+ * The exit prompt. Returns "keep"/"delete", or "abort" for a panic key (Ctrl+C)
+ * or EOF (Ctrl+D) — which must never trigger the destructive default. Without
+ * the SIGINT/close handling, Ctrl+C would kill the process before either branch
+ * ran, orphaning the sandbox with no message.
+ */
+function askKeep(): Promise<"keep" | "delete" | "abort"> {
   const rl = createInterface({ input: process.stdin, output: process.stderr });
   return new Promise((resolve) => {
-    rl.question(
-      `\nThis sandbox and everything in it will be deleted.\nKeep ${dir}? [y/N] `,
-      (answer) => {
-        rl.close();
-        resolve(/^y(es)?$/i.test(answer.trim()));
-      },
+    let settled = false;
+    const done = (result: "keep" | "delete" | "abort") => {
+      if (settled) return;
+      settled = true;
+      rl.close();
+      resolve(result);
+    };
+    rl.question("\nKeep this sandbox? Press Enter or n to delete, or y to keep: ", (answer) =>
+      done(/^y(es)?$/i.test(answer.trim()) ? "keep" : "delete"),
     );
+    rl.on("SIGINT", () => done("abort"));
+    rl.on("close", () => done("abort")); // EOF / Ctrl+D with no answer
   });
+}
+
+export interface SandboxKeepOpts {
+  keep?: boolean;
+  delete?: boolean;
+  keepDir?: string;
+  name?: string;
+}
+
+export type KeepPlan = { mode: "delete" } | { mode: "keep"; target?: string } | { mode: "prompt" };
+
+/** Validates a kept-sandbox name as a single safe path segment. */
+export function safeSegment(name: string): string {
+  const n = name.trim();
+  if (n === "" || n === "." || n === ".." || !/^[A-Za-z0-9._-]+$/.test(n)) {
+    throw new Error(`--name must be a single path segment (letters, digits, . _ -); got "${name}"`);
+  }
+  return n;
+}
+
+/** The kept-sandbox destination from flags; undefined means keep it in place. */
+function keepTarget(opts: SandboxKeepOpts, launchCwd: string): string | undefined {
+  const name = opts.name !== undefined ? safeSegment(opts.name) : undefined;
+  if (opts.keepDir !== undefined) {
+    const base = resolve(launchCwd, opts.keepDir);
+    return name ? join(base, name) : base;
+  }
+  if (name) return join(launchCwd, name);
+  return undefined; // --keep alone: leave it where it is
+}
+
+/**
+ * Resolves the exit disposition from flags. With no disposition flag the user
+ * is prompted; flags decide up front so the command is scriptable.
+ */
+export function resolveKeep(opts: SandboxKeepOpts, launchCwd: string): KeepPlan {
+  const wantsKeep = Boolean(opts.keep || opts.keepDir !== undefined || opts.name !== undefined);
+  if (opts.delete && wantsKeep) {
+    throw new Error("use either --delete or --keep/--keep-dir/--name, not both");
+  }
+  if (opts.delete) return { mode: "delete" };
+  if (!wantsKeep) return { mode: "prompt" };
+  return { mode: "keep", target: keepTarget(opts, launchCwd) };
+}
+
+/** A free path: appends -2, -3, ... when the target already exists. */
+export function uniqueTarget(path: string): string {
+  if (!existsSync(path)) return path;
+  for (let n = 2; ; n += 1) {
+    const candidate = `${path}-${n}`;
+    if (!existsSync(candidate)) return candidate;
+  }
+}
+
+/**
+ * Moves a kept sandbox out of the temp dir. Copies first, then removes the
+ * source, so a cross-filesystem move (the temp dir is often a separate mount,
+ * where rename fails EXDEV) still works and a failed copy never loses the source.
+ */
+export function relocate(src: string, target: string): string {
+  mkdirSync(dirname(target), { recursive: true });
+  cpSync(src, target, { recursive: true });
+  rmSync(src, { recursive: true, force: true });
+  return target;
+}
+
+interface SandboxOpts extends SandboxKeepOpts {
+  strict?: boolean;
 }
 
 export function registerSandbox(program: Command): void {
@@ -87,16 +166,25 @@ export function registerSandbox(program: Command): void {
       "--strict",
       "isolate Julia entirely: a fresh environment with no Julia installed, all of it inside the sandbox",
     )
+    .option("--keep", "keep the sandbox on exit instead of prompting")
+    .option("--delete", "delete the sandbox on exit without prompting")
+    .option("--keep-dir <path>", "keep the sandbox, saved to this path (implies --keep)")
+    .option("--name <name>", "name for the kept sandbox directory (implies --keep)")
     .addHelpText(
       "after",
-      "\nLeaving the shell (exit or Ctrl+D) deletes the sandbox after a confirmation;" +
-        "\nanswer y at the prompt to keep the directory instead." +
-        "\n--strict starts with no Julia installed; run `mcmc setup` inside to provision it.",
+      "\nLeaving the shell (exit or Ctrl+D) prompts to keep or delete; press Enter to delete." +
+        "\nPre-decide without the prompt: --keep, --delete, or --keep-dir <path> [--name <n>]." +
+        "\n--strict starts with no Julia installed; run `mcmc setup` inside to provision it." +
+        "\nFor scripts and agents, `mcmc init <dir>` seeds the same files without a shell.",
     )
-    .action(async (opts: { strict?: boolean }) => {
+    .action(async (opts: SandboxOpts) => {
+      const launchCwd = process.cwd();
+      const plan = resolveKeep(opts, launchCwd); // validates flag conflicts up front
       if (!process.stdin.isTTY || !process.stdout.isTTY) {
         throw new Error(
-          "mcmc sandbox needs an interactive terminal (it opens a shell and prompts on exit)",
+          "mcmc sandbox opens an interactive shell, so it needs a terminal.\n" +
+            "For scripts or AI agents, run `mcmc init <dir>` to seed the example files, then the\n" +
+            "non-interactive commands, e.g. `mcmc run model.jl --json`.",
         );
       }
       const dir = makeSandboxDir();
@@ -120,11 +208,36 @@ export function registerSandbox(program: Command): void {
 
       const code = await runShell(dir, extraEnv);
 
-      if (await askKeep(dir)) {
-        process.stdout.write(`kept ${dir}\n`);
-      } else {
+      let decision = plan.mode;
+      if (decision === "prompt") {
+        const answer = await askKeep();
+        if (answer === "abort") {
+          // A panic key must not destroy the sandbox; leave it and say where.
+          process.stderr.write(
+            `\naborted; sandbox left at ${dir}\n  delete it with: rm -rf ${dir}\n`,
+          );
+          process.exitCode = code;
+          return;
+        }
+        decision = answer;
+      }
+
+      if (decision === "delete") {
         rmSync(dir, { recursive: true, force: true });
         process.stdout.write("sandbox deleted\n");
+      } else if (plan.mode === "keep" && plan.target) {
+        if (opts.strict) {
+          process.stderr.write(
+            pc.yellow(
+              "note: a strict sandbox carries a full Julia depot under env/; this copies it and the\n" +
+                "      Julia install is pinned to the old path, so it will not run from the new location\n",
+            ),
+          );
+        }
+        const saved = relocate(dir, uniqueTarget(plan.target));
+        process.stdout.write(`saved to ${saved}\n`);
+      } else {
+        process.stdout.write(`kept at ${dir}\n`);
       }
       process.exitCode = code;
     });
