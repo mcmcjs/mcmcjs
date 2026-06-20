@@ -36,7 +36,14 @@ program
   .description(
     "Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics",
   )
-  .version(versionText(__MCMC_VERSION__, __MCMC_META__));
+  .version(versionText(__MCMC_VERSION__, __MCMC_META__))
+  .showSuggestionAfterError()
+  .showHelpAfterError("(run `mcmc --help` to see all commands)")
+  .addHelpText(
+    "after",
+    "\nRun `mcmc <command> --help` for a command's options and details (e.g. `mcmc fit --help`)." +
+      "\n`[options]` marks commands that take flags; `julia`, `daemon`, and `runs` group further subcommands.",
+  );
 
 const ctx: EngineContext = { run: createRunner(), platform: process.platform };
 const registry = createRegistry("julia");
