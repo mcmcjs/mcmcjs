@@ -1,5 +1,13 @@
 # mcmcjs
 
+## 0.10.0
+
+### Minor Changes
+
+- fe09171: Add `mcmc init [dir]` — a non-interactive scaffold that seeds a directory with a runnable example model, data, and README, then exits (no shell, no prompts, works under piped stdio). This is the agent- and CI-friendly counterpart to `mcmc sandbox`: refuses a non-empty directory unless `--force`, supports `--json`, and pairs with `mcmc run`. The `mcmc sandbox` non-TTY error now points scripts and agents to it.
+- 5114d0f: Fix `mcmc sandbox` exit handling and make the keep decision scriptable. Ctrl+C or Ctrl+D at the keep prompt no longer kills the process mid-decision and orphans the temp directory silently; it now leaves the sandbox in place and prints where it is (a panic key never deletes). The prompt wording is clearer (Enter or n deletes, y keeps), and new flags pre-decide without prompting: `--keep`, `--delete`, and `--keep-dir <path>` / `--name <n>` to keep and relocate the sandbox (copied then removed, so it works across filesystems).
+- 0b69530: `mcmc --version` now prints GNU-style multi-line output: the version on the first line (`mcmc (mcmcjs) X.Y.Z`, still machine-parseable with `head -1`), followed by the one-line description, copyright with the build year, license, and homepage. The metadata is baked in at build time, so the published binary carries it with no runtime package.json. (The update-available note still appears separately on stderr for TTY sessions.)
+
 ## 0.9.0
 
 ### Minor Changes
