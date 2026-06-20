@@ -87,6 +87,8 @@ export function formatMatrix(result: MatrixResult): string {
 export function registerFit(program: Command, ctx: EngineContext): void {
   program
     .command("fit")
+    .summary("run MCMC inference, write a samples file")
+    .helpGroup("Run inference:")
     .argument("<spec>", "inference spec file (TOML or JSON)")
     .description("Run MCMC inference for a spec and write a samples file")
     .option("-o, --out <path>", "samples output file, or directory when --versions is used")

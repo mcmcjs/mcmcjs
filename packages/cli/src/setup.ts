@@ -43,6 +43,8 @@ export function formatSetupResult(result: SetupResult, dryRun = false): string {
 export function registerSetup(program: Command): void {
   program
     .command("setup")
+    .summary("install the Julia toolchain (juliaup)")
+    .helpGroup("Toolchain:")
     .description("Install the Julia toolchain (juliaup and Julia) that mcmc needs for inference")
     .option("--dry-run", "show what would be installed without making changes")
     .option("--verbose", "show the full raw install output instead of a collapsed spinner")

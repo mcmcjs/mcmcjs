@@ -23,6 +23,8 @@ export function defaultPredictOut(samplesPath: string): string {
 export function registerPredict(program: Command, ctx: EngineContext): void {
   program
     .command("predict")
+    .summary("draw posterior-predictive samples")
+    .helpGroup("Run inference:")
     .argument("<spec>", "inference spec file (TOML or JSON)")
     .argument("<samples>", "posterior samples file from a previous fit")
     .description("Draw posterior-predictive samples from a fitted model")

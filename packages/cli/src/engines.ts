@@ -9,6 +9,8 @@ export function registerEngines(
 ): void {
   program
     .command("engines")
+    .summary("list known inference engines")
+    .helpGroup("Toolchain:")
     .description("List the inference engines mcmc knows about")
     .option("--json", "print the list as JSON")
     .action(async (opts: { json?: boolean }) => {

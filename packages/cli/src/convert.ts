@@ -101,6 +101,8 @@ function parseSeed(value: string): number {
 export function registerConvert(program: Command): void {
   program
     .command("convert")
+    .summary("DoodleBUGS graph -> model file + spec")
+    .helpGroup("Start a project:")
     .argument("<graph>", "DoodleBUGS graph file (.json)")
     .description("Convert a DoodleBUGS graph into a JuliaBUGS model file and a fit-able spec")
     .option("-o, --out <prefix>", "output path prefix (default: the graph file without .json)")

@@ -50,6 +50,8 @@ function exportedSpecToml(source: string, destDir: string, liveModelPath: string
 export function registerExport(program: Command): void {
   program
     .command("export")
+    .summary("copy a run's artifact to a visible file")
+    .helpGroup("Inspect runs:")
     .argument("<what>", "what to materialize: samples, spec, or record")
     .description("Copy a run's artifact out of the store into a visible file")
     .option("--run <ref>", "run ref: latest (default), @N, or a run-id prefix")

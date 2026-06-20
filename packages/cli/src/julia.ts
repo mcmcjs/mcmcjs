@@ -75,9 +75,31 @@ function printJson(value: unknown): void {
 }
 
 export function registerJulia(program: Command, ctx: EngineContext): void {
-  const julia = program.command("julia").description("Manage the Julia runtime");
+  // The read-only status view, shared by bare `mcmc julia`, `julia version`
+  // (the default), and `julia version status` so all show the same thing.
+  const printStatus = async (json?: boolean): Promise<void> => {
+    const bin = await juliaupBin(ctx);
+    const [versions, report] = await Promise.all([listVersions(bin, ctx.run), runDoctor(ctx.run)]);
+    if (json) {
+      printJson({ versions, juliaup: report.juliaup, julia: report.julia, ready: report.ready });
+      return;
+    }
+    process.stdout.write(`${formatTool({ name: "juliaup", ...report.juliaup })}\n`);
+    process.stdout.write(`${formatTool({ name: "julia", ...report.julia })}\n\n`);
+    process.stdout.write(`${formatVersions(versions)}\n`);
+  };
+
+  const julia = program
+    .command("julia")
+    .summary("manage the Julia runtime")
+    .helpGroup("Toolchain:")
+    .description("Manage the Julia runtime");
+  // `version` is julia's default and `status` is version's default, so bare
+  // `mcmc julia` and `mcmc julia version` show the status and exit 0, matching
+  // `mcmc runs`/`mcmc daemon`. No --json/action on the julia parent: a parent
+  // option would be consumed there and swallow --json from every subcommand.
   const version = julia
-    .command("version")
+    .command("version", { isDefault: true })
     .description("Manage installed Julia versions (via juliaup)");
 
   version
@@ -91,23 +113,10 @@ export function registerJulia(program: Command, ctx: EngineContext): void {
     });
 
   version
-    .command("status")
+    .command("status", { isDefault: true })
     .description("Show installed versions plus the juliaup and Julia toolchain")
     .option("--json", "print as JSON")
-    .action(async (opts: { json?: boolean }) => {
-      const bin = await juliaupBin(ctx);
-      const [versions, report] = await Promise.all([
-        listVersions(bin, ctx.run),
-        runDoctor(ctx.run),
-      ]);
-      if (opts.json) {
-        printJson({ versions, juliaup: report.juliaup, julia: report.julia, ready: report.ready });
-        return;
-      }
-      process.stdout.write(`${formatTool({ name: "juliaup", ...report.juliaup })}\n`);
-      process.stdout.write(`${formatTool({ name: "julia", ...report.julia })}\n\n`);
-      process.stdout.write(`${formatVersions(versions)}\n`);
-    });
+    .action((opts: { json?: boolean }) => printStatus(opts.json));
 
   const reportAfter = async (bin: string, label: string, json?: boolean): Promise<void> => {
     const versions = await listVersions(bin, ctx.run);

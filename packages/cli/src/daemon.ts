@@ -5,6 +5,8 @@ import pc from "picocolors";
 export function registerDaemon(program: Command): void {
   const daemon = program
     .command("daemon")
+    .summary("manage persistent Julia workers")
+    .helpGroup("Toolchain:")
     .description("Manage the persistent Julia workers behind --daemon runs");
 
   daemon

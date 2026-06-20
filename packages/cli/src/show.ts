@@ -88,6 +88,8 @@ export function formatRunDetail(
 export function registerShow(program: Command): void {
   program
     .command("show")
+    .summary("show one run's settings and artifacts")
+    .helpGroup("Inspect runs:")
     .argument("[ref]", "run ref: latest (default), @N, or a run-id prefix")
     .description("Show one run's settings, provenance, and artifacts")
     .option("--store <dir>", "run store directory (default: nearest .mcmc above cwd)")

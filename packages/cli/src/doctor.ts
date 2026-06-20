@@ -14,6 +14,8 @@ export function registerDoctor(
 ): void {
   program
     .command("doctor")
+    .summary("report the toolchain mcmc needs")
+    .helpGroup("Toolchain:")
     .description("Report the toolchain that mcmc needs for inference")
     .option("--engine <id>", "engine to check")
     .option("--json", "print the report as JSON")

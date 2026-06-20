@@ -385,6 +385,8 @@ function displayPath(path: string): string {
 export function registerRun(program: Command, ctx: EngineContext): void {
   program
     .command("run")
+    .summary("full workflow: fit, diagnose, record a run")
+    .helpGroup("Run inference:")
     .argument("<input>", "model file (.jl), spec file (.toml/.json), or DoodleBUGS graph (.json)")
     .description("Run the whole workflow: fit, diagnose, and record the run in the project store")
     .option("--data <file>", "data file (.json object or .csv columns)")

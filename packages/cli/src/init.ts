@@ -18,6 +18,8 @@ export function initSeed(dir: string, from: string, force: boolean): string[] {
 export function registerInit(program: Command): void {
   program
     .command("init")
+    .summary("seed a directory with an example model")
+    .helpGroup("Start a project:")
     .argument("[dir]", "directory to seed (default: current directory)", ".")
     .description("Seed a directory with a runnable example model and data (no shell, no prompts)")
     .option("--force", "seed even if the directory already has files")

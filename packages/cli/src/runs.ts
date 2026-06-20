@@ -73,6 +73,8 @@ export function pruneSelection(ledger: Ledger, keep: number): LedgerEntry[] {
 export function registerRuns(program: Command): void {
   const runs = program
     .command("runs")
+    .summary("list and manage recorded runs")
+    .helpGroup("Inspect runs:")
     .description("List and manage the runs recorded in the project store");
 
   runs

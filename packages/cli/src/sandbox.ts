@@ -161,6 +161,8 @@ interface SandboxOpts extends SandboxKeepOpts {
 export function registerSandbox(program: Command): void {
   program
     .command("sandbox")
+    .summary("throwaway shell with an example model")
+    .helpGroup("Start a project:")
     .description("Open a throwaway shell seeded with a working example model")
     .option(
       "--strict",

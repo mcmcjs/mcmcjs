@@ -165,6 +165,8 @@ export function resolveSamplesPath(target: string | undefined, storeOverride?: s
 export function registerDiagnose(program: Command): void {
   program
     .command("diagnose")
+    .summary("convergence diagnostics for a samples file")
+    .helpGroup("Inspect runs:")
     .argument(
       "[target]",
       "samples file (MCMCChains JSON or ArviZ InferenceData JSON), or a run ref (latest, @N, id prefix); default: the latest store run",
