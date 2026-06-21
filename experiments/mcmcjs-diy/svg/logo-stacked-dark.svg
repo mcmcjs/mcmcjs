@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 195" role="img" aria-label="MCMC.js"><title>MCMC.js</title>
+  <polyline points="144,90 168,68 180,36 192,68 216,90" fill="none" stroke="#c7cddb" stroke-width="3.6" stroke-linejoin="round" stroke-linecap="round"/>
+  <polyline points="168,68 180,36 192,68" fill="none" stroke="#9d87f0" stroke-width="3.6" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="144" cy="90" r="6" fill="#c7cddb"/>
+  <circle cx="168" cy="68" r="6" fill="#c7cddb"/>
+  <circle cx="180" cy="36" r="7" fill="#9d87f0"/>
+  <circle cx="192" cy="68" r="6" fill="#9d87f0"/>
+  <circle cx="216" cy="90" r="6" fill="#c7cddb"/>
+  <text x="180" y="178" text-anchor="middle" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="50" font-weight="600" letter-spacing="-1.5" fill="#c7cddb">mcmc<tspan fill="#9d87f0">.js</tspan></text>
+</svg>
