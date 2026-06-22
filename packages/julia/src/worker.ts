@@ -4,7 +4,7 @@ import { createConnection, type Socket } from "node:net";
 import { join } from "node:path";
 import type { ResolvedSpec } from "@mcmcjs/core";
 import type { FitResult } from "@mcmcjs/engine";
-import { parseProgressLine } from "@mcmcjs/engine";
+import { parseDrawBatchLine, parseProgressLine } from "@mcmcjs/engine";
 import { type FitIo, finalizeOkFit, fitRequest, runFit } from "./fit";
 import { sha256, sharedTmpParent, toStage, workerPath } from "./runner-common";
 
@@ -142,6 +142,7 @@ export async function ensureWorker(
 function readWorkerResponse(
   sock: Socket,
   onProgress?: FitIo["onProgress"],
+  onDraws?: FitIo["onDraws"],
   inactivityMs = fitInactivityTimeoutMs(),
 ): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
@@ -175,6 +176,11 @@ function readWorkerResponse(
           onProgress?.(progress);
           continue;
         }
+        const batch = parseDrawBatchLine(line);
+        if (batch) {
+          onDraws?.(batch);
+          continue;
+        }
         try {
           const doc = JSON.parse(line) as Record<string, unknown>;
           settle(() => {
@@ -200,7 +206,7 @@ export async function runFitViaWorker(
   const start = performance.now();
   const sock = await ensureWorker(resolved, io.projectDir, io.notify);
   sock.write(`${JSON.stringify(fitRequest(spec, io.outPath))}\n`);
-  const final = await readWorkerResponse(sock, io.onProgress);
+  const final = await readWorkerResponse(sock, io.onProgress, io.onDraws);
   const elapsedMs = Math.round(performance.now() - start);
 
   if (final.ok !== true) {

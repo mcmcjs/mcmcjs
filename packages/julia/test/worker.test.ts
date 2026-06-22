@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ResolvedSpec } from "@mcmcjs/core";
-import type { FitProgress } from "@mcmcjs/engine";
+import type { DrawBatch, FitProgress } from "@mcmcjs/engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runFitAuto, runFitViaWorker, workerSocketPath } from "../src/worker";
 
@@ -73,6 +73,7 @@ describe("runFitViaWorker", () => {
       writeFileSync(String(request.out), SAMPLES);
       return [
         '{"mcmcjs":"progress","chain":1,"of":1,"fraction":0.5,"done":false}',
+        '{"mcmcjs":"draws","chain":0,"seq":0,"iteration":1,"draws":{"mu":[0.5]}}',
         JSON.stringify({
           ok: true,
           provenance: { julia_version: "1.12.6", packages: { Turing: "0.45.0" } },
@@ -81,6 +82,7 @@ describe("runFitViaWorker", () => {
     });
 
     const events: FitProgress[] = [];
+    const draws: DrawBatch[] = [];
     const result = await runFitViaWorker(
       spec(dir),
       { command: "/bin/julia", args: [] },
@@ -90,12 +92,14 @@ describe("runFitViaWorker", () => {
         outPath,
         recordPath: join(dir, "run.json"),
         onProgress: (p) => events.push(p),
+        onDraws: (b) => draws.push(b),
       },
     );
 
     expect(result.status).toBe("ok");
     expect(result.runtimeActual).toBe("1.12.6");
     expect(events).toEqual([{ chain: 1, of: 1, fraction: 0.5, done: false }]);
+    expect(draws).toEqual([{ chain: 0, seq: 0, iteration: 1, draws: { mu: [0.5] } }]);
   });
 
   it("returns a real fit failure without falling back", async () => {

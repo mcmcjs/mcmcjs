@@ -7,7 +7,7 @@ import {
   RUN_RECORD_SCHEMA_VERSION,
   type RunRecord,
 } from "@mcmcjs/core";
-import type { FitProgress, FitResult, FitRunner } from "@mcmcjs/engine";
+import type { DrawBatch, FitProgress, FitResult, FitRunner } from "@mcmcjs/engine";
 import { driverPath, lastJsonLine, sha256, sharedTmpParent, toStage } from "./runner-common";
 
 export interface FitIo {
@@ -21,6 +21,8 @@ export interface FitIo {
   recordPath?: string;
   /** Streamed per-chain sampling progress. */
   onProgress?: (progress: FitProgress) => void;
+  /** Streamed draw batches as sampling proceeds. */
+  onDraws?: (batch: DrawBatch) => void;
   /** Source path when the data came from a referenced file; recorded, not copied. */
   dataFile?: string;
   /** Overrides the recorded data hash (e.g. the data file's bytes hash). */
@@ -139,6 +141,7 @@ export async function runFit(
   try {
     ({ stdout, stderr, code } = await io.spawn(resolved.command, args, {
       onProgress: io.onProgress,
+      onDraws: io.onDraws,
     }));
   } finally {
     if (ownTmp) rmSync(tmp, { recursive: true, force: true });
