@@ -1,5 +1,26 @@
 # @mcmcjs/julia
 
+## 0.7.0
+
+### Minor Changes
+
+- 99e5581: Sampling is cancellable through an `AbortSignal` threaded into `FitIo`. The one-shot driver kills the Julia process on abort; the persistent worker is killed by a pidfile it now writes beside its socket (a busy worker cannot answer a polite stop), so the next fit cold-starts a fresh one. Either way the run ends with a distinct `"cancelled"` status, and a cancelled run stops a version matrix.
+- 5af3509: The Julia driver now emits draw batches as sampling proceeds (one batch per chunk of iterations, per chain), when the request asks for it. A chain's batches reconstruct that chain's columns in the final samples file exactly, by canonical leaf name. Works for both the one-shot and persistent-worker paths.
+- 32a5ac5: Forward draw batches through the fit runners: `FitIo.onDraws` is threaded into the one-shot runner and the daemon worker reader (which now recognizes draw-batch lines alongside progress), so an embedding caller receives draws as the runtime emits them.
+- 3d7186c: Bind model data so a Turing model can read a variable either as a property (`data.y`) or by index (`data["y"]` / `data[:y]`), with `haskey` and `keys` supported, so models written in either idiom run unchanged. JuliaBUGS continues to receive a plain NamedTuple.
+- 6d66bd2: Ship a committed, resolved Julia environment (Project.toml + Manifest.toml) and instantiate it for a default provision, so every machine gets the exact same package versions instead of re-resolving the latest compatible ones. Existing managed environments re-provision onto the committed Manifest on their next run. A `--versions` matrix or any package pin still resolves fresh. `mcmc setup` now installs the pinned Julia version (via the installer's default channel, or `juliaup add`).
+
+### Patch Changes
+
+- 469da2e: Resolve the Julia driver and worker scripts from the in-repo source layout (`src/driver/`) when not running from the built bundle, so the package can be exercised directly from source (tests, tsx) without a build. The published `dist/` layout is unchanged.
+- Updated dependencies [a647be4]
+- Updated dependencies [80f5fab]
+- Updated dependencies [b3b932b]
+- Updated dependencies [b38a4e5]
+- Updated dependencies [f7648a9]
+  - @mcmcjs/core@0.5.0
+  - @mcmcjs/engine@0.5.0
+
 ## 0.6.1
 
 ### Patch Changes

@@ -1,5 +1,31 @@
 # mcmcjs
 
+## 0.12.0
+
+### Minor Changes
+
+- 6a34d34: Ctrl+C during sampling now cancels the fit gracefully: `mcmc run` and `mcmc fit` stop the Julia process promptly, record the run as `cancelled` (shown in `mcmc runs`/`mcmc show`), and exit 130, instead of leaving a runtime process behind. `--draws-out` is noted as skipped when a run is reused.
+- 4f29e06: Add `mcmc run --stream-out <file>`, which streams sampled draws as NDJSON (one batch per line) as the run produces them. Pass `-` to stream to stdout (with the run report routed to stderr) for piping into another process.
+
+### Patch Changes
+
+- b3b932b: Model data (inline, `--data`, or a spec `data_file`) is now validated as canonical numeric data: non-numeric, missing, or ragged values are rejected with a clear error. Data loading moved into `@mcmcjs/core`.
+- 5dd628c: Default runs now target the pinned Julia version for reproducibility, and provisioning instantiates the shipped, resolved package set. Pass `--julia-version` to run on another channel.
+- Updated dependencies [a647be4]
+- Updated dependencies [80f5fab]
+- Updated dependencies [99e5581]
+- Updated dependencies [b3b932b]
+- Updated dependencies [b38a4e5]
+- Updated dependencies [5af3509]
+- Updated dependencies [32a5ac5]
+- Updated dependencies [469da2e]
+- Updated dependencies [3d7186c]
+- Updated dependencies [f7648a9]
+- Updated dependencies [6d66bd2]
+  - @mcmcjs/core@0.5.0
+  - @mcmcjs/engine@0.5.0
+  - @mcmcjs/julia@0.7.0
+
 ## 0.11.0
 
 ### Minor Changes
