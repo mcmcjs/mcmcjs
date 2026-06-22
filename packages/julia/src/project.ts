@@ -74,8 +74,17 @@ function sentinelPath(dir: string): string {
   return join(dir, ".mcmcjs-packages.json");
 }
 
+// Bumped when the provisioning changes shape so existing envs re-provision; e.g.
+// generation 1 introduced instantiating the committed Manifest for the default,
+// which a pre-existing fresh-resolved env must pick up.
+const PROVISION_GENERATION = 1;
+
 function expectedSentinel(pins?: PackagePins): string {
-  return canonicalJson({ packages: [...PACKAGES].sort(), pins: pins ?? {} });
+  return canonicalJson({
+    gen: PROVISION_GENERATION,
+    packages: [...PACKAGES].sort(),
+    pins: pins ?? {},
+  });
 }
 
 function provisioned(dir: string, pins?: PackagePins): boolean {
