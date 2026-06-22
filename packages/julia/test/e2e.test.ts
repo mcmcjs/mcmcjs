@@ -24,9 +24,9 @@ import { resolveVersion } from "../src/versions";
  */
 async function probe(): Promise<{ command: string; args: string[]; projectDir: string } | null> {
   if (process.env.MCMC_E2E !== "1") return null;
-  const juliaup = await detectJuliaup();
-  if (!juliaup.found || !juliaup.path) return null;
   try {
+    const juliaup = await detectJuliaup();
+    if (!juliaup.found || !juliaup.path) return null;
     const resolved = await resolveVersion(juliaup.path, DEFAULT_JULIA_CHANNEL, createRunner());
     const projectDir = managedProjectDir(resolved.version);
     if (!managedProjectReady(projectDir)) return null;
@@ -121,6 +121,7 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
 
     expect(result.status).toBe("ok");
     const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect(samples.variables.length).toBeGreaterThan(0);
     expect(batches.length).toBeGreaterThan(0);
 
     const chains = [...new Set(batches.map((b) => b.chain))].sort((a, c) => a - c);
@@ -152,7 +153,11 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
     const outPath = join(dir, "cancel.samples.json");
     const controller = new AbortController();
     // Abort as soon as sampling is underway (first streamed batch).
-    const onDraws = () => controller.abort();
+    let sawBatch = false;
+    const onDraws = () => {
+      sawBatch = true;
+      controller.abort();
+    };
     const result = await runFit(
       spec(50_000, 2),
       { command: env.command, args: env.args },
@@ -166,6 +171,9 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
       },
     );
 
+    // Guard against a vacuous pass: the cancel is only meaningful if sampling
+    // actually started and streamed before we aborted.
+    expect(sawBatch, "the run ended before any draw batch streamed").toBe(true);
     expect(result.status).toBe("cancelled");
   }, 300_000);
 });
