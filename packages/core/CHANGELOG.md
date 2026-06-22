@@ -1,5 +1,16 @@
 # @mcmcjs/core
 
+## 0.5.0
+
+### Minor Changes
+
+- b3b932b: Add the canonical model-data model: a flat object keyed by variable name whose values are finite numbers or rectangular row-major nested numeric arrays (the same language-neutral JSON a Stan model reads). Exposes `validateCanonicalData`, `loadDataFile`, and `resolveData` with `CanonicalData` types; JSON loads verbatim and CSV normalizes to it (deriving `N` from the row count). Missing, non-numeric, and ragged values are rejected with a path-named error.
+- f7648a9: The default Julia channel a fit runs on is now a pinned version (`DEFAULT_JULIA_CHANNEL`, exported) rather than the moving `release` channel, so a default run reproduces the exact package set the toolchain ships. Override per spec (`backend.version`) or with `--julia-version`.
+
+### Patch Changes
+
+- a647be4: A run ledger entry can now record a `"cancelled"` status alongside `"ok"` and `"failed"`, for a fit that was stopped before finishing.
+
 ## 0.4.0
 
 ### Minor Changes
