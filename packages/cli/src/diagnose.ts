@@ -156,7 +156,7 @@ export function resolveSamplesPath(target: string | undefined, storeOverride?: s
   const path = join(runDir(storeDir, entry.id), "samples.json");
   if (!existsSync(path)) {
     throw new Error(
-      `run ${entry.id} has no samples${entry.status === "failed" ? " (the fit failed)" : ""}; see mcmc runs`,
+      `run ${entry.id} has no samples${entry.status === "failed" ? " (the fit failed)" : entry.status === "cancelled" ? " (the fit was cancelled)" : ""}; see mcmc runs`,
     );
   }
   return path;

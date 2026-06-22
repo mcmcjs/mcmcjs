@@ -51,6 +51,8 @@ export function formatRunDetail(
   row("data", `sha256 ${entry.data_sha256.slice(0, 12)}`);
   if (entry.status === "failed") {
     row("status", pc.red(`failed${entry.error ? `: ${entry.error}` : ""}`));
+  } else if (entry.status === "cancelled") {
+    row("status", pc.yellow("cancelled"));
   } else if (entry.diagnostics) {
     const d = entry.diagnostics;
     const detail = [

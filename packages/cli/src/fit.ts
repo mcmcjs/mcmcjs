@@ -68,16 +68,23 @@ export function formatFitResult(result: FitResult, channel: string, recordPath: 
   if (result.status === "ok") {
     return `${pc.green("ok")} ${result.samplesFile} (Julia ${result.runtimeActual ?? channel}, ${result.elapsedMs} ms)\n${pc.dim(`run record: ${recordPath}`)}`;
   }
+  if (result.status === "cancelled") {
+    return `${pc.yellow("cancelled")}: the fit was stopped before finishing`;
+  }
   return `${pc.red("fit failed")}${result.stage ? ` at ${result.stage}` : ""}: ${result.error}`;
 }
 
 /** Renders a multi-version matrix result for the terminal. */
 export function formatMatrix(result: MatrixResult): string {
-  const lines = result.entries.map((e) =>
-    e.status === "ok"
-      ? `${pc.green("ok")}   ${e.version.padEnd(10)} ${e.elapsedMs} ms  ${pc.dim(e.samplesFile ?? "")}`
-      : `${pc.red("fail")} ${e.version.padEnd(10)} ${e.error ?? ""}`,
-  );
+  const lines = result.entries.map((e) => {
+    if (e.status === "ok") {
+      return `${pc.green("ok")}   ${e.version.padEnd(10)} ${e.elapsedMs} ms  ${pc.dim(e.samplesFile ?? "")}`;
+    }
+    if (e.status === "cancelled") {
+      return `${pc.yellow("canc")} ${e.version.padEnd(10)} cancelled`;
+    }
+    return `${pc.red("fail")} ${e.version.padEnd(10)} ${e.error ?? ""}`;
+  });
   lines.push("");
   lines.push(result.ok ? pc.green("all versions ok") : pc.red("some versions failed"));
   return lines.join("\n");
@@ -237,6 +244,9 @@ export function registerFit(program: Command, ctx: EngineContext): void {
 
         if (!opts.json) process.stdout.write(`Fitting ${spec.backend.id} on Julia ${channel}...\n`);
         const progress = rendererFor(opts.json, backendLabel(spec.backend.id));
+        const controller = new AbortController();
+        const onSigint = () => controller.abort();
+        process.once("SIGINT", onSigint);
         let result: Awaited<ReturnType<typeof runFitAuto>>;
         try {
           result = await runFitAuto(spec, resolved, {
@@ -244,6 +254,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
             projectDir,
             outPath,
             onProgress: progress.onProgress,
+            signal: controller.signal,
             daemon: opts.daemon ?? process.env.MCMC_DAEMON === "1",
             notify: (line) => {
               if (!opts.json) process.stdout.write(`${line}\n`);
@@ -252,6 +263,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
             dataSha256: resolvedData.dataSha256,
           });
         } finally {
+          process.removeListener("SIGINT", onSigint);
           progress.finish();
         }
 
@@ -260,7 +272,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
             ? `${JSON.stringify(result, null, 2)}\n`
             : `${formatFitResult(result, channel, `${outPath}.run.json`)}\n`,
         );
-        process.exitCode = result.status === "ok" ? 0 : 1;
+        process.exitCode = result.status === "ok" ? 0 : result.status === "cancelled" ? 130 : 1;
       },
     );
 }

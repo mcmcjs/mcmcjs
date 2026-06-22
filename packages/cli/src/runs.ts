@@ -13,6 +13,7 @@ import { locateStore, timeAgo } from "./store-cli";
 
 function verdictOf(entry: LedgerEntry): string {
   if (entry.status === "failed") return "failed";
+  if (entry.status === "cancelled") return "cancelled";
   if (!entry.diagnostics) return "-";
   return entry.diagnostics.converged ? "converged" : "not converged";
 }
@@ -20,6 +21,7 @@ function verdictOf(entry: LedgerEntry): string {
 function colorVerdict(text: string, color: boolean): string {
   if (!color) return text;
   if (text.startsWith("converged")) return pc.green(text);
+  if (text.startsWith("cancelled")) return pc.yellow(text);
   if (text.startsWith("failed") || text.startsWith("not converged")) return pc.red(text);
   return text;
 }

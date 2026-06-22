@@ -73,7 +73,7 @@ export function registerExport(program: Command): void {
         const source = join(runDir(storeDir, entry.id), KINDS[kind].file);
         if (!existsSync(source)) {
           throw new Error(
-            `run ${entry.id} has no ${KINDS[kind].file}${entry.status === "failed" ? " (the fit failed)" : ""}`,
+            `run ${entry.id} has no ${KINDS[kind].file}${entry.status === "failed" ? " (the fit failed)" : entry.status === "cancelled" ? " (the fit was cancelled)" : ""}`,
           );
         }
         const dest = resolve(opts.out ?? defaultExportName(kind, entry));

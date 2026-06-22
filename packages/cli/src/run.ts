@@ -606,6 +606,11 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       };
       const progress = rendererFor(opts.json, backendLabel(config.spec.backend.id));
       const drawsSink = opts.drawsOut ? makeDrawsSink(resolve(opts.drawsOut)) : undefined;
+      // During sampling, Ctrl+C cancels the fit gracefully (recorded as a
+      // "cancelled" run) rather than hard-exiting and leaving Julia running.
+      const controller = new AbortController();
+      const onSigint = () => controller.abort();
+      process.once("SIGINT", onSigint);
       let fit: Awaited<ReturnType<typeof runFitAuto>>;
       try {
         fit = await runFitAuto(resolvedSpec, resolved, {
@@ -615,12 +620,14 @@ export function registerRun(program: Command, ctx: EngineContext): void {
           recordPath: join(dir, "run.json"),
           onProgress: progress.onProgress,
           onDraws: drawsSink,
+          signal: controller.signal,
           daemon: opts.daemon ?? process.env.MCMC_DAEMON === "1",
           notify: (line) => say(line),
           dataFile: config.dataFile,
           dataSha256: resolvedData.dataSha256,
         });
       } finally {
+        process.removeListener("SIGINT", onSigint);
         progress.finish();
       }
 
@@ -628,7 +635,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         id: runId,
         run_key: runKey,
         spec_hash: specHash,
-        status: fit.status === "ok" ? "ok" : "failed",
+        status: fit.status === "ok" ? "ok" : fit.status === "cancelled" ? "cancelled" : "failed",
         model_path: modelRel,
         model_sha256: inputs.model_sha256,
         data_sha256: inputs.data_sha256,
@@ -639,6 +646,19 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         started_at: startedAt.toISOString(),
         elapsed_ms: fit.elapsedMs,
       };
+
+      if (fit.status === "cancelled") {
+        appendLedgerEntry(storeDir, entry);
+        if (opts.json) {
+          process.stdout.write(
+            `${JSON.stringify({ run: { id: runId, dir, cached: false }, fit }, null, 2)}\n`,
+          );
+        } else {
+          say(`${pc.yellow("cancelled")}: run ${runId} stopped before finishing`);
+        }
+        process.exitCode = 130;
+        return;
+      }
 
       if (fit.status !== "ok") {
         appendLedgerEntry(storeDir, { ...entry, error: fit.error });
