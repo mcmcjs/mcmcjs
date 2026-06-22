@@ -1,3 +1,5 @@
+export type { CanonicalArray, CanonicalData, CanonicalValue, ResolvedData } from "./data";
+export { loadDataFile, resolveData, validateCanonicalData } from "./data";
 export { parseSamples } from "./parse-samples";
 export { parseArvizJson } from "./parsers/arviz";
 export type { MCMCChainsJson } from "./parsers/mcmcchains";

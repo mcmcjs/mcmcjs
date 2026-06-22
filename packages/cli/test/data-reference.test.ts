@@ -1,10 +1,8 @@
-import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SpecSchema } from "@mcmcjs/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveData } from "../src/data-file";
 import { buildRunConfig, frozenSpecFor } from "../src/run";
 
 let dir: string;
@@ -15,21 +13,6 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
-});
-
-describe("resolveData", () => {
-  it("returns inline data unchanged when no file is given", () => {
-    expect(resolveData({ x: [1, 2] })).toEqual({ data: { x: [1, 2] } });
-  });
-
-  it("loads a file and hashes its bytes", () => {
-    const path = join(dir, "data.csv");
-    writeFileSync(path, "y\n1\n2\n3\n");
-    const r = resolveData({}, path);
-    expect(r.dataFile).toBe(path);
-    expect(r.data).toMatchObject({ y: [1, 2, 3], N: 3 });
-    expect(r.dataSha256).toBe(createHash("sha256").update(readFileSync(path)).digest("hex"));
-  });
 });
 
 describe("frozenSpecFor with a data file", () => {

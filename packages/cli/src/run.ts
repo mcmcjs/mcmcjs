@@ -15,6 +15,7 @@ import {
   parseSpec,
   type ResolvedSpec,
   readLedger,
+  resolveData,
   runDir,
   type Spec,
   SpecSchema,
@@ -36,7 +37,6 @@ import type { Command } from "commander";
 import pc from "picocolors";
 import { ZodError } from "zod";
 import { convertGraph } from "./convert";
-import { resolveData } from "./data-file";
 import { buildDiagnosticsReport, type DiagnosticsReport, formatReportHuman } from "./diagnose";
 import { backendLabel, formatFitResult } from "./fit";
 import { installRunner, juliaupBin } from "./julia";

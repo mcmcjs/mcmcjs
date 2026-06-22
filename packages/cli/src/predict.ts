@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
-import { parseSamples, parseSpec } from "@mcmcjs/core";
+import { parseSamples, parseSpec, resolveData } from "@mcmcjs/core";
 import { createFitRunner, type EngineContext } from "@mcmcjs/engine";
 import {
   ensureProject,
@@ -10,7 +10,6 @@ import {
   validatePins,
 } from "@mcmcjs/julia";
 import type { Command } from "commander";
-import { resolveData } from "./data-file";
 import { formatFitResult } from "./fit";
 import { installRunner, juliaupBin } from "./julia";
 

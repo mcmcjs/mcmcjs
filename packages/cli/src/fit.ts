@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
-import { parseSpec } from "@mcmcjs/core";
+import { parseSpec, resolveData } from "@mcmcjs/core";
 import { createFitRunner, type EngineContext, type FitResult } from "@mcmcjs/engine";
 import {
   ensureProject,
@@ -15,7 +15,6 @@ import {
 } from "@mcmcjs/julia";
 import type { Command } from "commander";
 import pc from "picocolors";
-import { resolveData } from "./data-file";
 import { installRunner, juliaupBin } from "./julia";
 import { rendererFor } from "./progress";
 
