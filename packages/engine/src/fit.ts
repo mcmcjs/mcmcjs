@@ -1,6 +1,6 @@
 /** The outcome of a single inference run. */
 export interface FitResult {
-  status: "ok" | "error";
+  status: "ok" | "error" | "cancelled";
   /** Path to the samples file written on success. */
   samplesFile?: string;
   /** The requested runtime version (e.g. a Julia channel). */

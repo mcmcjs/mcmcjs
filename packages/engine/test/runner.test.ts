@@ -177,4 +177,26 @@ describe("createFitRunner (streaming)", () => {
     expect(result.code).not.toBe(0);
     expect(result.stderr).toContain("timed out");
   });
+
+  it("kills the process and reports cancelled when the signal aborts", async () => {
+    const run = createFitRunner();
+    const controller = new AbortController();
+    const started = Date.now();
+    setTimeout(() => controller.abort(), 100);
+    const result = await run(process.execPath, ["-e", "setTimeout(() => {}, 60_000);"], {
+      signal: controller.signal,
+    });
+    expect(result.cancelled).toBe(true);
+    expect(result.code).not.toBe(0);
+    // The kill is prompt, not the 60s the child would otherwise run.
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it("cancels immediately when the signal is already aborted", async () => {
+    const run = createFitRunner();
+    const result = await run(process.execPath, ["-e", "setTimeout(() => {}, 60_000);"], {
+      signal: AbortSignal.abort(),
+    });
+    expect(result.cancelled).toBe(true);
+  });
 });

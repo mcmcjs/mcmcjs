@@ -134,8 +134,10 @@ export type FitRunner = (
     timeoutMs?: number;
     onProgress?: (progress: FitProgress) => void;
     onDraws?: (batch: DrawBatch) => void;
+    /** Aborts the run: the child (and its group) is killed and `cancelled` is set. */
+    signal?: AbortSignal;
   },
-) => Promise<{ stdout: string; stderr: string; code: number }>;
+) => Promise<{ stdout: string; stderr: string; code: number; cancelled?: boolean }>;
 
 /** Parses an mcmcjs progress line; undefined for any other stderr content. */
 export function parseProgressLine(line: string): FitProgress | undefined {
@@ -197,11 +199,31 @@ export function createFitRunner(timeoutMs = 30 * 60_000): FitRunner {
       let stderr = "";
       let pending = "";
       let timedOut = false;
+      let cancelled = false;
       let settled = false;
 
       const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], detached: DETACHED });
-      const dispose = interruptGuard(child);
-      const settle = (result: { stdout: string; stderr: string; code: number }) => {
+      // When the caller passes a signal it owns interruption (it can abort on
+      // Ctrl+C itself), so the hard-exit guard would only race it; install the
+      // guard only for the legacy no-signal path.
+      const signal = opts?.signal;
+      const onAbort = () => {
+        cancelled = true;
+        killTree(child);
+      };
+      const dispose = signal
+        ? () => signal.removeEventListener("abort", onAbort)
+        : interruptGuard(child);
+      if (signal) {
+        if (signal.aborted) onAbort();
+        else signal.addEventListener("abort", onAbort, { once: true });
+      }
+      const settle = (result: {
+        stdout: string;
+        stderr: string;
+        code: number;
+        cancelled: boolean;
+      }) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
@@ -241,7 +263,7 @@ export function createFitRunner(timeoutMs = 30 * 60_000): FitRunner {
         }
       });
       child.on("error", (error) => {
-        settle({ stdout, stderr: stderr || error.message, code: 1 });
+        settle({ stdout, stderr: stderr || error.message, code: 1, cancelled });
       });
       child.on("close", (code) => {
         if (pending) takeLine(pending);
@@ -249,6 +271,7 @@ export function createFitRunner(timeoutMs = 30 * 60_000): FitRunner {
           stdout,
           stderr: timedOut ? `${stderr}process timed out and was killed\n` : stderr,
           code: code ?? 1,
+          cancelled,
         });
       });
     });
