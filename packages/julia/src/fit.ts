@@ -23,6 +23,8 @@ export interface FitIo {
   onProgress?: (progress: FitProgress) => void;
   /** Streamed draw batches as sampling proceeds. */
   onDraws?: (batch: DrawBatch) => void;
+  /** Aborts an in-progress fit; the run then ends with a "cancelled" status. */
+  signal?: AbortSignal;
   /** Source path when the data came from a referenced file; recorded, not copied. */
   dataFile?: string;
   /** Overrides the recorded data hash (e.g. the data file's bytes hash). */
@@ -128,6 +130,10 @@ export async function runFit(
   const start = performance.now();
   const runtimeRequested = spec.backend.version;
 
+  if (io.signal?.aborted) {
+    return { status: "cancelled", runtimeRequested, elapsedMs: 0 };
+  }
+
   const ownTmp = io.tmpDir === undefined;
   const tmp = io.tmpDir ?? makeRequestDir("fit");
   const requestPath = join(tmp, "request.json");
@@ -146,15 +152,21 @@ export async function runFit(
   let stdout: string;
   let stderr: string;
   let code: number;
+  let cancelled: boolean | undefined;
   try {
-    ({ stdout, stderr, code } = await io.spawn(resolved.command, args, {
+    ({ stdout, stderr, code, cancelled } = await io.spawn(resolved.command, args, {
       onProgress: io.onProgress,
       onDraws: io.onDraws,
+      signal: io.signal,
     }));
   } finally {
     if (ownTmp) rmSync(tmp, { recursive: true, force: true });
   }
   const elapsedMs = Math.round(performance.now() - start);
+
+  if (cancelled) {
+    return { status: "cancelled", runtimeRequested, elapsedMs };
+  }
 
   if (code !== 0 || !existsSync(io.outPath)) {
     const failure = lastJsonLine(stderr);

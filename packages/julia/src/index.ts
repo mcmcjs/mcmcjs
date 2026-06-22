@@ -38,4 +38,4 @@ export {
   updateVersion,
 } from "./versions";
 export type { WorkerStatus } from "./worker";
-export { listWorkers, runFitAuto, stopWorker } from "./worker";
+export { killWorker, listWorkers, runFitAuto, stopWorker } from "./worker";

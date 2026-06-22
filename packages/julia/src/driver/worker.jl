@@ -20,7 +20,10 @@ function owns_socket(path, ino)
 end
 
 function remove_if_owned(path, ino)
-    owns_socket(path, ino) && rm(path; force = true)
+    if owns_socket(path, ino)
+        rm(path; force = true)
+        rm(path * ".pid"; force = true)
+    end
 end
 
 function serve(path)
@@ -32,10 +35,14 @@ function serve(path)
             exit(0)
         catch
             rm(path; force = true)
+            rm(path * ".pid"; force = true)
         end
     end
     server = Sockets.listen(path)
     ino = stat(path).inode
+    # A pidfile beside the socket lets a cancelling client kill this worker
+    # mid-fit (it cannot answer a polite stop while busy sampling).
+    write(path * ".pid", string(getpid()))
     atexit(() -> remove_if_owned(path, ino))
 
     last_activity = Ref(time())

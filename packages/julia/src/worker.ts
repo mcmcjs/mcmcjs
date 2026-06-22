@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdirSync, readdirSync, rmdirSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync } from "node:fs";
 import { createConnection, type Socket } from "node:net";
 import { join } from "node:path";
 import type { ResolvedSpec } from "@mcmcjs/core";
@@ -20,6 +20,38 @@ function fitInactivityTimeoutMs(): number {
 
 /** A hung worker is not retried; the fit is reported failed instead. */
 class WorkerTimeoutError extends Error {}
+
+/** The caller aborted the fit; the worker is killed and the run ends cancelled. */
+class FitCancelledError extends Error {}
+
+/** The pidfile a worker writes beside its socket so a fit can be killed cross-process. */
+function workerPidPath(socket: string): string {
+  return `${socket}.pid`;
+}
+
+/**
+ * Force-kills the worker serving `socket` (by the pid it wrote beside the
+ * socket) and clears the socket and pidfile, so the next fit cold-starts a
+ * fresh worker. Used to stop a worker mid-fit, which the polite stop cannot do
+ * while it is busy sampling.
+ */
+export function killWorker(socket: string): void {
+  const pidPath = workerPidPath(socket);
+  try {
+    const pid = Number(readFileSync(pidPath, "utf8").trim());
+    if (Number.isInteger(pid) && pid > 0) {
+      // The worker is a detached process-group leader, so signaling -pid takes
+      // down any precompile/child processes it spawned, not just the parent.
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        process.kill(pid, "SIGKILL");
+      }
+    }
+  } catch {}
+  rmSync(socket, { force: true });
+  rmSync(pidPath, { force: true });
+}
 
 /** Where worker sockets live; runtime dir when available, the shared tmp parent otherwise. */
 export function workersDir(): string {
@@ -143,17 +175,29 @@ function readWorkerResponse(
   sock: Socket,
   onProgress?: FitIo["onProgress"],
   onDraws?: FitIo["onDraws"],
+  signal?: AbortSignal,
   inactivityMs = fitInactivityTimeoutMs(),
 ): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let pending = "";
     let settled = false;
+    const onAbort = () => {
+      settle(() => {
+        sock.destroy();
+        reject(new FitCancelledError());
+      });
+    };
     const settle = (fn: () => void) => {
       if (settled) return;
       settled = true;
       sock.setTimeout(0);
+      signal?.removeEventListener("abort", onAbort);
       fn();
     };
+    if (signal) {
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    }
     sock.setTimeout(inactivityMs, () => {
       const error = new WorkerTimeoutError(
         `the worker sent nothing for ${Math.round(inactivityMs / 60_000)} minutes`,
@@ -204,11 +248,29 @@ export async function runFitViaWorker(
 ): Promise<FitResult> {
   const startedAt = new Date().toISOString();
   const start = performance.now();
+  if (io.signal?.aborted) {
+    return { status: "cancelled", runtimeRequested: spec.backend.version, elapsedMs: 0 };
+  }
   const sock = await ensureWorker(resolved, io.projectDir, io.notify);
   sock.write(
     `${JSON.stringify(fitRequest(spec, io.outPath, { streamDraws: io.onDraws !== undefined }))}\n`,
   );
-  const final = await readWorkerResponse(sock, io.onProgress, io.onDraws);
+  let final: Record<string, unknown>;
+  try {
+    final = await readWorkerResponse(sock, io.onProgress, io.onDraws, io.signal);
+  } catch (error) {
+    if (error instanceof FitCancelledError) {
+      // The worker is mid-sample and cannot answer a polite stop; kill it so it
+      // stops promptly and the next fit cold-starts a fresh one.
+      killWorker(workerSocketPath(resolved.command, io.projectDir));
+      return {
+        status: "cancelled",
+        runtimeRequested: spec.backend.version,
+        elapsedMs: Math.round(performance.now() - start),
+      };
+    }
+    throw error;
+  }
   const elapsedMs = Math.round(performance.now() - start);
 
   if (final.ok !== true) {
@@ -245,6 +307,9 @@ export async function runFitAuto(
   resolved: { command: string; args: string[] },
   io: FitIo & { daemon?: boolean; notify?: (line: string) => void },
 ): Promise<FitResult> {
+  if (io.signal?.aborted) {
+    return { status: "cancelled", runtimeRequested: spec.backend.version, elapsedMs: 0 };
+  }
   if (io.daemon && process.platform !== "win32") {
     const start = performance.now();
     try {

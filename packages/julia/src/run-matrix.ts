@@ -5,7 +5,7 @@ import { runFit } from "./fit";
 
 export interface MatrixEntry {
   version: string;
-  status: "ok" | "error";
+  status: "ok" | "error" | "cancelled";
   samplesFile?: string;
   runtimeActual?: string;
   elapsedMs: number;
@@ -74,6 +74,8 @@ export async function runMatrix(
       entry = { version, status: "error", elapsedMs: 0, error: (error as Error).message };
     }
     entries.push(entry);
+    // A cancelled run stops the whole matrix regardless of keepGoing.
+    if (entry.status === "cancelled") break;
     if (entry.status === "error" && !io.keepGoing) break;
   }
   return {

@@ -1,3 +1,4 @@
+import { type ChildProcess, spawn as spawnProcess } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
@@ -16,6 +17,7 @@ const SAMPLES = JSON.stringify({
 
 let dir: string;
 let server: Server | undefined;
+let extraChild: ChildProcess | undefined;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "mcmcjs-worker-test-"));
@@ -24,6 +26,8 @@ beforeEach(() => {
 afterEach(async () => {
   if (server) await new Promise((resolve) => server?.close(resolve));
   server = undefined;
+  if (extraChild && extraChild.exitCode === null) extraChild.kill("SIGKILL");
+  extraChild = undefined;
   rmSync(dir, { recursive: true, force: true });
   vi.unstubAllEnvs();
 });
@@ -172,6 +176,62 @@ describe("runFitViaWorker", () => {
     expect(result.status).toBe("error");
     expect(result.stage).toBe("worker");
     expect(result.error).toMatch(/sent nothing/);
+  });
+
+  it("cancels a mid-fit run: kills the worker by its pidfile and clears the socket", async () => {
+    stubWorkersDir();
+    const socket = workerSocketPath("/bin/julia", "/proj");
+    // A stand-in worker process the cancel must kill; its pid goes in the pidfile.
+    extraChild = spawnProcess(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      stdio: "ignore",
+      detached: process.platform !== "win32",
+    });
+    const childGone = new Promise<void>((resolve) => extraChild?.on("exit", () => resolve()));
+    writeFileSync(`${socket}.pid`, String(extraChild.pid));
+
+    // The worker accepts the request, streams one progress line, then goes silent.
+    server = createServer((sock) => {
+      sock.on("data", () => {
+        sock.write('{"mcmcjs":"progress","chain":1,"of":1,"fraction":0.1,"done":false}\n');
+      });
+    });
+    server.listen(socket);
+
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 100);
+    const result = await runFitViaWorker(
+      spec(dir),
+      { command: "/bin/julia", args: [] },
+      {
+        spawn: async () => ({ stdout: "", stderr: "", code: 1 }),
+        projectDir: "/proj",
+        outPath: join(dir, "samples.json"),
+        signal: controller.signal,
+      },
+    );
+
+    expect(result.status).toBe("cancelled");
+    await childGone; // the pidfile's process was killed
+    expect(existsSync(socket)).toBe(false);
+    expect(existsSync(`${socket}.pid`)).toBe(false);
+  });
+
+  it("runFitAuto returns cancelled without touching a worker when the signal is pre-aborted", async () => {
+    stubWorkersDir();
+    const spawn = vi.fn(async () => ({ stdout: "", stderr: "", code: 1 }));
+    const result = await runFitAuto(
+      spec(dir),
+      { command: "/bin/julia", args: [] },
+      {
+        spawn,
+        projectDir: "/proj",
+        outPath: join(dir, "samples.json"),
+        daemon: true,
+        signal: AbortSignal.abort(),
+      },
+    );
+    expect(result.status).toBe("cancelled");
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   it("ensureWorker spawns a worker when none answers and the fit flows through it", async () => {

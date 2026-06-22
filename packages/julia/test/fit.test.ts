@@ -105,6 +105,40 @@ describe("runFit", () => {
     expect(existsSync(`${outPath}.run.json`)).toBe(false);
   });
 
+  it("reports cancelled when the runner returns cancelled, and passes the signal through", async () => {
+    const outPath = out();
+    const controller = new AbortController();
+    let sawSignal: AbortSignal | undefined;
+    const spawn: FitRunner = async (_command, _args, opts) => {
+      sawSignal = opts?.signal;
+      return { stdout: "", stderr: "", code: 1, cancelled: true };
+    };
+    const result = await runFit(
+      spec(),
+      { command: "/bin/julia", args: [] },
+      { spawn, projectDir: "/proj", outPath, signal: controller.signal },
+    );
+    expect(result.status).toBe("cancelled");
+    expect(sawSignal).toBe(controller.signal);
+    expect(existsSync(`${outPath}.run.json`)).toBe(false);
+  });
+
+  it("reports cancelled without spawning when the signal is already aborted", async () => {
+    const outPath = out();
+    let spawned = false;
+    const spawn: FitRunner = async () => {
+      spawned = true;
+      return { stdout: "", stderr: "", code: 0 };
+    };
+    const result = await runFit(
+      spec(),
+      { command: "/bin/julia", args: [] },
+      { spawn, projectDir: "/proj", outPath, signal: AbortSignal.abort() },
+    );
+    expect(result.status).toBe("cancelled");
+    expect(spawned).toBe(false);
+  });
+
   it("errors at the write stage when the artifact does not parse", async () => {
     const outPath = out();
     const spawn: FitRunner = async () => {
