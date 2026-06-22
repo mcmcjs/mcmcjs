@@ -630,6 +630,12 @@ export function registerRun(program: Command, ctx: EngineContext): void {
             }
           : makeDrawsSink(resolve(opts.streamOut))
         : undefined;
+      if (opts.streamOut) {
+        // Confirm where the stream goes and name the format, so it is not a
+        // silent write to an unfamiliar NDJSON file.
+        const dest = streamToStdout ? "stdout" : displayPath(resolve(opts.streamOut));
+        say(`streaming draws to ${dest} as NDJSON (one JSON object per line)`);
+      }
       // During sampling, Ctrl+C cancels the fit gracefully (recorded as a
       // "cancelled" run) rather than hard-exiting and leaving Julia running.
       const controller = new AbortController();
