@@ -572,6 +572,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         }),
         projectDir,
         pins,
+        { version: resolved.version },
       );
 
       say(fitBanner(config, resolved.version ?? `channel "${config.channel}"`));

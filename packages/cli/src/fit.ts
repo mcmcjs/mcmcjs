@@ -170,6 +170,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
                 ),
                 managedProjectDir(r.version, pins),
                 pins,
+                { version: r.version },
               ),
             dataFile: resolvedData.dataFile,
             dataSha256: resolvedData.dataSha256,
@@ -199,7 +200,15 @@ export function registerFit(program: Command, ctx: EngineContext): void {
             const dir = managedProjectDir(resolved.version, pins);
             let entry: MatrixEntry;
             try {
-              await ensureProject(resolved.command, provision(`preparing ${name} ${v}`), dir, pins);
+              await ensureProject(
+                resolved.command,
+                provision(`preparing ${name} ${v}`),
+                dir,
+                pins,
+                {
+                  version: resolved.version,
+                },
+              );
               const result = await runFit(spec, resolved, {
                 spawn: createFitRunner(),
                 projectDir: dir,
@@ -240,6 +249,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
           provision("preparing the Julia environment"),
           projectDir,
           pins,
+          { version: resolved.version },
         );
 
         if (!opts.json) process.stdout.write(`Fitting ${spec.backend.id} on Julia ${channel}...\n`);

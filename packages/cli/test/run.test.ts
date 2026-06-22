@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type LedgerEntry, serializeSpecToml } from "@mcmcjs/core";
+import { DEFAULT_JULIA_CHANNEL, type LedgerEntry, serializeSpecToml } from "@mcmcjs/core";
 import type { DrawBatch } from "@mcmcjs/engine";
 import { describe, expect, it, vi } from "vitest";
 import type { DiagnosticsReport } from "../src/diagnose";
@@ -278,7 +278,7 @@ describe("buildRunConfig: spec input", () => {
     );
     const config = buildRunConfig(specPath, { juliaVersion: "1.10" });
     expect(config.channel).toBe("1.10");
-    expect(config.spec.backend.version).toBe("release");
+    expect(config.spec.backend.version).toBe(DEFAULT_JULIA_CHANNEL);
   });
 });
 
@@ -398,7 +398,7 @@ describe("frozenSpecFor", () => {
     expect(frozen.backend.version).toBe("1.10");
     expect(frozen.model.path).toBe("./model.jl");
     expect(frozen.seed).toBe(1);
-    expect(config.spec.backend.version).toBe("release");
+    expect(config.spec.backend.version).toBe(DEFAULT_JULIA_CHANNEL);
   });
 });
 
