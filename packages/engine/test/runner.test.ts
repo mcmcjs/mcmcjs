@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   createFitRunner,
   createStreamingRunner,
+  type DrawBatch,
   type FitProgress,
   interruptGuard,
   killTree,
+  parseDrawBatchLine,
   parseProgressLine,
 } from "../src/runner";
 
@@ -82,7 +84,51 @@ describe("parseProgressLine", () => {
   });
 });
 
+describe("parseDrawBatchLine", () => {
+  it("parses an mcmcjs draw-batch line", () => {
+    expect(
+      parseDrawBatchLine(
+        '{"mcmcjs":"draws","chain":0,"seq":2,"iteration":75,"draws":{"mu":[0.1,0.2],"theta[1]":[1,2]}}',
+      ),
+    ).toEqual({ chain: 0, seq: 2, iteration: 75, draws: { mu: [0.1, 0.2], "theta[1]": [1, 2] } });
+  });
+
+  it("allows a null iteration and defaults missing fields", () => {
+    expect(parseDrawBatchLine('{"mcmcjs":"draws","chain":1,"seq":0,"iteration":null}')).toEqual({
+      chain: 1,
+      seq: 0,
+      iteration: null,
+      draws: {},
+    });
+  });
+
+  it("ignores progress lines and other content", () => {
+    expect(parseDrawBatchLine('{"mcmcjs":"progress","chain":1}')).toBeUndefined();
+    expect(parseDrawBatchLine("plain note")).toBeUndefined();
+    expect(parseDrawBatchLine("{not json")).toBeUndefined();
+  });
+});
+
 describe("createFitRunner (streaming)", () => {
+  it("routes draw-batch lines to onDraws and keeps them out of stderr", async () => {
+    const script = [
+      'process.stderr.write(\'{"mcmcjs":"draws","chain":0,"seq":0,"iteration":2,"draws":{"mu":[0.1,0.2]}}\\n\');',
+      "process.stderr.write('plain note\\n');",
+      'process.stderr.write(\'{"mcmcjs":"draws","chain":0,"seq":1,"iteration":4,"draws":{"mu":[0.3,0.4]}}\\n\');',
+    ].join("");
+    const batches: DrawBatch[] = [];
+    const run = createFitRunner();
+    const result = await run(process.execPath, ["-e", script], { onDraws: (b) => batches.push(b) });
+
+    expect(batches.map((b) => b.draws.mu)).toEqual([
+      [0.1, 0.2],
+      [0.3, 0.4],
+    ]);
+    expect(batches.map((b) => b.seq)).toEqual([0, 1]);
+    expect(result.stderr).toContain("plain note");
+    expect(result.stderr).not.toContain('"mcmcjs"');
+  });
+
   it("routes progress lines to onProgress and keeps them out of stderr", async () => {
     const script = [
       'process.stderr.write(\'{"mcmcjs":"progress","chain":1,"of":2,"fraction":0.5,"done":false}\\n\');',

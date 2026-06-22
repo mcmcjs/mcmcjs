@@ -108,11 +108,33 @@ export interface FitProgress {
   done: boolean;
 }
 
+/**
+ * A batch of sampled draws emitted as sampling proceeds. `draws` maps each
+ * parameter's leaf name to the values produced in this batch (array-valued
+ * parameters flatten to indexed leaves, e.g. `theta[1]`). `seq` is monotonic
+ * per (run, chain) from 0, so a consumer can resume after a given batch;
+ * concatenating a chain's batches in `seq` order reconstructs its draws.
+ */
+export interface DrawBatch {
+  /** 0-based chain index. */
+  chain: number;
+  /** Monotonic per (run, chain), starting at 0. */
+  seq: number;
+  /** Iteration index at the end of this batch, or null. */
+  iteration: number | null;
+  /** Parameter leaf name -> the values produced in this batch. */
+  draws: Record<string, number[]>;
+}
+
 /** Captures stdout, stderr, and exit code without throwing on a nonzero exit. */
 export type FitRunner = (
   command: string,
   args: string[],
-  opts?: { timeoutMs?: number; onProgress?: (progress: FitProgress) => void },
+  opts?: {
+    timeoutMs?: number;
+    onProgress?: (progress: FitProgress) => void;
+    onDraws?: (batch: DrawBatch) => void;
+  },
 ) => Promise<{ stdout: string; stderr: string; code: number }>;
 
 /** Parses an mcmcjs progress line; undefined for any other stderr content. */
@@ -132,6 +154,31 @@ export function parseProgressLine(line: string): FitProgress | undefined {
     of: Number(record.of ?? 1),
     fraction: Number(record.fraction ?? 0),
     done: Boolean(record.done),
+  };
+}
+
+/** Parses an mcmcjs draw-batch line; undefined for any other stderr content. */
+export function parseDrawBatchLine(line: string): DrawBatch | undefined {
+  const text = line.trim();
+  if (!text.startsWith("{") || !text.includes('"mcmcjs"')) return undefined;
+  let doc: unknown;
+  try {
+    doc = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  const record = doc as Record<string, unknown>;
+  if (record.mcmcjs !== "draws") return undefined;
+  const draws: Record<string, number[]> = {};
+  for (const [name, values] of Object.entries((record.draws ?? {}) as Record<string, unknown>)) {
+    draws[name] = Array.isArray(values) ? values.map(Number) : [];
+  }
+  const iteration = record.iteration;
+  return {
+    chain: Number(record.chain ?? 0),
+    seq: Number(record.seq ?? 0),
+    iteration: iteration === null || iteration === undefined ? null : Number(iteration),
+    draws,
   };
 }
 
@@ -171,6 +218,11 @@ export function createFitRunner(timeoutMs = 30 * 60_000): FitRunner {
         const progress = parseProgressLine(line);
         if (progress) {
           opts?.onProgress?.(progress);
+          return;
+        }
+        const batch = parseDrawBatchLine(line);
+        if (batch) {
+          opts?.onDraws?.(batch);
           return;
         }
         if (stderr.length < MAX_CAPTURE) stderr += `${line}\n`;
