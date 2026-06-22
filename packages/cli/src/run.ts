@@ -111,7 +111,7 @@ function classifyInput(path: string): InputKind {
 export interface RunCliOptions {
   data?: string;
   out?: string;
-  drawsOut?: string;
+  streamOut?: string;
   draws?: number;
   warmup?: number;
   chains?: number;
@@ -425,7 +425,10 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .description("Run the whole workflow: fit, diagnose, and record the run in the project store")
     .option("--data <file>", "data file (.json object or .csv columns)")
     .option("-o, --out <file>", "also export the samples file to this path")
-    .option("--draws-out <file>", "stream sampled draws to a file as NDJSON (one batch per line)")
+    .option(
+      "--stream-out <file>",
+      "stream sampled draws as NDJSON (one batch per line) to a file, or to stdout with -",
+    )
     .option("--draws <n>", "posterior draws (default 1000)", parseIntOption)
     .option("--warmup <n>", "warmup iterations (default 1000)", parseIntOption)
     .option("--chains <n>", "number of chains (default 4)", parseIntOption)
@@ -453,8 +456,18 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         "\nover an optional spec file. An unchanged model+data+settings reuses the last run.",
     )
     .action(async (input: string, opts: RunCliOptions) => {
+      // `--stream-out -` reserves stdout for the draw stream, so human output
+      // (status lines, the report) goes to stderr and --json (which also owns
+      // stdout) is rejected.
+      const streamToStdout = opts.streamOut === "-";
+      if (streamToStdout && opts.json) {
+        throw new Error(
+          "--stream-out - writes the draw stream to stdout, which conflicts with --json; use a file path for --stream-out, or drop --json",
+        );
+      }
+      const humanOut = streamToStdout ? process.stderr : process.stdout;
       const say = (line: string) => {
-        if (!opts.json) process.stdout.write(`${line}\n`);
+        if (!opts.json) humanOut.write(`${line}\n`);
       };
       const inputPath = resolve(input);
       const config = buildRunConfig(inputPath, opts);
@@ -521,7 +534,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
           const payload = { run: { id: runId, dir, cached }, spec, fit: fit ?? null, report };
           process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
         } else {
-          process.stdout.write(formatReportHuman(report));
+          humanOut.write(formatReportHuman(report));
         }
         process.exitCode = report.converged ? 0 : 2;
       };
@@ -535,8 +548,8 @@ export function registerRun(program: Command, ctx: EngineContext): void {
             say(
               `unchanged since run ${prior.id} (${timeAgo(prior.started_at)}); reusing (--refit to force)`,
             );
-            if (opts.drawsOut) {
-              say("--draws-out is skipped on a reused run; pass --refit to stream fresh draws");
+            if (opts.streamOut) {
+              say("--stream-out is skipped on a reused run; pass --refit to stream fresh draws");
             }
             say("");
             finish(
@@ -606,7 +619,17 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         specHash,
       };
       const progress = rendererFor(opts.json, backendLabel(config.spec.backend.id));
-      const drawsSink = opts.drawsOut ? makeDrawsSink(resolve(opts.drawsOut)) : undefined;
+      if (streamToStdout) {
+        // A downstream consumer closing the pipe (e.g. `| head`) must not crash the run.
+        process.stdout.on("error", () => {});
+      }
+      const drawsSink = opts.streamOut
+        ? streamToStdout
+          ? (batch: DrawBatch) => {
+              process.stdout.write(`${JSON.stringify(batch)}\n`);
+            }
+          : makeDrawsSink(resolve(opts.streamOut))
+        : undefined;
       // During sampling, Ctrl+C cancels the fit gracefully (recorded as a
       // "cancelled" run) rather than hard-exiting and leaving Julia running.
       const controller = new AbortController();
@@ -668,13 +691,13 @@ export function registerRun(program: Command, ctx: EngineContext): void {
             `${JSON.stringify({ run: { id: runId, dir, cached: false }, fit }, null, 2)}\n`,
           );
         } else {
-          process.stdout.write(`${formatFitResult(fit, config.channel, join(dir, "run.json"))}\n`);
+          humanOut.write(`${formatFitResult(fit, config.channel, join(dir, "run.json"))}\n`);
           // A data-field error with no data provided almost always means the
           // model needs data nobody passed; point at the fix instead of the raw error.
           const noData = !config.dataFile && Object.keys(config.spec.data).length === 0;
           if (noData && /has no field|NamedTuple has no fields/i.test(fit.error ?? "")) {
             const detected = autoDetectDataFile(config.modelPath);
-            process.stdout.write(
+            humanOut.write(
               `${pc.dim(
                 detected
                   ? `hint: this model needs data; try: mcmc run ${basename(config.modelPath)} --data ${displayPath(detected)}`
