@@ -168,12 +168,12 @@ function flatten_draw(transition)
 end
 
 # A per-draw callback that emits {"mcmcjs":"draws",...} batches on PROGRESS_IO as
-# sampling proceeds. Chains run sequentially under MCMCSerial, so a chain boundary
-# is the iteration counter resetting; each batch carries a per-chain monotonic seq,
-# and a chain's batches concatenate (by leaf name) to the final samples file.
+# sampling proceeds. AbstractMCMC passes the 1-based chain index as `chain_number`;
+# each batch carries a per-chain monotonic seq, and a chain's batches concatenate
+# (by leaf name) to the final samples file. Assumes the callback is not invoked
+# concurrently across chains (true for the MCMCSerial path build_and_sample uses).
 function draw_streamer(draws_per_chain::Int, batch_size::Int)
     chain = Ref(-1)
-    last_iter = Ref(typemax(Int))
     seq = Ref(0)
     names = String[]
     buffer = Dict{String,Vector{Float64}}()
@@ -200,12 +200,12 @@ function draw_streamer(draws_per_chain::Int, batch_size::Int)
         end
         filled[] = 0
     end
-    return function (_rng, _model, _sampler, transition, _state, iteration; kwargs...)
-        if iteration <= last_iter[]
-            chain[] += 1
+    return function (_rng, _model, _sampler, transition, _state, iteration; chain_number = 1, _kwargs...)
+        c = Int(chain_number) - 1
+        if c != chain[]
+            chain[] = c
             seq[] = 0
         end
-        last_iter[] = iteration
         leaves = flatten_draw(transition)
         if isempty(names)
             for (n, _) in leaves
