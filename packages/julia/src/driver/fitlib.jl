@@ -155,14 +155,83 @@ function chains_from_wire(wire, targets)
     return MCMCChains.Chains(arr, syms, Dict(:parameters => syms); info = (; varname_to_symbol = vmap))
 end
 
+# Expand one sampler transition to canonical scalar leaves (theta -> theta[1], ...),
+# the same names the final samples file uses, so streamed batches reconstruct it.
+function flatten_draw(transition)
+    out = Pair{String,Float64}[]
+    for (vn, val) in pairs(transition.params)
+        for (leaf, leafval) in Turing.DynamicPPL.varname_and_value_leaves(vn, val)
+            push!(out, string(leaf) => Float64(leafval))
+        end
+    end
+    return out
+end
+
+# A per-draw callback that emits {"mcmcjs":"draws",...} batches on PROGRESS_IO as
+# sampling proceeds. Chains run sequentially under MCMCSerial, so a chain boundary
+# is the iteration counter resetting; each batch carries a per-chain monotonic seq,
+# and a chain's batches concatenate (by leaf name) to the final samples file.
+function draw_streamer(draws_per_chain::Int, batch_size::Int)
+    chain = Ref(-1)
+    last_iter = Ref(typemax(Int))
+    seq = Ref(0)
+    names = String[]
+    buffer = Dict{String,Vector{Float64}}()
+    filled = Ref(0)
+    function emit(iteration)
+        filled[] == 0 && return
+        cols = Dict{String,Vector{Float64}}(n => copy(buffer[n]) for n in names)
+        println(
+            PROGRESS_IO[],
+            JSON.json(
+                Dict(
+                    "mcmcjs" => "draws",
+                    "chain" => chain[],
+                    "seq" => seq[],
+                    "iteration" => iteration,
+                    "draws" => cols,
+                ),
+            ),
+        )
+        flush(PROGRESS_IO[])
+        seq[] += 1
+        for n in names
+            empty!(buffer[n])
+        end
+        filled[] = 0
+    end
+    return function (_rng, _model, _sampler, transition, _state, iteration; kwargs...)
+        if iteration <= last_iter[]
+            chain[] += 1
+            seq[] = 0
+        end
+        last_iter[] = iteration
+        leaves = flatten_draw(transition)
+        if isempty(names)
+            for (n, _) in leaves
+                push!(names, n)
+                buffer[n] = Float64[]
+            end
+        end
+        for (n, v) in leaves
+            push!(get!(buffer, n, Float64[]), v)
+        end
+        filled[] += 1
+        if filled[] >= batch_size || iteration >= draws_per_chain
+            emit(iteration)
+        end
+    end
+end
+
 # Build the model and sample in one call so both run in the latest world age:
 # the model methods are defined by `include` at runtime, so a plain call from
 # this (older) world would fail with "method too new". invokelatest fixes that.
-# Returns Turing's default chain type, a FlexiChain.
-function build_and_sample(entry, data, sampler, draws, chains, rng)
+# Returns Turing's default chain type, a FlexiChain. With a callback, draws stream.
+function build_and_sample(entry, data, sampler, draws, chains, rng; callback = nothing)
     model = entry(data)
+    kw = callback === nothing ? NamedTuple() : (; callback)
     return Logging.with_logger(JSONProgressLogger()) do
-        sample(rng, model, sampler, MCMCSerial(), draws, chains; progress = true)
+        sample(rng, model, sampler, MCMCSerial(), draws, chains; progress = true, kw...)
     end
 end
 
@@ -285,7 +354,11 @@ function handle_request(request)
                 chn = Base.invokelatest(sample_bugs, model, sampler, warmup, draws, chains, rng)
                 chains_to_wire(chn)
             else
-                chn = Base.invokelatest(build_and_sample, entry, data, sampler, draws, chains, rng)
+                cb = get(request, "stream_draws", false) ?
+                    draw_streamer(draws, Int(get(request, "draw_batch_size", 25))) : nothing
+                chn = Base.invokelatest(
+                    build_and_sample, entry, data, sampler, draws, chains, rng; callback = cb,
+                )
                 vnchain_to_wire(chn)
             end
         end

@@ -38,7 +38,11 @@ export function makeRequestDir(kind: string): string {
 }
 
 /** The driver/worker request object for one fit. */
-export function fitRequest(spec: ResolvedSpec, outPath: string): Record<string, unknown> {
+export function fitRequest(
+  spec: ResolvedSpec,
+  outPath: string,
+  opts?: { streamDraws?: boolean },
+): Record<string, unknown> {
   return {
     schema_version: spec.schema_version,
     backend: { id: spec.backend.id },
@@ -47,6 +51,7 @@ export function fitRequest(spec: ResolvedSpec, outPath: string): Record<string, 
     sampler: spec.sampler,
     seed: spec.seed,
     out: outPath,
+    ...(opts?.streamDraws ? { stream_draws: true } : {}),
   };
 }
 
@@ -126,7 +131,10 @@ export async function runFit(
   const ownTmp = io.tmpDir === undefined;
   const tmp = io.tmpDir ?? makeRequestDir("fit");
   const requestPath = join(tmp, "request.json");
-  writeFileSync(requestPath, JSON.stringify(fitRequest(spec, io.outPath)));
+  writeFileSync(
+    requestPath,
+    JSON.stringify(fitRequest(spec, io.outPath, { streamDraws: io.onDraws !== undefined })),
+  );
 
   const args = [
     ...resolved.args,

@@ -1,5 +1,12 @@
 import { createHash, randomInt } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import {
   appendLedgerEntry,
@@ -78,6 +85,7 @@ function classifyInput(path: string): InputKind {
 export interface RunCliOptions {
   data?: string;
   out?: string;
+  drawsOut?: string;
   draws?: number;
   warmup?: number;
   chains?: number;
@@ -391,6 +399,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .description("Run the whole workflow: fit, diagnose, and record the run in the project store")
     .option("--data <file>", "data file (.json object or .csv columns)")
     .option("-o, --out <file>", "also export the samples file to this path")
+    .option("--draws-out <file>", "stream sampled draws to a file as NDJSON (one batch per line)")
     .option("--draws <n>", "posterior draws (default 1000)", parseIntOption)
     .option("--warmup <n>", "warmup iterations (default 1000)", parseIntOption)
     .option("--chains <n>", "number of chains (default 4)", parseIntOption)
@@ -567,6 +576,9 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         specHash,
       };
       const progress = rendererFor(opts.json, backendLabel(config.spec.backend.id));
+      // A local NDJSON sink for draw batches as they are produced; one batch per line.
+      const drawsOut = opts.drawsOut ? resolve(opts.drawsOut) : undefined;
+      if (drawsOut) writeFileSync(drawsOut, "");
       let fit: Awaited<ReturnType<typeof runFitAuto>>;
       try {
         fit = await runFitAuto(resolvedSpec, resolved, {
@@ -575,6 +587,9 @@ export function registerRun(program: Command, ctx: EngineContext): void {
           outPath: join(dir, "samples.json"),
           recordPath: join(dir, "run.json"),
           onProgress: progress.onProgress,
+          onDraws: drawsOut
+            ? (batch) => appendFileSync(drawsOut, `${JSON.stringify(batch)}\n`)
+            : undefined,
           daemon: opts.daemon ?? process.env.MCMC_DAEMON === "1",
           notify: (line) => say(line),
           dataFile: config.dataFile,

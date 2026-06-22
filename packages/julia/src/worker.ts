@@ -205,7 +205,9 @@ export async function runFitViaWorker(
   const startedAt = new Date().toISOString();
   const start = performance.now();
   const sock = await ensureWorker(resolved, io.projectDir, io.notify);
-  sock.write(`${JSON.stringify(fitRequest(spec, io.outPath))}\n`);
+  sock.write(
+    `${JSON.stringify(fitRequest(spec, io.outPath, { streamDraws: io.onDraws !== undefined }))}\n`,
+  );
   const final = await readWorkerResponse(sock, io.onProgress, io.onDraws);
   const elapsedMs = Math.round(performance.now() - start);
 
