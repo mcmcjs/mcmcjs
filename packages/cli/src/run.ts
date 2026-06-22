@@ -30,7 +30,7 @@ import {
   storeDirFor,
   updateLedgerEntry,
 } from "@mcmcjs/core";
-import { createFitRunner, type EngineContext } from "@mcmcjs/engine";
+import { createFitRunner, type DrawBatch, type EngineContext } from "@mcmcjs/engine";
 import {
   ensureProject,
   managedProjectDir,
@@ -53,6 +53,32 @@ import { timeAgo } from "./store-cli";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
 const MAX_SEED = 2_147_483_647;
+
+/**
+ * An NDJSON draw sink: truncates `path` on creation, then appends one batch per
+ * line. Sampling must not depend on it, so a write failure degrades to a single
+ * warning and silences the sink rather than throwing into the fit.
+ */
+export function makeDrawsSink(path: string): (batch: DrawBatch) => void {
+  let live = true;
+  try {
+    writeFileSync(path, "");
+  } catch (error) {
+    live = false;
+    process.stderr.write(`warning: cannot write draws to ${path}: ${(error as Error).message}\n`);
+  }
+  return (batch) => {
+    if (!live) return;
+    try {
+      appendFileSync(path, `${JSON.stringify(batch)}\n`);
+    } catch (error) {
+      live = false;
+      process.stderr.write(
+        `warning: stopped writing draws to ${path}: ${(error as Error).message}\n`,
+      );
+    }
+  };
+}
 
 /** Guess the PPL from the model source; undefined when neither marker is found. */
 export function detectBackend(source: string): "turing" | "juliabugs" | undefined {
@@ -509,6 +535,9 @@ export function registerRun(program: Command, ctx: EngineContext): void {
             say(
               `unchanged since run ${prior.id} (${timeAgo(prior.started_at)}); reusing (--refit to force)`,
             );
+            if (opts.drawsOut) {
+              say("--draws-out is skipped on a reused run; pass --refit to stream fresh draws");
+            }
             say("");
             finish(
               buildDiagnosticsReport(parseSamples(readFileSync(samplesPath, "utf8"))),
@@ -576,9 +605,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         specHash,
       };
       const progress = rendererFor(opts.json, backendLabel(config.spec.backend.id));
-      // A local NDJSON sink for draw batches as they are produced; one batch per line.
-      const drawsOut = opts.drawsOut ? resolve(opts.drawsOut) : undefined;
-      if (drawsOut) writeFileSync(drawsOut, "");
+      const drawsSink = opts.drawsOut ? makeDrawsSink(resolve(opts.drawsOut)) : undefined;
       let fit: Awaited<ReturnType<typeof runFitAuto>>;
       try {
         fit = await runFitAuto(resolvedSpec, resolved, {
@@ -587,9 +614,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
           outPath: join(dir, "samples.json"),
           recordPath: join(dir, "run.json"),
           onProgress: progress.onProgress,
-          onDraws: drawsOut
-            ? (batch) => appendFileSync(drawsOut, `${JSON.stringify(batch)}\n`)
-            : undefined,
+          onDraws: drawsSink,
           daemon: opts.daemon ?? process.env.MCMC_DAEMON === "1",
           notify: (line) => say(line),
           dataFile: config.dataFile,

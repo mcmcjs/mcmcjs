@@ -1,8 +1,9 @@
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type LedgerEntry, serializeSpecToml } from "@mcmcjs/core";
-import { describe, expect, it } from "vitest";
+import type { DrawBatch } from "@mcmcjs/engine";
+import { describe, expect, it, vi } from "vitest";
 import type { DiagnosticsReport } from "../src/diagnose";
 import {
   autoDetectDataFile,
@@ -11,6 +12,7 @@ import {
   detectBackend,
   diagnosticsSummary,
   frozenSpecFor,
+  makeDrawsSink,
   type RunInputs,
   refitReasons,
 } from "../src/run";
@@ -69,6 +71,41 @@ describe("autoDetectDataFile", () => {
   it("returns undefined when nothing matches", () => {
     const dir = tmp();
     expect(autoDetectDataFile(join(dir, "model.jl"))).toBeUndefined();
+  });
+});
+
+describe("makeDrawsSink", () => {
+  const batch = (chain: number, seq: number): DrawBatch => ({
+    chain,
+    seq,
+    iteration: seq + 1,
+    draws: { mu: [seq] },
+  });
+
+  it("truncates on creation and appends one NDJSON batch per line", () => {
+    const path = join(tmp(), "draws.ndjson");
+    writeFileSync(path, "stale\n");
+    const sink = makeDrawsSink(path);
+    sink(batch(0, 0));
+    sink(batch(0, 1));
+    const lines = readFileSync(path, "utf8").trim().split("\n");
+    expect(lines.map((l) => JSON.parse(l))).toEqual([batch(0, 0), batch(0, 1)]);
+  });
+
+  it("degrades to a one-time warning when the path cannot be written", () => {
+    const dir = tmp();
+    // A directory standing where the file should be makes every write fail.
+    const path = join(dir, "draws");
+    mkdirSync(path);
+    const warn = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const sink = makeDrawsSink(path);
+    expect(() => {
+      sink(batch(0, 0));
+      sink(batch(0, 1));
+    }).not.toThrow();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain("cannot write draws");
+    warn.mockRestore();
   });
 });
 
