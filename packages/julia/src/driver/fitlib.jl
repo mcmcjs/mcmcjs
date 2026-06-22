@@ -96,6 +96,21 @@ end
 
 to_namedtuple(data) = (; (Symbol(k) => v for (k, v) in data)...)
 
+# Binds the data so a model can read a variable as a property (`data.y`) or by
+# index (`data["y"]` / `data[:y]`), with `haskey`/`keys` supported, so models
+# written in either idiom run unchanged. The underlying NamedTuple is reached
+# via getfield to avoid colliding with a data variable also named `nt`.
+struct ModelData
+    nt::NamedTuple
+end
+Base.getproperty(d::ModelData, k::Symbol) = getproperty(getfield(d, :nt), k)
+Base.getindex(d::ModelData, k::Symbol) = getproperty(getfield(d, :nt), k)
+Base.getindex(d::ModelData, k::AbstractString) = getproperty(getfield(d, :nt), Symbol(k))
+Base.haskey(d::ModelData, k::Symbol) = haskey(getfield(d, :nt), k)
+Base.haskey(d::ModelData, k::AbstractString) = haskey(getfield(d, :nt), Symbol(k))
+Base.keys(d::ModelData) = keys(getfield(d, :nt))
+Base.propertynames(d::ModelData) = propertynames(getfield(d, :nt))
+
 # JuliaBUGS requires dense arrays with a concrete numeric eltype, but JSON parses
 # them as Vector{Any} (and nested arrays as vectors of vectors). narrow promotes a
 # numeric array to a concrete eltype and stacks equal-sized nested arrays into a
@@ -251,7 +266,7 @@ function handle_request(request)
 
         wire = if mode == "predict"
             backend == "turing" || error("predict is not yet supported for backend $backend")
-            model = Base.invokelatest(entry, predict_namedtuple(request["data"]))
+            model = Base.invokelatest(entry, ModelData(predict_namedtuple(request["data"])))
             stage = "load_samples"
             rchn = chains_from_wire(JSON.parsefile(request["samples"]), request["predict"]["targets"])
             stage = "predict"
@@ -260,7 +275,7 @@ function handle_request(request)
                 error("no variables predicted; check that [predict].targets name unconditioned outcomes")
             chains_to_wire(pp)
         else
-            data = backend == "juliabugs" ? bugs_namedtuple(request["data"]) : to_namedtuple(request["data"])
+            data = backend == "juliabugs" ? bugs_namedtuple(request["data"]) : ModelData(to_namedtuple(request["data"]))
             sampler, warmup = build_sampler(request["sampler"], backend)
             draws = Int(request["sampler"]["draws"])
             chains = Int(get(request["sampler"], "chains", 4))
