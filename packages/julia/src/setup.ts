@@ -1,3 +1,4 @@
+import { DEFAULT_JULIA_CHANNEL } from "@mcmcjs/core";
 import { type DoctorReport, runDoctor } from "./doctor";
 import { type CommandRunner, createRunner, type ToolInfo } from "./environment";
 
@@ -19,7 +20,16 @@ export function juliaupInstallCommand(platform: NodeJS.Platform): InstallCommand
     // TODO: install juliaup on Windows via winget or the Microsoft Store.
     return null;
   }
-  return { command: "sh", args: ["-c", `curl -fsSL ${JULIAUP_INSTALL_URL} | sh -s -- --yes`] };
+  // `--default-channel` makes the installer add the pinned Julia version (not
+  // just the latest "release") in the same step, so a clean machine lands on
+  // the exact version the committed Manifest was resolved for.
+  return {
+    command: "sh",
+    args: [
+      "-c",
+      `curl -fsSL ${JULIAUP_INSTALL_URL} | sh -s -- --yes --default-channel ${DEFAULT_JULIA_CHANNEL}`,
+    ],
+  };
 }
 
 /** A single provisioning step needed to make the toolchain ready. */
@@ -33,20 +43,24 @@ export interface SetupStep {
 
 /** The ordered steps needed to reach a ready toolchain, given the current state. */
 export function planSetup(report: DoctorReport, platform: NodeJS.Platform): SetupStep[] {
-  if (report.julia.found) return [];
+  // The pinned Julia is already the active default: nothing to do.
+  if (report.julia.found && report.julia.version === DEFAULT_JULIA_CHANNEL) return [];
   if (report.juliaup.found) {
     return [
       {
         tool: "julia",
-        label: "install the latest stable Julia via juliaup",
-        command: { command: report.juliaup.path ?? "juliaup", args: ["add", "release"] },
+        label: `install the pinned Julia ${DEFAULT_JULIA_CHANNEL} via juliaup`,
+        command: {
+          command: report.juliaup.path ?? "juliaup",
+          args: ["add", DEFAULT_JULIA_CHANNEL],
+        },
       },
     ];
   }
   return [
     {
       tool: "juliaup",
-      label: "install juliaup (this also installs Julia)",
+      label: `install juliaup with the pinned Julia ${DEFAULT_JULIA_CHANNEL}`,
       command: juliaupInstallCommand(platform),
     },
   ];
@@ -89,9 +103,10 @@ export async function runSetup(options: SetupOptions = {}): Promise<SetupResult>
   } = options;
 
   const before = await runDoctor(runner);
-  if (before.ready) return { ...before, steps: [] };
-
   const plan = planSetup(before, platform);
+  // Nothing to install only when the pinned Julia is already the active
+  // default; a different installed Julia still triggers a pinned-version add.
+  if (plan.length === 0) return { ...before, steps: [] };
 
   if (dryRun) {
     return {

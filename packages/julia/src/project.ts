@@ -1,9 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { canonicalJson } from "@mcmcjs/core";
+import { canonicalJson, DEFAULT_JULIA_CHANNEL } from "@mcmcjs/core";
 import { type CommandRunner, createRunner } from "@mcmcjs/engine";
-import { sha256 } from "./runner-common";
+import { pinnedEnvDir, sha256 } from "./runner-common";
 
 const PACKAGES = [
   "Turing",
@@ -106,23 +106,47 @@ function packageSpecsCode(pins?: PackagePins): string {
 }
 
 /**
+ * Whether a provision should instantiate the shipped, resolved env (exact
+ * committed package set) rather than resolving fresh: only the unpinned default
+ * on the pinned Julia version, and only when the shipped env is present. Other
+ * versions (a `--versions` matrix) and any package pins must resolve fresh,
+ * since the committed Manifest was resolved for one specific Julia version.
+ */
+function usesPinnedEnv(version: string | undefined, pins?: PackagePins): boolean {
+  return !hasPins(pins) && version === DEFAULT_JULIA_CHANNEL && existsSync(pinnedEnvDir());
+}
+
+/**
  * Ensures the managed Julia project exists with the inference packages installed
  * (version-pinned where `pins` requests). Idempotent: returns immediately when
- * already provisioned with the current set and pins, otherwise adds (and
- * precompiles) the packages. The first run resolves and precompiles the project,
- * which can take several minutes.
+ * already provisioned with the current set and pins. For the default env on the
+ * pinned Julia version it instantiates the shipped, resolved Manifest (the exact
+ * committed package set); otherwise it resolves and adds the packages fresh. The
+ * first provision precompiles the project, which can take several minutes.
  */
 export async function ensureProject(
   juliaBin: string,
   run: CommandRunner = createRunner(30 * 60_000),
   dir: string = managedProjectDir(),
   pins?: PackagePins,
+  opts?: { version?: string },
 ): Promise<string> {
   validatePins(pins);
   if (managedProjectReady(dir, pins)) return dir;
   mkdirSync(dir, { recursive: true });
-  const code = `using Pkg; Pkg.add(${packageSpecsCode(pins)}); Pkg.precompile()`;
-  await run(juliaBin, ["--startup-file=no", `--project=${dir}`, "-e", code]);
+  if (usesPinnedEnv(opts?.version, pins)) {
+    copyFileSync(join(pinnedEnvDir(), "Project.toml"), join(dir, "Project.toml"));
+    copyFileSync(join(pinnedEnvDir(), "Manifest.toml"), join(dir, "Manifest.toml"));
+    await run(juliaBin, [
+      "--startup-file=no",
+      `--project=${dir}`,
+      "-e",
+      "using Pkg; Pkg.instantiate(); Pkg.precompile()",
+    ]);
+  } else {
+    const code = `using Pkg; Pkg.add(${packageSpecsCode(pins)}); Pkg.precompile()`;
+    await run(juliaBin, ["--startup-file=no", `--project=${dir}`, "-e", code]);
+  }
   writeFileSync(sentinelPath(dir), expectedSentinel(pins));
   return dir;
 }

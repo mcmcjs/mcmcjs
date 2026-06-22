@@ -24,6 +24,15 @@ export function workerPath(): string {
   return join(dirname(fileURLToPath(import.meta.url)), "worker.jl");
 }
 
+/**
+ * Directory holding the shipped, resolved Julia env (Project.toml + Manifest.toml),
+ * next to this module in dist/. A fresh default provision instantiates this exact
+ * package set rather than re-resolving the latest compatible versions.
+ */
+export function pinnedEnvDir(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), "julia-env");
+}
+
 export function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }

@@ -1,3 +1,4 @@
+import { DEFAULT_JULIA_CHANNEL } from "@mcmcjs/core";
 import { describe, expect, it } from "vitest";
 import type { DoctorReport } from "../src/doctor";
 import type { CommandRunner, ToolInfo } from "../src/environment";
@@ -7,7 +8,8 @@ const missing: CommandRunner = async () => {
   throw new Error("ENOENT");
 };
 
-const tool = (found: boolean, path?: string): ToolInfo => (found ? { found, path } : { found });
+const tool = (found: boolean, path?: string, version?: string): ToolInfo =>
+  found ? { found, path, version } : { found };
 const report = (juliaup: ToolInfo, julia: ToolInfo): DoctorReport => ({
   juliaup,
   julia,
@@ -15,10 +17,11 @@ const report = (juliaup: ToolInfo, julia: ToolInfo): DoctorReport => ({
 });
 
 describe("juliaupInstallCommand", () => {
-  it("uses the official install script on Unix-like platforms", () => {
+  it("uses the official install script on Unix-like platforms, pinning the default channel", () => {
     const cmd = juliaupInstallCommand("linux");
     expect(cmd?.command).toBe("sh");
     expect(cmd?.args.at(-1)).toContain("install.julialang.org");
+    expect(cmd?.args.at(-1)).toContain(`--default-channel ${DEFAULT_JULIA_CHANNEL}`);
     expect(juliaupInstallCommand("darwin")?.command).toBe("sh");
   });
 
@@ -28,20 +31,34 @@ describe("juliaupInstallCommand", () => {
 });
 
 describe("planSetup", () => {
-  it("does nothing when Julia is already present", () => {
-    expect(planSetup(report(tool(true), tool(true)), "linux")).toEqual([]);
+  it("does nothing when the pinned Julia is already the active default", () => {
+    expect(
+      planSetup(report(tool(true), tool(true, undefined, DEFAULT_JULIA_CHANNEL)), "linux"),
+    ).toEqual([]);
   });
 
-  it("adds Julia through an existing juliaup, using its detected path", () => {
+  it("installs the pinned Julia through an existing juliaup when a different version is active", () => {
     const steps = planSetup(
-      report(tool(true, "/home/u/.juliaup/bin/juliaup"), tool(false)),
+      report(tool(true, "/home/u/.juliaup/bin/juliaup"), tool(true, undefined, "1.11.9")),
       "linux",
     );
     expect(steps).toHaveLength(1);
     expect(steps[0]?.tool).toBe("julia");
     expect(steps[0]?.command).toEqual({
       command: "/home/u/.juliaup/bin/juliaup",
-      args: ["add", "release"],
+      args: ["add", DEFAULT_JULIA_CHANNEL],
+    });
+  });
+
+  it("adds the pinned Julia through an existing juliaup when no Julia is present", () => {
+    const steps = planSetup(
+      report(tool(true, "/home/u/.juliaup/bin/juliaup"), tool(false)),
+      "linux",
+    );
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.command).toEqual({
+      command: "/home/u/.juliaup/bin/juliaup",
+      args: ["add", DEFAULT_JULIA_CHANNEL],
     });
   });
 
@@ -59,14 +76,14 @@ describe("planSetup", () => {
 });
 
 describe("runSetup", () => {
-  it("does nothing when the toolchain is already ready", async () => {
+  it("does nothing when the pinned Julia is already present", async () => {
     let installs = 0;
     const installer: CommandRunner = async () => {
       installs += 1;
       return "";
     };
     const result = await runSetup({
-      runner: async () => "version 1.11.2",
+      runner: async () => `version ${DEFAULT_JULIA_CHANNEL}`,
       installer,
       platform: "linux",
     });
