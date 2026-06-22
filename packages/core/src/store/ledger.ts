@@ -34,7 +34,7 @@ export interface LedgerEntry {
   /** Same-experiment key: backend + model + entry + sampler + data, seed excluded. */
   run_key: string;
   spec_hash: string;
-  status: "ok" | "failed";
+  status: "ok" | "failed" | "cancelled";
   /** The model path relative to the store root's parent, with "/" separators. */
   model_path: string;
   model_sha256?: string;
