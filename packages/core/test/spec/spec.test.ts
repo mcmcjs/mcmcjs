@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { hashSpec } from "../../src/spec/normalize";
 import { parseSpec } from "../../src/spec/parse";
-import { SpecSchema } from "../../src/spec/schema";
+import { DEFAULT_JULIA_CHANNEL, SpecSchema } from "../../src/spec/schema";
 
 const VALID = {
   schema_version: "0",
@@ -19,7 +19,7 @@ describe("SpecSchema", () => {
   it("applies defaults for runtime, version, sampler, and output", () => {
     const spec = SpecSchema.parse(VALID);
     expect(spec.backend.runtime).toBe("julia");
-    expect(spec.backend.version).toBe("release");
+    expect(spec.backend.version).toBe(DEFAULT_JULIA_CHANNEL);
     expect(spec.sampler.algorithm).toBe("NUTS");
     expect(spec.sampler.warmup).toBe(1000);
     expect(spec.sampler.chains).toBe(4);

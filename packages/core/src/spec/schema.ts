@@ -2,11 +2,19 @@ import { z } from "zod";
 
 export const SPEC_SCHEMA_VERSION = "0";
 
+/**
+ * The default juliaup channel a fit runs on. Pinned to a specific Julia version
+ * (not a moving channel like "release") so a run reproduces the committed,
+ * resolved package set the toolchain ships. Override per spec or with
+ * `--julia-version` to run on another channel.
+ */
+export const DEFAULT_JULIA_CHANNEL = "1.12.6";
+
 const Backend = z.object({
   id: z.enum(["turing", "juliabugs"]),
   runtime: z.literal("julia").default("julia"),
-  /** The juliaup channel the runtime resolves to (e.g. "release", "1.10"). */
-  version: z.string().min(1).default("release"),
+  /** The juliaup channel the runtime resolves to (e.g. a version like "1.12.6"). */
+  version: z.string().min(1).default(DEFAULT_JULIA_CHANNEL),
   /**
    * Optional version pins for managed Julia packages, by name (e.g.
    * `{ Turing = "0.45" }`). Pinned packages provision into their own managed
