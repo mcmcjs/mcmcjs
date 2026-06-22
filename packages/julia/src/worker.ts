@@ -118,11 +118,15 @@ export async function ensureWorker(
   resolved: { command: string; args: string[] },
   projectDir: string,
   notify?: (line: string) => void,
+  signal?: AbortSignal,
 ): Promise<Socket> {
   const path = workerSocketPath(resolved.command, projectDir);
   try {
     return await connectOnce(path);
   } catch {}
+  // Honor a cancel that arrived during the (possibly slow) cold start; the
+  // detached worker keeps loading and stays warm for the next fit.
+  if (signal?.aborted) throw new FitCancelledError();
 
   let spawnFailure: Error | undefined;
   const startedHere = acquireStartLock(path);
@@ -153,6 +157,7 @@ export async function ensureWorker(
   try {
     const deadline = Date.now() + START_WAIT_MS;
     for (;;) {
+      if (signal?.aborted) throw new FitCancelledError();
       if (spawnFailure) throw spawnFailure;
       try {
         return await connectOnce(path);
@@ -251,7 +256,31 @@ export async function runFitViaWorker(
   if (io.signal?.aborted) {
     return { status: "cancelled", runtimeRequested: spec.backend.version, elapsedMs: 0 };
   }
-  const sock = await ensureWorker(resolved, io.projectDir, io.notify);
+  let sock: Socket;
+  try {
+    sock = await ensureWorker(resolved, io.projectDir, io.notify, io.signal);
+  } catch (error) {
+    // Cancelled during the cold start: the worker (if any) is still idle and
+    // stays warm; no fit was dispatched, so just report cancelled.
+    if (error instanceof FitCancelledError) {
+      return {
+        status: "cancelled",
+        runtimeRequested: spec.backend.version,
+        elapsedMs: Math.round(performance.now() - start),
+      };
+    }
+    throw error;
+  }
+  if (io.signal?.aborted) {
+    // Aborted in the gap before dispatch; drop the connection, leave the worker
+    // idle and warm. The worker reads an empty line and loops back to accept.
+    sock.destroy();
+    return {
+      status: "cancelled",
+      runtimeRequested: spec.backend.version,
+      elapsedMs: Math.round(performance.now() - start),
+    };
+  }
   sock.write(
     `${JSON.stringify(fitRequest(spec, io.outPath, { streamDraws: io.onDraws !== undefined }))}\n`,
   );

@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn as spawnProcess } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -214,6 +214,25 @@ describe("runFitViaWorker", () => {
     await childGone; // the pidfile's process was killed
     expect(existsSync(socket)).toBe(false);
     expect(existsSync(`${socket}.pid`)).toBe(false);
+  });
+
+  it("cancels during the worker cold start without dispatching a fit", async () => {
+    stubWorkersDir();
+    const socket = workerSocketPath("/bin/julia", "/proj");
+    // Pretend another invocation holds the start lock, so this one only waits
+    // (no worker is spawned) and the abort must break it out of the poll loop.
+    mkdirSync(`${socket}.start`);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 100);
+    const spawn = vi.fn(async () => ({ stdout: "", stderr: "", code: 1 }));
+    const result = await runFitViaWorker(
+      spec(dir),
+      { command: "/bin/julia", args: [] },
+      { spawn, projectDir: "/proj", outPath: join(dir, "samples.json"), signal: controller.signal },
+    );
+    expect(result.status).toBe("cancelled");
+    expect(spawn).not.toHaveBeenCalled();
+    expect(existsSync(join(dir, "samples.json"))).toBe(false);
   });
 
   it("runFitAuto returns cancelled without touching a worker when the signal is pre-aborted", async () => {
