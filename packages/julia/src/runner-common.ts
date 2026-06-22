@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,14 +15,23 @@ export function sharedTmpParent(): string {
   return join(tmpdir(), `mcmcjs${uid}`);
 }
 
-/** Path to the shipped Julia driver, resolved next to this module in dist/. */
-export function driverPath(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), "driver.jl");
+// The driver scripts sit next to the bundle in the published dist/ (tsup copies
+// them there), but under src/driver/ when running from source (tests, tsx). Try
+// the bundle layout first, fall back to the source layout.
+function driverFile(name: string): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const beside = join(here, name);
+  return existsSync(beside) ? beside : join(here, "driver", name);
 }
 
-/** Path to the shipped persistent worker, resolved next to this module in dist/. */
+/** Path to the shipped Julia driver. */
+export function driverPath(): string {
+  return driverFile("driver.jl");
+}
+
+/** Path to the shipped persistent worker. */
 export function workerPath(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), "worker.jl");
+  return driverFile("worker.jl");
 }
 
 /**
