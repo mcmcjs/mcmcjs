@@ -7,6 +7,7 @@ export {
   type VariableDiagnostics,
 } from "./diagnose";
 export {
+  autocorr,
   computeEssBasic as essBasic,
   computeEssBulk as essBulk,
   computeEssTail as essTail,

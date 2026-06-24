@@ -36,6 +36,13 @@ export function computeESS(chain: Float64Array): {
   return { ess, autocorrelation: acor.map((v) => (Number.isNaN(v) ? 0 : v)) };
 }
 
+/** Normalized autocorrelation of one chain, from lag 0 (= 1) up to `maxLag`. */
+export function autocorr(chain: Float64Array, maxLag = 40): number[] {
+  const { autocorrelation } = computeESS(chain);
+  if (autocorrelation.length === 0) return [];
+  return autocorrelation.slice(0, Math.min(maxLag + 1, autocorrelation.length));
+}
+
 export function computeEssBulk(chains: Float64Array[]): number {
   if (chains.length < 2) return NaN;
   if (!_isFiniteAndVaries(_splitChains(chains))) return NaN;

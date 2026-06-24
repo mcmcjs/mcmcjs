@@ -1,3 +1,4 @@
+export { blockBar, sparkline } from "./blocks";
 export { type Charset, type ColorFn, DotCanvas } from "./canvas";
 export { extent, fmtNum } from "./format";
 export { axisFrame, type FrameOptions } from "./frame";

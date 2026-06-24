@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  renderAutocorrTerminal,
   renderDensityTerminal,
   renderForestTerminal,
   renderHistogramTerminal,
+  renderRankTerminal,
   renderTraceTerminal,
 } from "../src/terminal";
-import type { DensityData, ForestData, HistogramData, TraceData } from "../src/types";
+import type {
+  AutocorrData,
+  DensityData,
+  ForestData,
+  HistogramData,
+  RankData,
+  TraceData,
+} from "../src/types";
 
 const trace: TraceData = {
   kind: "trace",
@@ -88,6 +97,48 @@ describe("renderHistogramTerminal", () => {
     const out = renderHistogramTerminal(histogram, { height: 4, charset: "ascii" });
     expect(out).toContain("mu   histogram   (3 bins, 8 draws)");
     expect(hasBraille(out)).toBe(false);
+  });
+});
+
+const rank: RankData = {
+  kind: "rank",
+  variable: "mu",
+  nChains: 2,
+  bins: 4,
+  counts: [
+    [1, 2, 3, 4],
+    [4, 3, 2, 1],
+  ],
+  expected: 2.5,
+};
+
+describe("renderRankTerminal", () => {
+  it("renders a header and one sparkline row per chain", () => {
+    const out = renderRankTerminal(rank);
+    expect(out).toContain("mu   rank (4 bins, 2 chains)");
+    expect(out).toContain("chain 0");
+    expect(out).toContain("chain 1");
+    expect(out.trimEnd().split("\n")).toHaveLength(3); // header + 2 chains
+  });
+});
+
+const autoc: AutocorrData = {
+  kind: "autocorr",
+  variable: "mu",
+  nChains: 2,
+  maxLag: 3,
+  lags: [0, 1, 2, 3],
+  chains: [
+    [1, 0.5, 0.2, 0.1],
+    [1, 0.3, 0.1, 0],
+  ],
+};
+
+describe("renderAutocorrTerminal", () => {
+  it("renders an autocorrelation header and a braille body", () => {
+    const out = renderAutocorrTerminal(autoc, { height: 4 });
+    expect(out).toContain("mu   autocorrelation (max lag 3, 2 chains)");
+    expect(hasBraille(out)).toBe(true);
   });
 });
 

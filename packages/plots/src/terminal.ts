@@ -1,5 +1,21 @@
-import { axisFrame, DotCanvas, extent, fmtNum, linearScale, niceDomain } from "@mcmcjs/charts";
-import type { DensityData, ForestData, HistogramData, TerminalOptions, TraceData } from "./types";
+import {
+  axisFrame,
+  DotCanvas,
+  extent,
+  fmtNum,
+  linearScale,
+  niceDomain,
+  sparkline,
+} from "@mcmcjs/charts";
+import type {
+  AutocorrData,
+  DensityData,
+  ForestData,
+  HistogramData,
+  RankData,
+  TerminalOptions,
+  TraceData,
+} from "./types";
 
 const identity = (text: string): string => text;
 const GUTTER = 8;
@@ -121,6 +137,60 @@ export function renderHistogramTerminal(data: HistogramData, opts: TerminalOptio
     yMax: maxC,
     xLeft: fmtNum(edges[0] ?? 0),
     xRight: fmtNum(edges[edges.length - 1] ?? 1),
+    charset,
+    header,
+    gutter: GUTTER,
+  });
+}
+
+/** Renders a rank plot as one per-chain sparkline of bin counts (flat = good mixing). */
+export function renderRankTerminal(data: RankData, opts: TerminalOptions = {}): string {
+  const charset = opts.charset ?? "unicode";
+  const color = opts.color ?? identity;
+  const maxCount = Math.max(1, ...data.counts.flat());
+
+  const lines: string[] = [
+    `${data.variable}   rank (${data.bins} bins, ${data.nChains} chains)   flat = good mixing`,
+  ];
+  data.counts.forEach((chainCounts, chain) => {
+    const bars = sparkline(chainCounts, { max: maxCount, charset });
+    lines.push(`  ${color(`chain ${chain}`.padEnd(8), chain)} ${color(bars, chain)}`);
+  });
+  return `${lines.join("\n")}\n`;
+}
+
+/** Renders autocorrelation as one decaying line per chain over lag. */
+export function renderAutocorrTerminal(data: AutocorrData, opts: TerminalOptions = {}): string {
+  const charset = opts.charset ?? "unicode";
+  const color = opts.color ?? identity;
+  const totalWidth = opts.width ?? 72;
+  const height = opts.height ?? 10;
+  const plotW = Math.max(8, totalWidth - GUTTER - 2);
+
+  let yMin = 0;
+  for (const acf of data.chains) {
+    for (const v of acf) if (v < yMin) yMin = v;
+  }
+  const canvas = new DotCanvas(plotW, height);
+  const scaleX = linearScale([0, Math.max(1, data.maxLag)], [0, canvas.wDots - 1]);
+  const scaleY = linearScale([yMin, 1], [canvas.hDots - 1, 0]);
+
+  data.chains.forEach((acf, chain) => {
+    for (let k = 1; k < acf.length; k++) {
+      const y0 = acf[k - 1];
+      const y1 = acf[k];
+      if (y0 === undefined || y1 === undefined) continue;
+      canvas.line(scaleX.map(k - 1), scaleY.map(y0), scaleX.map(k), scaleY.map(y1), chain);
+    }
+  });
+
+  const header = `${data.variable}   autocorrelation (max lag ${data.maxLag}, ${data.nChains} chains)`;
+  return axisFrame(canvas.rows(charset, color), {
+    width: plotW,
+    yMin,
+    yMax: 1,
+    xLeft: "0",
+    xRight: String(data.maxLag),
     charset,
     header,
     gutter: GUTTER,

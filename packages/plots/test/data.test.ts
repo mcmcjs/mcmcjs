@@ -1,6 +1,14 @@
 import type { Samples } from "@mcmcjs/core";
 import { describe, expect, it } from "vitest";
-import { chainsOf, densityData, forestData, histogramData, traceData } from "../src/data";
+import {
+  autocorrData,
+  chainsOf,
+  densityData,
+  forestData,
+  histogramData,
+  rankData,
+  traceData,
+} from "../src/data";
 
 /** Builds a Samples set from per-variable, per-chain draw arrays (chain-major). */
 function makeSamples(perVar: Record<string, number[][]>): Samples {
@@ -80,6 +88,33 @@ describe("histogramData", () => {
     const hd = histogramData(samples, "mu", { bins: 5 });
     expect(hd.counts).toHaveLength(5);
     expect(hd.binEdges).toHaveLength(6);
+  });
+});
+
+describe("rankData", () => {
+  it("counts each chain's ranks into bins that sum to its draw count", () => {
+    const rd = rankData(samples, "mu", { bins: 4 });
+    expect(rd.kind).toBe("rank");
+    expect(rd.bins).toBe(4);
+    expect(rd.counts).toHaveLength(3);
+    for (const row of rd.counts) {
+      expect(row).toHaveLength(4);
+      expect(row.reduce((a, b) => a + b, 0)).toBe(samples.nDraws);
+    }
+    expect(rd.expected).toBe(samples.nDraws / 4);
+  });
+});
+
+describe("autocorrData", () => {
+  it("returns an ACF per chain starting at 1.0 for lag 0", () => {
+    const ad = autocorrData(samples, "mu", { maxLag: 4 });
+    expect(ad.kind).toBe("autocorr");
+    expect(ad.nChains).toBe(3);
+    expect(ad.lags[0]).toBe(0);
+    const acf = ad.chains[0] as number[];
+    expect(acf.length).toBeGreaterThan(0);
+    expect(acf.length).toBeLessThanOrEqual(5);
+    expect(acf[0]).toBeCloseTo(1, 6);
   });
 });
 

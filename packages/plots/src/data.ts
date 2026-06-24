@@ -1,7 +1,15 @@
 import { extent, niceDomain } from "@mcmcjs/charts";
 import { chainView, type Samples } from "@mcmcjs/core";
-import { diagnoseChains, isConverged, quantiles, stdev } from "@mcmcjs/diagnostics";
-import type { DensityData, ForestData, ForestRow, HistogramData, TraceData } from "./types";
+import { autocorr, diagnoseChains, isConverged, quantiles, stdev } from "@mcmcjs/diagnostics";
+import type {
+  AutocorrData,
+  DensityData,
+  ForestData,
+  ForestRow,
+  HistogramData,
+  RankData,
+  TraceData,
+} from "./types";
 
 const INV_SQRT_2PI = 1 / Math.sqrt(2 * Math.PI);
 
@@ -94,6 +102,54 @@ export function histogramData(
   }
   const binEdges = Array.from({ length: bins + 1 }, (_, i) => lo + i * width);
   return { kind: "histogram", variable, binEdges, counts, total };
+}
+
+/** Rank plot data: per-chain counts of pooled average-ranks over `bins` bins. */
+export function rankData(
+  samples: Samples,
+  variable: string,
+  opts: { bins?: number } = {},
+): RankData {
+  const bins = Math.max(1, opts.bins ?? 20);
+  const { nChains, nDraws } = samples;
+  const pooled = samples.draws.get(variable) ?? chainView(samples, variable, 0);
+  const n = pooled.length;
+
+  // Average ranks (1-based); tied values share the mean of their rank block.
+  const order = Array.from({ length: n }, (_, i) => i).sort(
+    (a, b) => (pooled[a] as number) - (pooled[b] as number),
+  );
+  const ranks = new Float64Array(n);
+  let i = 0;
+  while (i < n) {
+    let j = i;
+    while (j + 1 < n && pooled[order[j + 1] as number] === pooled[order[i] as number]) j++;
+    const avg = (i + j) / 2 + 1;
+    for (let k = i; k <= j; k++) ranks[order[k] as number] = avg;
+    i = j + 1;
+  }
+
+  const counts = Array.from({ length: nChains }, () => new Array<number>(bins).fill(0));
+  for (let idx = 0; idx < n; idx++) {
+    const chain = Math.min(nChains - 1, Math.floor(idx / nDraws));
+    const b = Math.min(bins - 1, Math.floor((((ranks[idx] as number) - 1) / n) * bins));
+    const row = counts[chain] as number[];
+    row[b] = (row[b] ?? 0) + 1;
+  }
+  return { kind: "rank", variable, nChains, bins, counts, expected: nDraws / bins };
+}
+
+/** Autocorrelation data: the ACF (lag 0..maxLag) of each chain. */
+export function autocorrData(
+  samples: Samples,
+  variable: string,
+  opts: { maxLag?: number } = {},
+): AutocorrData {
+  const maxLag = Math.max(1, opts.maxLag ?? 40);
+  const chains = chainsOf(samples, variable).map((c) => autocorr(c, maxLag));
+  const longest = Math.max(0, ...chains.map((a) => a.length));
+  const lags = Array.from({ length: longest }, (_, k) => k);
+  return { kind: "autocorr", variable, nChains: samples.nChains, maxLag, lags, chains };
 }
 
 /** Forest data: a point estimate, HDI, and IQR per variable, sharing an x-axis. */

@@ -1,12 +1,16 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { parseSamples } from "@mcmcjs/core";
 import {
+  autocorrData,
   densityData,
   forestData,
   histogramData,
+  rankData,
+  renderAutocorrTerminal,
   renderDensityTerminal,
   renderForestTerminal,
   renderHistogramTerminal,
+  renderRankTerminal,
   renderTraceTerminal,
   type TerminalOptions,
   traceData,
@@ -16,7 +20,7 @@ import pc from "picocolors";
 import { resolveSamplesPath } from "./diagnose";
 import { parseFloatOption, parseIntOption } from "./options";
 
-const KINDS = ["trace", "density", "histogram", "forest"] as const;
+const KINDS = ["trace", "density", "histogram", "rank", "autocorr", "forest"] as const;
 type PlotKind = (typeof KINDS)[number];
 
 interface PlotCliOptions {
@@ -28,6 +32,7 @@ interface PlotCliOptions {
   ascii?: boolean;
   hdiProb: number;
   bins?: number;
+  maxLag?: number;
   out?: string;
   json?: boolean;
 }
@@ -44,7 +49,7 @@ export function registerPlot(program: Command): void {
       "[target]",
       "samples file (MCMCChains JSON or ArviZ InferenceData JSON), or a run ref (latest, @N, id prefix); default: the latest store run",
     )
-    .description("Render MCMC diagnostic plots (trace, density, histogram, forest) in the terminal")
+    .description("Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, forest)")
     .option("--kind <kind>", `plot type: ${KINDS.join(" | ")}`, "forest")
     .option("--var <name...>", "restrict to these variables (default: all)")
     .option("--store <dir>", "run store directory (default: nearest .mcmc above cwd)")
@@ -56,7 +61,8 @@ export function registerPlot(program: Command): void {
     )
     .option("--ascii", "use ASCII glyphs instead of Unicode braille/blocks")
     .option("--hdi-prob <value>", "HDI credible mass (forest)", parseFloatOption, 0.94)
-    .option("--bins <n>", "histogram bins (default: Freedman-Diaconis)", parseIntOption)
+    .option("--bins <n>", "histogram/rank bins (default: Freedman-Diaconis / 20)", parseIntOption)
+    .option("--max-lag <n>", "autocorrelation max lag (default 40)", parseIntOption)
     .option("-o, --out <file>", "write the rendered plot to a file instead of stdout")
     .option("--json", "print the underlying plot data as JSON instead of rendering")
     .action((target: string | undefined, opts: PlotCliOptions) => {
@@ -82,7 +88,7 @@ export function registerPlot(program: Command): void {
         data = fd;
         rendered = renderForestTerminal(fd, term);
       } else {
-        // trace/density/histogram are per-variable; render one block each.
+        // trace/density/histogram/rank/autocorr are per-variable; render one block each.
         const perVar = variables.map((v) => {
           if (kind === "density") {
             const d = densityData(samples, v);
@@ -91,6 +97,14 @@ export function registerPlot(program: Command): void {
           if (kind === "histogram") {
             const d = histogramData(samples, v, { bins: opts.bins });
             return { data: d, text: renderHistogramTerminal(d, term) };
+          }
+          if (kind === "rank") {
+            const d = rankData(samples, v, { bins: opts.bins });
+            return { data: d, text: renderRankTerminal(d, term) };
+          }
+          if (kind === "autocorr") {
+            const d = autocorrData(samples, v, { maxLag: opts.maxLag });
+            return { data: d, text: renderAutocorrTerminal(d, term) };
           }
           const d = traceData(samples, v);
           return { data: d, text: renderTraceTerminal(d, term) };

@@ -10,7 +10,7 @@ import type { Charset, ColorFn } from "@mcmcjs/charts";
 export type { Charset, ColorFn } from "@mcmcjs/charts";
 
 /** The diagnostic plots this package can produce. */
-export type PlotKind = "trace" | "density" | "histogram" | "forest";
+export type PlotKind = "trace" | "density" | "histogram" | "rank" | "autocorr" | "forest";
 
 /** Per-variable trace: the raw draw sequence of each chain, plus its key diagnostics. */
 export interface TraceData {
@@ -45,6 +45,30 @@ export interface HistogramData {
   counts: number[];
   /** Total number of draws pooled across chains. */
   total: number;
+}
+
+/** Rank plot: per-chain counts of rank-normalized draws across shared bins. */
+export interface RankData {
+  kind: "rank";
+  variable: string;
+  nChains: number;
+  bins: number;
+  /** One count array (length bins) per chain. */
+  counts: number[][];
+  /** Uniform-mixing expectation per bin per chain. */
+  expected: number;
+}
+
+/** Autocorrelation plot: ACF vs lag, one series per chain. */
+export interface AutocorrData {
+  kind: "autocorr";
+  variable: string;
+  nChains: number;
+  maxLag: number;
+  /** Lag indices 0..maxLag. */
+  lags: number[];
+  /** One ACF array per chain, aligned to `lags`. */
+  chains: number[][];
 }
 
 /** One row of a forest plot: a point estimate with a credible interval and IQR. */
