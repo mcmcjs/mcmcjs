@@ -1,5 +1,16 @@
 # mcmcjs
 
+## 0.14.0
+
+### Minor Changes
+
+- 06f6b25: `mcmc plot --format html` writes a self-contained interactive HTML page (uPlot inlined, pan/zoom, in-browser PNG/SVG export) that opens offline with no network access.
+
+### Patch Changes
+
+- Updated dependencies [43fd233]
+  - @mcmcjs/plots@0.2.0
+
 ## 0.13.0
 
 ### Minor Changes
