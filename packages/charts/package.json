@@ -1,15 +1,17 @@
 {
-  "name": "@mcmcjs/plots",
+  "name": "@mcmcjs/charts",
   "version": "0.0.0",
-  "description": "Diagnostic plots (trace, density, forest, rank, ...) for MCMC.js, rendered to the terminal, SVG, or a self-contained HTML page.",
+  "description": "A dependency-free plotting engine: render line, scatter, bar, interval, and density plots to the terminal (braille/block/ASCII) or SVG from one figure model.",
   "keywords": [
-    "mcmc",
-    "bayesian",
-    "plots",
+    "charts",
+    "plot",
+    "terminal",
+    "braille",
+    "unicode",
+    "ascii",
+    "svg",
     "visualization",
-    "trace",
-    "forest",
-    "diagnostics"
+    "cli"
   ],
   "license": "MIT",
   "author": {
@@ -17,11 +19,11 @@
     "email": "contact@shravangoswami.com",
     "url": "https://shravangoswami.com"
   },
-  "homepage": "https://github.com/mcmcjs/mcmcjs/tree/main/packages/plots#readme",
+  "homepage": "https://github.com/mcmcjs/mcmcjs/tree/main/packages/charts#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mcmcjs/mcmcjs.git",
-    "directory": "packages/plots"
+    "directory": "packages/charts"
   },
   "bugs": {
     "url": "https://github.com/mcmcjs/mcmcjs/issues"
@@ -49,10 +51,5 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@mcmcjs/charts": "workspace:*",
-    "@mcmcjs/core": "workspace:*",
-    "@mcmcjs/diagnostics": "workspace:*"
   }
 }

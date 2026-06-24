@@ -5,6 +5,10 @@
  * numerics; renderers hold no statistics.
  */
 
+import type { Charset, ColorFn } from "@mcmcjs/charts";
+
+export type { Charset, ColorFn } from "@mcmcjs/charts";
+
 /** The diagnostic plots this package can produce. */
 export type PlotKind = "trace" | "forest";
 
@@ -43,10 +47,6 @@ export interface ForestData {
   rows: ForestRow[];
 }
 
-/** Color hook injected by a caller (e.g. the CLI) so the dependency-free
- *  renderer can colorize per-chain output without owning a color library. */
-export type ColorFn = (text: string, chain: number) => string;
-
 /** Options shared by the terminal renderers. */
 export interface TerminalOptions {
   /** Plot width in character cells (default 72). */
@@ -54,8 +54,8 @@ export interface TerminalOptions {
   /** Plot height in character cells (default 12). */
   height?: number;
   /** Glyph set: braille/block Unicode, or plain ASCII for limited terminals. */
-  charset?: "unicode" | "ascii";
-  /** Per-chain colorizer; identity when omitted. */
+  charset?: Charset;
+  /** Per-chain (series) colorizer; identity when omitted. */
   color?: ColorFn;
   /** Colorizer for out-of-threshold values (e.g. a non-converged R-hat); identity when omitted. */
   warn?: (text: string) => string;

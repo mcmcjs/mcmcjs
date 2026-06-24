@@ -1,117 +1,7 @@
+import { axisFrame, DotCanvas, extent, fmtNum, linearScale, niceDomain } from "@mcmcjs/charts";
 import type { ForestData, TerminalOptions, TraceData } from "./types";
 
-// Unicode braille packs a 2x4 dot grid into one cell (base U+2800); these are
-// the bit weights of each (row, col) dot, so a line can be drawn at ~2x4 the
-// character resolution and still colored per cell.
-// Braille dot bit weights over the cell's 2x4 grid, indexed by row*2 + col.
-const DOT_BITS = [0x01, 0x08, 0x02, 0x10, 0x04, 0x20, 0x40, 0x80] as const;
-const BRAILLE_BASE = 0x2800;
-const ASCII_MARKERS = "o+x*#@%~";
-
 const identity = (text: string): string => text;
-
-/** Compact numeric label: fixed-ish width, exponential for extreme magnitudes. */
-function fmtNum(n: number): string {
-  if (!Number.isFinite(n)) return "n/a";
-  const a = Math.abs(n);
-  if (a !== 0 && (a < 1e-3 || a >= 1e5)) return n.toExponential(1);
-  return Number(n.toFixed(3)).toString();
-}
-
-/** A draw region [min, max], padded slightly, with a fallback when all draws are equal. */
-function bounds(values: Iterable<number>): [number, number] {
-  let min = Number.POSITIVE_INFINITY;
-  let max = Number.NEGATIVE_INFINITY;
-  for (const v of values) {
-    if (!Number.isFinite(v)) continue;
-    if (v < min) min = v;
-    if (v > max) max = v;
-  }
-  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
-  if (min === max) return [min - 1, max + 1];
-  const pad = (max - min) * 0.05;
-  return [min - pad, max + pad];
-}
-
-/**
- * A virtual 2x4-per-cell dot grid. `set`/`line` plot in dot space (origin top
- * left); each cell remembers the last chain that touched it, so `render` can
- * color it. In ASCII mode a touched cell shows the chain's marker instead.
- */
-class DotCanvas {
-  readonly wDots: number;
-  readonly hDots: number;
-  private readonly cells: Uint8Array;
-  private readonly cellChain: Int8Array;
-
-  constructor(
-    readonly wCells: number,
-    readonly hCells: number,
-  ) {
-    this.wDots = wCells * 2;
-    this.hDots = hCells * 4;
-    this.cells = new Uint8Array(wCells * hCells);
-    this.cellChain = new Int8Array(wCells * hCells).fill(-1);
-  }
-
-  set(px: number, py: number, chain: number): void {
-    const x = Math.round(px);
-    const y = Math.round(py);
-    if (x < 0 || y < 0 || x >= this.wDots || y >= this.hDots) return;
-    const idx = (y >> 2) * this.wCells + (x >> 1);
-    this.cells[idx] = (this.cells[idx] ?? 0) | (DOT_BITS[(y & 3) * 2 + (x & 1)] ?? 0);
-    this.cellChain[idx] = chain;
-  }
-
-  line(x0: number, y0: number, x1: number, y1: number, chain: number): void {
-    let ax = Math.round(x0);
-    let ay = Math.round(y0);
-    const bx = Math.round(x1);
-    const by = Math.round(y1);
-    const dx = Math.abs(bx - ax);
-    const dy = -Math.abs(by - ay);
-    const sx = ax < bx ? 1 : -1;
-    const sy = ay < by ? 1 : -1;
-    let err = dx + dy;
-    for (;;) {
-      this.set(ax, ay, chain);
-      if (ax === bx && ay === by) break;
-      const e2 = 2 * err;
-      if (e2 >= dy) {
-        err += dy;
-        ax += sx;
-      }
-      if (e2 <= dx) {
-        err += dx;
-        ay += sy;
-      }
-    }
-  }
-
-  rows(charset: "unicode" | "ascii", color: (text: string, chain: number) => string): string[] {
-    const out: string[] = [];
-    for (let cy = 0; cy < this.hCells; cy++) {
-      let row = "";
-      for (let cx = 0; cx < this.wCells; cx++) {
-        const idx = cy * this.wCells + cx;
-        const bits = this.cells[idx] ?? 0;
-        const chain = this.cellChain[idx] ?? -1;
-        if (bits === 0 || chain < 0) {
-          row += " ";
-          continue;
-        }
-        const glyph =
-          charset === "ascii"
-            ? (ASCII_MARKERS[chain % ASCII_MARKERS.length] ?? "?")
-            : String.fromCharCode(BRAILLE_BASE + bits);
-        row += color(glyph, chain);
-      }
-      out.push(row);
-    }
-    return out;
-  }
-}
-
 const GUTTER = 8;
 
 /** Renders a trace plot (one line per chain) as colored terminal text. */
@@ -121,48 +11,38 @@ export function renderTraceTerminal(data: TraceData, opts: TerminalOptions = {})
   const totalWidth = opts.width ?? 72;
   const height = opts.height ?? 12;
   const plotW = Math.max(8, totalWidth - GUTTER - 2);
-  const vbar = charset === "ascii" ? "|" : "┤";
-  const corner = charset === "ascii" ? "+" : "└";
-  const hbar = charset === "ascii" ? "-" : "─";
 
-  const [ymin, ymax] = bounds(data.chains.flat());
+  const [rawMin, rawMax] = extent(data.chains.flat());
+  const [ymin, ymax] = niceDomain(rawMin, rawMax);
   const canvas = new DotCanvas(plotW, height);
-  const lastX = canvas.wDots - 1;
-  const lastY = canvas.hDots - 1;
-  const xAt = (i: number): number => (data.nDraws <= 1 ? 0 : (i / (data.nDraws - 1)) * lastX);
-  const yAt = (v: number): number => (1 - (v - ymin) / (ymax - ymin)) * lastY;
+  const scaleX = linearScale([0, Math.max(1, data.nDraws - 1)], [0, canvas.wDots - 1]);
+  const scaleY = linearScale([ymin, ymax], [canvas.hDots - 1, 0]);
 
   data.chains.forEach((series, chain) => {
     for (let i = 1; i < series.length; i++) {
       const prev = series[i - 1];
       const cur = series[i];
       if (prev === undefined || cur === undefined) continue;
-      canvas.line(xAt(i - 1), yAt(prev), xAt(i), yAt(cur), chain);
+      canvas.line(scaleX.map(i - 1), scaleY.map(prev), scaleX.map(i), scaleY.map(cur), chain);
     }
     const first = series[0];
-    if (series.length === 1 && first !== undefined) canvas.set(0, yAt(first), chain);
+    if (series.length === 1 && first !== undefined) canvas.set(0, scaleY.map(first), chain);
   });
 
   const rhatStr = Number.isFinite(data.rhat) ? data.rhat.toFixed(3) : "n/a";
   const essStr = Number.isFinite(data.essBulk) ? String(Math.round(data.essBulk)) : "n/a";
-  const lines: string[] = [
-    `${data.variable}   R-hat ${rhatStr}   ESS ${essStr}   (${data.nChains} chains x ${data.nDraws} draws)`,
-  ];
+  const header = `${data.variable}   R-hat ${rhatStr}   ESS ${essStr}   (${data.nChains} chains x ${data.nDraws} draws)`;
 
-  const grid = canvas.rows(charset, color);
-  grid.forEach((row, r) => {
-    const label = r === 0 ? fmtNum(ymax) : r === grid.length - 1 ? fmtNum(ymin) : "";
-    lines.push(`${label.padStart(GUTTER)} ${vbar}${row}`);
+  return axisFrame(canvas.rows(charset, color), {
+    width: plotW,
+    yMin: ymin,
+    yMax: ymax,
+    xLeft: "0",
+    xRight: String(data.nDraws),
+    charset,
+    header,
+    gutter: GUTTER,
   });
-
-  const pad = " ".repeat(GUTTER + 1);
-  lines.push(`${pad}${corner}${hbar.repeat(plotW)}`);
-  const left = "0";
-  const right = String(data.nDraws);
-  const between = Math.max(1, plotW - left.length - right.length);
-  lines.push(`${pad}${left}${" ".repeat(between)}${right}`);
-
-  return `${lines.join("\n")}\n`;
 }
 
 /** Renders a forest plot (point estimate + HDI + IQR per variable) as terminal text. */
@@ -193,8 +73,8 @@ export function renderForestTerminal(data: ForestData, opts: TerminalOptions = {
     xmin = (xmin || 0) - 1;
     xmax = (xmax || 0) + 1;
   }
-  const col = (v: number): number =>
-    Math.max(0, Math.min(axisW - 1, Math.round(((v - xmin) / (xmax - xmin)) * (axisW - 1))));
+  const scaleX = linearScale([xmin, xmax], [0, axisW - 1]);
+  const col = (v: number): number => Math.max(0, Math.min(axisW - 1, Math.round(scaleX.map(v))));
 
   const pct = Math.round(data.hdiProb * 100);
   const lines: string[] = [
