@@ -10,7 +10,15 @@ import type { Charset, ColorFn } from "@mcmcjs/charts";
 export type { Charset, ColorFn } from "@mcmcjs/charts";
 
 /** The diagnostic plots this package can produce. */
-export type PlotKind = "trace" | "density" | "histogram" | "rank" | "autocorr" | "pair" | "forest";
+export type PlotKind =
+  | "trace"
+  | "density"
+  | "histogram"
+  | "rank"
+  | "autocorr"
+  | "pair"
+  | "energy"
+  | "forest";
 
 /** Per-variable trace: the raw draw sequence of each chain, plus its key diagnostics. */
 export interface TraceData {
@@ -69,6 +77,19 @@ export interface AutocorrData {
   lags: number[];
   /** One ACF array per chain, aligned to `lags`. */
   chains: number[][];
+}
+
+/** Energy plot (HMC/NUTS): overlaid marginal- and transition-energy histograms on shared bins. */
+export interface EnergyData {
+  kind: "energy";
+  /** Shared bin edges (length bins + 1), over centered energy. */
+  edges: number[];
+  /** Counts of the centered marginal energy. */
+  marginal: number[];
+  /** Counts of the energy transitions (lag-1 differences). */
+  transition: number[];
+  /** Per-chain E-BFMI (low values, < 0.3, flag poor exploration). */
+  bfmi: number[];
 }
 
 /** Pair (joint) plot: pooled draws of two variables, with chain and divergence labels. */

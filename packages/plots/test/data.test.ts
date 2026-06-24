@@ -4,6 +4,7 @@ import {
   autocorrData,
   chainsOf,
   densityData,
+  energyData,
   forestData,
   histogramData,
   pairData,
@@ -131,6 +132,30 @@ describe("pairData", () => {
     expect(pd.chain[0]).toBe(0);
     expect(pd.chain[n - 1]).toBe(samples.nChains - 1);
     expect(pd.diverging.every((d) => d === false)).toBe(true);
+  });
+});
+
+describe("energyData", () => {
+  const energy = new Float64Array(samples.nChains * samples.nDraws);
+  for (let i = 0; i < energy.length; i++) energy[i] = Math.sin(i) * 3 + i * 0.1;
+  const withEnergy: Samples = {
+    ...samples,
+    sampleStats: new Map([["hamiltonian_energy", energy]]),
+  };
+
+  it("bins marginal and transition energy and computes per-chain BFMI", () => {
+    const ed = energyData(withEnergy, { bins: 8 });
+    expect(ed.kind).toBe("energy");
+    expect(ed.edges).toHaveLength(9);
+    expect(ed.marginal).toHaveLength(8);
+    expect(ed.transition).toHaveLength(8);
+    expect(ed.marginal.reduce((a, b) => a + b, 0)).toBe(samples.nChains * samples.nDraws);
+    expect(ed.transition.reduce((a, b) => a + b, 0)).toBe(samples.nChains * (samples.nDraws - 1));
+    expect(ed.bfmi).toHaveLength(samples.nChains);
+  });
+
+  it("throws when no energy statistic is present", () => {
+    expect(() => energyData(samples)).toThrow(/hamiltonian_energy/);
   });
 });
 

@@ -5,6 +5,8 @@ import {
   autocorrData,
   type DensityData,
   densityData,
+  type EnergyData,
+  energyData,
   type ForestData,
   forestData,
   type HistogramData,
@@ -17,6 +19,8 @@ import {
   renderAutocorrTerminal,
   renderDensitySVG,
   renderDensityTerminal,
+  renderEnergySVG,
+  renderEnergyTerminal,
   renderForestSVG,
   renderForestTerminal,
   renderHistogramSVG,
@@ -37,7 +41,16 @@ import pc from "picocolors";
 import { resolveSamplesPath } from "./diagnose";
 import { parseFloatOption, parseIntOption } from "./options";
 
-const KINDS = ["trace", "density", "histogram", "rank", "autocorr", "pair", "forest"] as const;
+const KINDS = [
+  "trace",
+  "density",
+  "histogram",
+  "rank",
+  "autocorr",
+  "pair",
+  "energy",
+  "forest",
+] as const;
 type PlotKind = (typeof KINDS)[number];
 const FORMATS = ["terminal", "svg"] as const;
 type Format = (typeof FORMATS)[number];
@@ -74,6 +87,8 @@ function renderTerminal(kind: PlotKind, data: unknown, term: TerminalOptions): s
       return renderAutocorrTerminal(data as AutocorrData, term);
     case "pair":
       return renderPairTerminal(data as PairData, term);
+    case "energy":
+      return renderEnergyTerminal(data as EnergyData, term);
     default:
       return renderTraceTerminal(data as TraceData, term);
   }
@@ -93,6 +108,8 @@ function renderSvg(kind: PlotKind, data: unknown): string {
       return renderRankSVG(data as RankData);
     case "pair":
       return renderPairSVG(data as PairData);
+    case "energy":
+      return renderEnergySVG(data as EnergyData);
     default:
       return renderTraceSVG(data as TraceData);
   }
@@ -108,7 +125,7 @@ export function registerPlot(program: Command): void {
       "samples file (MCMCChains JSON or ArviZ InferenceData JSON), or a run ref (latest, @N, id prefix); default: the latest store run",
     )
     .description(
-      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, forest)",
+      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, energy, forest)",
     )
     .option("--kind <kind>", `plot type: ${KINDS.join(" | ")}`, "forest")
     .option("--format <fmt>", `output format: ${FORMATS.join(" | ")}`, "terminal")
@@ -140,6 +157,8 @@ export function registerPlot(program: Command): void {
       let items: unknown[];
       if (kind === "forest") {
         items = [forestData(samples, { variables, hdiProb: opts.hdiProb })];
+      } else if (kind === "energy") {
+        items = [energyData(samples, { bins: opts.bins })];
       } else if (kind === "pair") {
         if (variables.length !== 2) {
           throw new Error("--kind pair needs exactly two variables, e.g. --var alpha beta");

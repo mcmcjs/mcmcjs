@@ -10,6 +10,7 @@ import {
 import type {
   AutocorrData,
   DensityData,
+  EnergyData,
   ForestData,
   HistogramData,
   PairData,
@@ -20,6 +21,12 @@ import type {
 
 const identity = (text: string): string => text;
 const GUTTER = 8;
+
+/** Mean of the finite E-BFMI values, or NaN when none are finite. */
+function meanBfmi(bfmi: number[]): number {
+  const finite = bfmi.filter(Number.isFinite);
+  return finite.length ? finite.reduce((a, b) => a + b, 0) / finite.length : Number.NaN;
+}
 
 /** Renders a trace plot (one line per chain) as colored terminal text. */
 export function renderTraceTerminal(data: TraceData, opts: TerminalOptions = {}): string {
@@ -226,6 +233,52 @@ export function renderPairTerminal(data: PairData, opts: TerminalOptions = {}): 
     yMax: ymax,
     xLeft: fmtNum(xmin),
     xRight: fmtNum(xmax),
+    charset,
+    header,
+    gutter: GUTTER,
+  });
+}
+
+/** Renders the energy diagnostic: marginal vs transition energy as two overlaid curves. */
+export function renderEnergyTerminal(data: EnergyData, opts: TerminalOptions = {}): string {
+  const charset = opts.charset ?? "unicode";
+  const color = opts.color ?? identity;
+  const totalWidth = opts.width ?? 72;
+  const height = opts.height ?? 12;
+  const plotW = Math.max(8, totalWidth - GUTTER - 2);
+
+  const centers = data.marginal.map(
+    (_, b) => ((data.edges[b] ?? 0) + (data.edges[b + 1] ?? 0)) / 2,
+  );
+  const maxC = Math.max(1, ...data.marginal, ...data.transition);
+  const canvas = new DotCanvas(plotW, height);
+  const scaleX = linearScale(
+    [centers[0] ?? 0, centers[centers.length - 1] ?? 1],
+    [0, canvas.wDots - 1],
+  );
+  const scaleY = linearScale([0, maxC], [canvas.hDots - 1, 0]);
+  const draw = (counts: number[], series: number): void => {
+    for (let b = 1; b < counts.length; b++) {
+      canvas.line(
+        scaleX.map(centers[b - 1] ?? 0),
+        scaleY.map(counts[b - 1] ?? 0),
+        scaleX.map(centers[b] ?? 0),
+        scaleY.map(counts[b] ?? 0),
+        series,
+      );
+    }
+  };
+  draw(data.marginal, 0);
+  draw(data.transition, 1);
+
+  const bfmi = meanBfmi(data.bfmi);
+  const header = `energy   E-BFMI ${Number.isFinite(bfmi) ? bfmi.toFixed(2) : "n/a"}   (marginal vs transition)`;
+  return axisFrame(canvas.rows(charset, color), {
+    width: plotW,
+    yMin: 0,
+    yMax: maxC,
+    xLeft: fmtNum(centers[0] ?? 0),
+    xRight: fmtNum(centers[centers.length - 1] ?? 0),
     charset,
     header,
     gutter: GUTTER,

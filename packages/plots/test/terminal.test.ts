@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   renderAutocorrTerminal,
   renderDensityTerminal,
+  renderEnergyTerminal,
   renderForestTerminal,
   renderHistogramTerminal,
   renderPairTerminal,
@@ -11,6 +12,7 @@ import {
 import type {
   AutocorrData,
   DensityData,
+  EnergyData,
   ForestData,
   HistogramData,
   PairData,
@@ -159,6 +161,22 @@ describe("renderPairTerminal", () => {
   it("renders a scatter header naming both variables", () => {
     const out = renderPairTerminal(pair, { height: 6 });
     expect(out).toContain("a vs b");
+    expect(hasBraille(out)).toBe(true);
+  });
+});
+
+const energy: EnergyData = {
+  kind: "energy",
+  edges: [-2, -1, 0, 1, 2],
+  marginal: [1, 3, 4, 2],
+  transition: [2, 4, 2, 1],
+  bfmi: [0.4, 0.5],
+};
+
+describe("renderEnergyTerminal", () => {
+  it("renders the energy header with mean E-BFMI and a braille body", () => {
+    const out = renderEnergyTerminal(energy, { height: 4 });
+    expect(out).toContain("energy   E-BFMI 0.45");
     expect(hasBraille(out)).toBe(true);
   });
 });

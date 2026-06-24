@@ -4,6 +4,7 @@ import { autocorr, diagnoseChains, isConverged, quantiles, stdev } from "@mcmcjs
 import type {
   AutocorrData,
   DensityData,
+  EnergyData,
   ForestData,
   ForestRow,
   HistogramData,
@@ -178,6 +179,64 @@ export function pairData(samples: Samples, xVar: string, yVar: string): PairData
     diverging.push(div[i] ?? false);
   }
   return { kind: "pair", xVar, yVar, nChains: samples.nChains, x, y, chain, diverging };
+}
+
+/**
+ * Energy diagnostic data (HMC/NUTS): the centered marginal-energy distribution and the
+ * energy-transition distribution on shared bins, plus per-chain E-BFMI. Throws when the
+ * sampler did not record an energy statistic.
+ */
+export function energyData(samples: Samples, opts: { bins?: number } = {}): EnergyData {
+  const energy = samples.sampleStats.get("hamiltonian_energy") ?? samples.sampleStats.get("energy");
+  if (!energy) {
+    throw new Error("energy plot needs the 'hamiltonian_energy' sampler statistic");
+  }
+  const { nChains, nDraws } = samples;
+  let total = 0;
+  for (const v of energy) total += v;
+  const mean = total / energy.length;
+
+  const marginalVals: number[] = [];
+  const transitionVals: number[] = [];
+  const bfmi: number[] = [];
+  for (let c = 0; c < nChains; c++) {
+    let chainSum = 0;
+    for (let i = 0; i < nDraws; i++) chainSum += energy[c * nDraws + i] as number;
+    const chainMean = chainSum / nDraws;
+    let num = 0;
+    let den = 0;
+    for (let i = 0; i < nDraws; i++) {
+      const e = energy[c * nDraws + i] as number;
+      marginalVals.push(e - mean);
+      den += (e - chainMean) ** 2;
+      if (i > 0) {
+        const d = e - (energy[c * nDraws + i - 1] as number);
+        transitionVals.push(d);
+        num += d * d;
+      }
+    }
+    bfmi.push(den > 0 ? num / den : Number.NaN);
+  }
+
+  const bins = Math.max(1, opts.bins ?? 30);
+  const [lo, hi] = extent([...marginalVals, ...transitionVals]);
+  const width = hi > lo ? (hi - lo) / bins : 1;
+  const edges = Array.from({ length: bins + 1 }, (_, i) => lo + i * width);
+  const binOf = (vals: number[]): number[] => {
+    const counts = new Array<number>(bins).fill(0);
+    for (const v of vals) {
+      const b = Math.min(bins - 1, Math.max(0, Math.floor((v - lo) / width)));
+      counts[b] = (counts[b] ?? 0) + 1;
+    }
+    return counts;
+  };
+  return {
+    kind: "energy",
+    edges,
+    marginal: binOf(marginalVals),
+    transition: binOf(transitionVals),
+    bfmi,
+  };
 }
 
 /** Forest data: a point estimate, HDI, and IQR per variable, sharing an x-axis. */

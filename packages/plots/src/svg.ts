@@ -11,6 +11,7 @@ import {
 import type {
   AutocorrData,
   DensityData,
+  EnergyData,
   ForestData,
   HistogramData,
   PairData,
@@ -155,6 +156,31 @@ export function renderRankSVG(data: RankData, opts: SvgOptions = {}): string {
     })
     .join("");
   return frame.render(expected + content);
+}
+
+/** Energy diagnostic: marginal vs transition energy as two overlaid curves. */
+export function renderEnergySVG(data: EnergyData, opts: SvgOptions = {}): string {
+  const centers = data.marginal.map(
+    (_, b) => ((data.edges[b] ?? 0) + (data.edges[b + 1] ?? 0)) / 2,
+  );
+  const maxC = Math.max(1, ...data.marginal, ...data.transition);
+  const finite = data.bfmi.filter(Number.isFinite);
+  const bfmi = finite.length ? finite.reduce((a, b) => a + b, 0) / finite.length : Number.NaN;
+  const frame = svgFrame({
+    width: opts.width ?? W,
+    height: opts.height ?? H,
+    xDomain: [centers[0] ?? 0, centers[centers.length - 1] ?? 1],
+    yDomain: [0, maxC],
+    title: `energy  (E-BFMI ${Number.isFinite(bfmi) ? bfmi.toFixed(2) : "n/a"})`,
+    xLabel: "energy (centered)",
+    yLabel: "count",
+  });
+  const curve = (counts: number[], series: number): string =>
+    svgPolyline(
+      counts.map((c, b) => [frame.x.map(centers[b] ?? 0), frame.y.map(c)] as [number, number]),
+      seriesColor(series),
+    );
+  return frame.render(curve(data.marginal, 0) + curve(data.transition, 1));
 }
 
 /** Pair (joint) scatter of two variables, colored by chain; divergences drawn on top in red. */

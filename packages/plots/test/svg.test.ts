@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   renderAutocorrSVG,
   renderDensitySVG,
+  renderEnergySVG,
   renderForestSVG,
   renderHistogramSVG,
   renderPairSVG,
@@ -103,6 +104,18 @@ describe("SVG renderers", () => {
     expect(countMatches(out, /<circle/g)).toBeGreaterThanOrEqual(4);
     expect(out).toContain("#d62728");
     expect(out).toContain("a vs b");
+  });
+
+  it("renderEnergySVG emits two overlaid curves with the E-BFMI in the title", () => {
+    const out = renderEnergySVG({
+      kind: "energy",
+      edges: [-2, -1, 0, 1, 2],
+      marginal: [1, 3, 4, 2],
+      transition: [2, 4, 2, 1],
+      bfmi: [0.4, 0.5],
+    });
+    expect(countMatches(out, /<path/g)).toBeGreaterThanOrEqual(2);
+    expect(out).toContain("E-BFMI 0.45");
   });
 
   it("renderForestSVG emits a labeled row per variable", () => {

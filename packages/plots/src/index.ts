@@ -3,6 +3,7 @@ export {
   autocorrData,
   chainsOf,
   densityData,
+  energyData,
   forestData,
   histogramData,
   pairData,
@@ -12,6 +13,7 @@ export {
 export {
   renderAutocorrSVG,
   renderDensitySVG,
+  renderEnergySVG,
   renderForestSVG,
   renderHistogramSVG,
   renderPairSVG,
@@ -21,6 +23,7 @@ export {
 export {
   renderAutocorrTerminal,
   renderDensityTerminal,
+  renderEnergyTerminal,
   renderForestTerminal,
   renderHistogramTerminal,
   renderPairTerminal,
@@ -32,6 +35,7 @@ export type {
   Charset,
   ColorFn,
   DensityData,
+  EnergyData,
   ForestData,
   ForestRow,
   HistogramData,
