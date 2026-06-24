@@ -11,6 +11,15 @@ export {
   traceData,
 } from "./data";
 export {
+  buildHtmlDocument,
+  type HtmlDocumentOptions,
+  type HtmlItem,
+  htmlItemFor,
+  type PlotData,
+  UPLOT_VERSION,
+  type UplotSpec,
+} from "./html";
+export {
   renderAutocorrSVG,
   renderDensitySVG,
   renderEnergySVG,

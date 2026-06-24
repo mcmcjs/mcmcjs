@@ -48,11 +48,15 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "vendor:uplot": "node scripts/vendor-uplot.mjs"
   },
   "dependencies": {
     "@mcmcjs/charts": "workspace:*",
     "@mcmcjs/core": "workspace:*",
     "@mcmcjs/diagnostics": "workspace:*"
+  },
+  "devDependencies": {
+    "uplot": "^1.6.32"
   }
 }
