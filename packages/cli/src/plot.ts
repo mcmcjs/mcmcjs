@@ -19,6 +19,7 @@ import {
   renderForestTerminal,
   renderHistogramSVG,
   renderHistogramTerminal,
+  renderRankSVG,
   renderRankTerminal,
   renderTraceSVG,
   renderTraceTerminal,
@@ -82,10 +83,10 @@ function renderSvg(kind: PlotKind, data: unknown): string {
       return renderHistogramSVG(data as HistogramData);
     case "autocorr":
       return renderAutocorrSVG(data as AutocorrData);
-    case "trace":
-      return renderTraceSVG(data as TraceData);
+    case "rank":
+      return renderRankSVG(data as RankData);
     default:
-      throw new Error(`--format svg does not support --kind ${kind} yet`);
+      return renderTraceSVG(data as TraceData);
   }
 }
 

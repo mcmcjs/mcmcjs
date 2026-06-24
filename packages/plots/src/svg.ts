@@ -13,6 +13,7 @@ import type {
   DensityData,
   ForestData,
   HistogramData,
+  RankData,
   SvgOptions,
   TraceData,
 } from "./types";
@@ -120,6 +121,39 @@ export function renderAutocorrSVG(data: AutocorrData, opts: SvgOptions = {}): st
     )
     .join("");
   return frame.render(zero + content);
+}
+
+/** Rank plot: a stepped count outline per chain over rank bins, with a uniform reference. */
+export function renderRankSVG(data: RankData, opts: SvgOptions = {}): string {
+  const bins = data.bins;
+  const maxC = Math.max(1, ...data.counts.flat());
+  const frame = svgFrame({
+    width: opts.width ?? W,
+    height: opts.height ?? H,
+    xDomain: [0, bins],
+    yDomain: [0, maxC],
+    title: `${data.variable}  rank (${bins} bins, ${data.nChains} chains)`,
+    xLabel: "rank bin",
+    yLabel: "count",
+  });
+  const expected = svgLine(
+    frame.area.left,
+    frame.y.map(data.expected),
+    frame.area.right,
+    frame.y.map(data.expected),
+    "#bbb",
+  );
+  const content = data.counts
+    .map((counts, chain) => {
+      const pts: [number, number][] = [];
+      counts.forEach((c, b) => {
+        pts.push([frame.x.map(b), frame.y.map(c)]);
+        pts.push([frame.x.map(b + 1), frame.y.map(c)]);
+      });
+      return svgPolyline(pts, seriesColor(chain));
+    })
+    .join("");
+  return frame.render(expected + content);
 }
 
 /** Forest plot: a point estimate, HDI, and IQR row per variable on a shared x-axis. */

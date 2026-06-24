@@ -13,6 +13,7 @@ export {
   renderDensitySVG,
   renderForestSVG,
   renderHistogramSVG,
+  renderRankSVG,
   renderTraceSVG,
 } from "./svg";
 export {

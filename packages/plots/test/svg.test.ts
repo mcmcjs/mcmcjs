@@ -4,6 +4,7 @@ import {
   renderDensitySVG,
   renderForestSVG,
   renderHistogramSVG,
+  renderRankSVG,
   renderTraceSVG,
 } from "../src/svg";
 
@@ -69,6 +70,22 @@ describe("SVG renderers", () => {
     });
     expect(countMatches(out, /<path/g)).toBeGreaterThanOrEqual(2);
     expect(out).toContain("autocorrelation");
+  });
+
+  it("renderRankSVG emits a stepped outline per chain", () => {
+    const out = renderRankSVG({
+      kind: "rank",
+      variable: "mu",
+      nChains: 2,
+      bins: 4,
+      counts: [
+        [1, 2, 3, 4],
+        [4, 3, 2, 1],
+      ],
+      expected: 2.5,
+    });
+    expect(countMatches(out, /<path/g)).toBeGreaterThanOrEqual(2);
+    expect(out).toContain("rank");
   });
 
   it("renderForestSVG emits a labeled row per variable", () => {
