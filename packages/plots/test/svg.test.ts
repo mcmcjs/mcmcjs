@@ -4,6 +4,7 @@ import {
   renderDensitySVG,
   renderForestSVG,
   renderHistogramSVG,
+  renderPairSVG,
   renderRankSVG,
   renderTraceSVG,
 } from "../src/svg";
@@ -86,6 +87,22 @@ describe("SVG renderers", () => {
     });
     expect(countMatches(out, /<path/g)).toBeGreaterThanOrEqual(2);
     expect(out).toContain("rank");
+  });
+
+  it("renderPairSVG emits scatter circles and highlights divergences in red", () => {
+    const out = renderPairSVG({
+      kind: "pair",
+      xVar: "a",
+      yVar: "b",
+      nChains: 2,
+      x: [0, 1, 2, 3],
+      y: [3, 2, 1, 0],
+      chain: [0, 0, 1, 1],
+      diverging: [false, false, false, true],
+    });
+    expect(countMatches(out, /<circle/g)).toBeGreaterThanOrEqual(4);
+    expect(out).toContain("#d62728");
+    expect(out).toContain("a vs b");
   });
 
   it("renderForestSVG emits a labeled row per variable", () => {

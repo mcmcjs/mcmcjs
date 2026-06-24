@@ -9,6 +9,8 @@ import {
   forestData,
   type HistogramData,
   histogramData,
+  type PairData,
+  pairData,
   type RankData,
   rankData,
   renderAutocorrSVG,
@@ -19,6 +21,8 @@ import {
   renderForestTerminal,
   renderHistogramSVG,
   renderHistogramTerminal,
+  renderPairSVG,
+  renderPairTerminal,
   renderRankSVG,
   renderRankTerminal,
   renderTraceSVG,
@@ -33,7 +37,7 @@ import pc from "picocolors";
 import { resolveSamplesPath } from "./diagnose";
 import { parseFloatOption, parseIntOption } from "./options";
 
-const KINDS = ["trace", "density", "histogram", "rank", "autocorr", "forest"] as const;
+const KINDS = ["trace", "density", "histogram", "rank", "autocorr", "pair", "forest"] as const;
 type PlotKind = (typeof KINDS)[number];
 const FORMATS = ["terminal", "svg"] as const;
 type Format = (typeof FORMATS)[number];
@@ -68,6 +72,8 @@ function renderTerminal(kind: PlotKind, data: unknown, term: TerminalOptions): s
       return renderRankTerminal(data as RankData, term);
     case "autocorr":
       return renderAutocorrTerminal(data as AutocorrData, term);
+    case "pair":
+      return renderPairTerminal(data as PairData, term);
     default:
       return renderTraceTerminal(data as TraceData, term);
   }
@@ -85,6 +91,8 @@ function renderSvg(kind: PlotKind, data: unknown): string {
       return renderAutocorrSVG(data as AutocorrData);
     case "rank":
       return renderRankSVG(data as RankData);
+    case "pair":
+      return renderPairSVG(data as PairData);
     default:
       return renderTraceSVG(data as TraceData);
   }
@@ -99,7 +107,9 @@ export function registerPlot(program: Command): void {
       "[target]",
       "samples file (MCMCChains JSON or ArviZ InferenceData JSON), or a run ref (latest, @N, id prefix); default: the latest store run",
     )
-    .description("Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, forest)")
+    .description(
+      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, forest)",
+    )
     .option("--kind <kind>", `plot type: ${KINDS.join(" | ")}`, "forest")
     .option("--format <fmt>", `output format: ${FORMATS.join(" | ")}`, "terminal")
     .option("--var <name...>", "restrict to these variables (default: all)")
@@ -126,24 +136,31 @@ export function registerPlot(program: Command): void {
       const samples = parseSamples(readFileSync(resolveSamplesPath(target, opts.store), "utf8"));
       const variables = opts.var ?? samples.variables;
 
-      // One data object for forest (all variables in one plot); one per variable otherwise.
-      const items: unknown[] =
-        kind === "forest"
-          ? [forestData(samples, { variables, hdiProb: opts.hdiProb })]
-          : variables.map((v) => {
-              switch (kind) {
-                case "density":
-                  return densityData(samples, v);
-                case "histogram":
-                  return histogramData(samples, v, { bins: opts.bins });
-                case "rank":
-                  return rankData(samples, v, { bins: opts.bins });
-                case "autocorr":
-                  return autocorrData(samples, v, { maxLag: opts.maxLag });
-                default:
-                  return traceData(samples, v);
-              }
-            });
+      // forest takes all variables in one plot; pair takes exactly two; the rest are per-variable.
+      let items: unknown[];
+      if (kind === "forest") {
+        items = [forestData(samples, { variables, hdiProb: opts.hdiProb })];
+      } else if (kind === "pair") {
+        if (variables.length !== 2) {
+          throw new Error("--kind pair needs exactly two variables, e.g. --var alpha beta");
+        }
+        items = [pairData(samples, variables[0] as string, variables[1] as string)];
+      } else {
+        items = variables.map((v) => {
+          switch (kind) {
+            case "density":
+              return densityData(samples, v);
+            case "histogram":
+              return histogramData(samples, v, { bins: opts.bins });
+            case "rank":
+              return rankData(samples, v, { bins: opts.bins });
+            case "autocorr":
+              return autocorrData(samples, v, { maxLag: opts.maxLag });
+            default:
+              return traceData(samples, v);
+          }
+        });
+      }
 
       const emit = (content: string, label: string): void => {
         if (opts.out) {

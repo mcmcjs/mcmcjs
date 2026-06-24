@@ -13,6 +13,7 @@ import type {
   DensityData,
   ForestData,
   HistogramData,
+  PairData,
   RankData,
   SvgOptions,
   TraceData,
@@ -154,6 +155,37 @@ export function renderRankSVG(data: RankData, opts: SvgOptions = {}): string {
     })
     .join("");
   return frame.render(expected + content);
+}
+
+/** Pair (joint) scatter of two variables, colored by chain; divergences drawn on top in red. */
+export function renderPairSVG(data: PairData, opts: SvgOptions = {}): string {
+  const [xmin, xmax] = niceDomain(...extent(data.x));
+  const [ymin, ymax] = niceDomain(...extent(data.y));
+  const frame = svgFrame({
+    width: opts.width ?? 480,
+    height: opts.height ?? 420,
+    xDomain: [xmin, xmax],
+    yDomain: [ymin, ymax],
+    title: `${data.xVar} vs ${data.yVar}`,
+    xLabel: data.xVar,
+    yLabel: data.yVar,
+  });
+
+  // Keep every divergence; thin the rest so a long run stays a reasonable file.
+  const cap = 3000;
+  const normalIdx: number[] = [];
+  const divergentIdx: number[] = [];
+  for (let i = 0; i < data.x.length; i++) (data.diverging[i] ? divergentIdx : normalIdx).push(i);
+  const step = Math.max(1, Math.ceil(normalIdx.length / cap));
+
+  const dot = (i: number, r: number, fill: string): string =>
+    svgCircle(frame.x.map(data.x[i] ?? 0), frame.y.map(data.y[i] ?? 0), r, fill);
+  const normal = normalIdx
+    .filter((_, k) => k % step === 0)
+    .map((i) => dot(i, 1.4, seriesColor(data.chain[i] ?? 0)))
+    .join("");
+  const divergent = divergentIdx.map((i) => dot(i, 2.5, "#d62728")).join("");
+  return frame.render(normal + divergent);
 }
 
 /** Forest plot: a point estimate, HDI, and IQR row per variable on a shared x-axis. */

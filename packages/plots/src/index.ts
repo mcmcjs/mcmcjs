@@ -5,6 +5,7 @@ export {
   densityData,
   forestData,
   histogramData,
+  pairData,
   rankData,
   traceData,
 } from "./data";
@@ -13,6 +14,7 @@ export {
   renderDensitySVG,
   renderForestSVG,
   renderHistogramSVG,
+  renderPairSVG,
   renderRankSVG,
   renderTraceSVG,
 } from "./svg";
@@ -21,6 +23,7 @@ export {
   renderDensityTerminal,
   renderForestTerminal,
   renderHistogramTerminal,
+  renderPairTerminal,
   renderRankTerminal,
   renderTraceTerminal,
 } from "./terminal";
@@ -32,6 +35,7 @@ export type {
   ForestData,
   ForestRow,
   HistogramData,
+  PairData,
   PlotKind,
   RankData,
   SvgOptions,

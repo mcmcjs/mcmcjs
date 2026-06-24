@@ -4,6 +4,7 @@ import {
   renderDensityTerminal,
   renderForestTerminal,
   renderHistogramTerminal,
+  renderPairTerminal,
   renderRankTerminal,
   renderTraceTerminal,
 } from "../src/terminal";
@@ -12,6 +13,7 @@ import type {
   DensityData,
   ForestData,
   HistogramData,
+  PairData,
   RankData,
   TraceData,
 } from "../src/types";
@@ -138,6 +140,25 @@ describe("renderAutocorrTerminal", () => {
   it("renders an autocorrelation header and a braille body", () => {
     const out = renderAutocorrTerminal(autoc, { height: 4 });
     expect(out).toContain("mu   autocorrelation (max lag 3, 2 chains)");
+    expect(hasBraille(out)).toBe(true);
+  });
+});
+
+const pair: PairData = {
+  kind: "pair",
+  xVar: "a",
+  yVar: "b",
+  nChains: 2,
+  x: [0, 1, 2, 3],
+  y: [3, 2, 1, 0],
+  chain: [0, 0, 1, 1],
+  diverging: [false, false, false, true],
+};
+
+describe("renderPairTerminal", () => {
+  it("renders a scatter header naming both variables", () => {
+    const out = renderPairTerminal(pair, { height: 6 });
+    expect(out).toContain("a vs b");
     expect(hasBraille(out)).toBe(true);
   });
 });

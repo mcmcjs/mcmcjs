@@ -10,7 +10,7 @@ import type { Charset, ColorFn } from "@mcmcjs/charts";
 export type { Charset, ColorFn } from "@mcmcjs/charts";
 
 /** The diagnostic plots this package can produce. */
-export type PlotKind = "trace" | "density" | "histogram" | "rank" | "autocorr" | "forest";
+export type PlotKind = "trace" | "density" | "histogram" | "rank" | "autocorr" | "pair" | "forest";
 
 /** Per-variable trace: the raw draw sequence of each chain, plus its key diagnostics. */
 export interface TraceData {
@@ -69,6 +69,21 @@ export interface AutocorrData {
   lags: number[];
   /** One ACF array per chain, aligned to `lags`. */
   chains: number[][];
+}
+
+/** Pair (joint) plot: pooled draws of two variables, with chain and divergence labels. */
+export interface PairData {
+  kind: "pair";
+  xVar: string;
+  yVar: string;
+  nChains: number;
+  /** Parallel pooled (chain-major) arrays of equal length. */
+  x: number[];
+  y: number[];
+  /** 0-based chain index per point. */
+  chain: number[];
+  /** Whether each draw was a divergent transition. */
+  diverging: boolean[];
 }
 
 /** One row of a forest plot: a point estimate with a credible interval and IQR. */

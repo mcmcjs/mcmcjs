@@ -12,6 +12,7 @@ import type {
   DensityData,
   ForestData,
   HistogramData,
+  PairData,
   RankData,
   TerminalOptions,
   TraceData,
@@ -191,6 +192,40 @@ export function renderAutocorrTerminal(data: AutocorrData, opts: TerminalOptions
     yMax: 1,
     xLeft: "0",
     xRight: String(data.maxLag),
+    charset,
+    header,
+    gutter: GUTTER,
+  });
+}
+
+/** Renders a pair (joint) scatter of two variables, colored by chain. */
+export function renderPairTerminal(data: PairData, opts: TerminalOptions = {}): string {
+  const charset = opts.charset ?? "unicode";
+  const color = opts.color ?? identity;
+  const totalWidth = opts.width ?? 72;
+  const height = opts.height ?? 14;
+  const plotW = Math.max(8, totalWidth - GUTTER - 2);
+
+  const [xmin, xmax] = niceDomain(...extent(data.x));
+  const [ymin, ymax] = niceDomain(...extent(data.y));
+  const canvas = new DotCanvas(plotW, height);
+  const scaleX = linearScale([xmin, xmax], [0, canvas.wDots - 1]);
+  const scaleY = linearScale([ymin, ymax], [canvas.hDots - 1, 0]);
+
+  for (let i = 0; i < data.x.length; i++) {
+    const xv = data.x[i];
+    const yv = data.y[i];
+    if (xv === undefined || yv === undefined) continue;
+    canvas.set(scaleX.map(xv), scaleY.map(yv), data.chain[i] ?? 0);
+  }
+
+  const header = `${data.xVar} vs ${data.yVar}   (${data.nChains} chains)`;
+  return axisFrame(canvas.rows(charset, color), {
+    width: plotW,
+    yMin: ymin,
+    yMax: ymax,
+    xLeft: fmtNum(xmin),
+    xRight: fmtNum(xmax),
     charset,
     header,
     gutter: GUTTER,

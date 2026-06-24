@@ -6,6 +6,7 @@ import {
   densityData,
   forestData,
   histogramData,
+  pairData,
   rankData,
   traceData,
 } from "../src/data";
@@ -115,6 +116,21 @@ describe("autocorrData", () => {
     expect(acf.length).toBeGreaterThan(0);
     expect(acf.length).toBeLessThanOrEqual(5);
     expect(acf[0]).toBeCloseTo(1, 6);
+  });
+});
+
+describe("pairData", () => {
+  it("pools two variables into aligned point arrays labeled by chain", () => {
+    const pd = pairData(samples, "mu", "theta");
+    expect(pd.kind).toBe("pair");
+    expect(pd.xVar).toBe("mu");
+    expect(pd.yVar).toBe("theta");
+    const n = samples.nChains * samples.nDraws;
+    expect(pd.x).toHaveLength(n);
+    expect(pd.y).toHaveLength(n);
+    expect(pd.chain[0]).toBe(0);
+    expect(pd.chain[n - 1]).toBe(samples.nChains - 1);
+    expect(pd.diverging.every((d) => d === false)).toBe(true);
   });
 });
 

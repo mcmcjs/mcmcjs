@@ -7,6 +7,7 @@ import type {
   ForestData,
   ForestRow,
   HistogramData,
+  PairData,
   RankData,
   TraceData,
 } from "./types";
@@ -150,6 +151,33 @@ export function autocorrData(
   const longest = Math.max(0, ...chains.map((a) => a.length));
   const lags = Array.from({ length: longest }, (_, k) => k);
   return { kind: "autocorr", variable, nChains: samples.nChains, maxLag, lags, chains };
+}
+
+/** Per-draw divergence flags (chain-major), from the sampler stats; all false when absent. */
+function divergingFlags(samples: Samples): boolean[] {
+  const series = samples.sampleStats.get("numerical_error") ?? samples.sampleStats.get("diverging");
+  const n = samples.nChains * samples.nDraws;
+  if (!series) return new Array<boolean>(n).fill(false);
+  return Array.from({ length: n }, (_, i) => (series[i] ?? 0) !== 0);
+}
+
+/** Pair plot data: pooled joint draws of two variables, labeled by chain and divergence. */
+export function pairData(samples: Samples, xVar: string, yVar: string): PairData {
+  const xs = samples.draws.get(xVar) ?? chainView(samples, xVar, 0);
+  const ys = samples.draws.get(yVar) ?? chainView(samples, yVar, 0);
+  const div = divergingFlags(samples);
+  const n = Math.min(xs.length, ys.length);
+  const x: number[] = [];
+  const y: number[] = [];
+  const chain: number[] = [];
+  const diverging: boolean[] = [];
+  for (let i = 0; i < n; i++) {
+    x.push(xs[i] as number);
+    y.push(ys[i] as number);
+    chain.push(Math.floor(i / samples.nDraws));
+    diverging.push(div[i] ?? false);
+  }
+  return { kind: "pair", xVar, yVar, nChains: samples.nChains, x, y, chain, diverging };
 }
 
 /** Forest data: a point estimate, HDI, and IQR per variable, sharing an x-axis. */
