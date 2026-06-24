@@ -1,6 +1,6 @@
 {
   "name": "@mcmcjs/charts",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A dependency-free plotting engine: render line, scatter, bar, interval, and density plots to the terminal (braille/block/ASCII) or SVG from one figure model.",
   "keywords": [
     "charts",

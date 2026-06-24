@@ -1,5 +1,31 @@
 # mcmcjs
 
+## 0.13.0
+
+### Minor Changes
+
+- 22f607a: Add `mcmc plot [target]`, which renders MCMC diagnostic plots in the terminal for a run ref (latest, @N, id prefix) or a samples file, reusing the same resolution as `mcmc diagnose`. Supports `--kind trace|forest` (default forest), `--var` to filter parameters, `--ascii` for plain glyphs, `--hdi-prob`, `--width`/`--height`, `-o/--out` to write to a file, and `--json` to emit the underlying plot data.
+- cee37af: `mcmc plot` gains `--kind density` and `--kind histogram` (rendered per variable), plus `--bins` to override histogram bin selection.
+- 0921877: `mcmc plot --kind energy` renders the HMC/NUTS energy diagnostic (marginal vs transition energy, with E-BFMI) in the terminal or as SVG, completing the plot-type set.
+- e9cd91b: `mcmc plot --kind pair --var x y` renders the joint scatter of two variables (terminal or SVG), with divergent transitions highlighted in the SVG output.
+- b382de5: `mcmc plot` gains `--kind rank` and `--kind autocorr` (per variable), with `--max-lag` for autocorrelation and `--bins` also applying to rank.
+- 3b8c131: `mcmc plot` gains `--format svg` for publication-quality export: it renders trace/density/histogram/autocorr/forest as SVG and, with multiple variables, stacks them into one document. Use `-o file.svg` to save (headless/CI friendly).
+
+### Patch Changes
+
+- af55da5: `mcmc plot --kind rank --format svg` is now supported (rank rounds out the SVG plot set).
+- Updated dependencies [b382de5]
+- Updated dependencies [cee37af]
+- Updated dependencies [0921877]
+- Updated dependencies [f61cb7b]
+- Updated dependencies [22f607a]
+- Updated dependencies [e9cd91b]
+- Updated dependencies [b382de5]
+- Updated dependencies [af55da5]
+- Updated dependencies [3b8c131]
+  - @mcmcjs/diagnostics@0.3.0
+  - @mcmcjs/plots@0.1.0
+
 ## 0.12.0
 
 ### Minor Changes
