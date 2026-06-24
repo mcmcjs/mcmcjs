@@ -10,7 +10,7 @@ import type { Charset, ColorFn } from "@mcmcjs/charts";
 export type { Charset, ColorFn } from "@mcmcjs/charts";
 
 /** The diagnostic plots this package can produce. */
-export type PlotKind = "trace" | "forest";
+export type PlotKind = "trace" | "density" | "histogram" | "forest";
 
 /** Per-variable trace: the raw draw sequence of each chain, plus its key diagnostics. */
 export interface TraceData {
@@ -24,6 +24,27 @@ export interface TraceData {
   rhat: number;
   /** Bulk effective sample size (NaN when undefined). */
   essBulk: number;
+}
+
+/** Per-variable kernel-density estimate: one curve per chain over a shared x-grid. */
+export interface DensityData {
+  kind: "density";
+  variable: string;
+  nChains: number;
+  /** Shared evaluation grid (length gridSize), ascending. */
+  x: number[];
+  /** One density curve per chain, each aligned to `x`. */
+  chains: number[][];
+}
+
+/** Per-variable pooled histogram: bin edges (length bins+1) and counts (length bins). */
+export interface HistogramData {
+  kind: "histogram";
+  variable: string;
+  binEdges: number[];
+  counts: number[];
+  /** Total number of draws pooled across chains. */
+  total: number;
 }
 
 /** One row of a forest plot: a point estimate with a credible interval and IQR. */

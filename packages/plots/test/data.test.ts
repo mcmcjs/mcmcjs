@@ -1,6 +1,6 @@
 import type { Samples } from "@mcmcjs/core";
 import { describe, expect, it } from "vitest";
-import { chainsOf, forestData, traceData } from "../src/data";
+import { chainsOf, densityData, forestData, histogramData, traceData } from "../src/data";
 
 /** Builds a Samples set from per-variable, per-chain draw arrays (chain-major). */
 function makeSamples(perVar: Record<string, number[][]>): Samples {
@@ -50,6 +50,36 @@ describe("traceData", () => {
     expect(td.chains[2]).toEqual([0, 1, 2, 3, 4, 5]);
     expect(typeof td.rhat).toBe("number");
     expect(typeof td.essBulk).toBe("number");
+  });
+});
+
+describe("densityData", () => {
+  it("returns one non-negative KDE curve per chain over a shared ascending grid", () => {
+    const dd = densityData(samples, "mu", { gridSize: 64 });
+    expect(dd.kind).toBe("density");
+    expect(dd.x).toHaveLength(64);
+    expect(dd.chains).toHaveLength(3);
+    expect(dd.chains[0]).toHaveLength(64);
+    expect((dd.x[0] as number) < (dd.x[63] as number)).toBe(true);
+    const curve = dd.chains[0] as number[];
+    expect(Math.max(...curve)).toBeGreaterThan(0);
+    expect(Math.min(...curve)).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("histogramData", () => {
+  it("bins pooled draws so the counts sum to the number of draws", () => {
+    const hd = histogramData(samples, "mu");
+    expect(hd.kind).toBe("histogram");
+    expect(hd.binEdges).toHaveLength(hd.counts.length + 1);
+    expect(hd.counts.reduce((a, b) => a + b, 0)).toBe(hd.total);
+    expect(hd.total).toBe(samples.nChains * samples.nDraws);
+  });
+
+  it("honors an explicit bin count", () => {
+    const hd = histogramData(samples, "mu", { bins: 5 });
+    expect(hd.counts).toHaveLength(5);
+    expect(hd.binEdges).toHaveLength(6);
   });
 });
 

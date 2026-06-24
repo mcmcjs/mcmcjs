@@ -1,6 +1,20 @@
+import { extent, niceDomain } from "@mcmcjs/charts";
 import { chainView, type Samples } from "@mcmcjs/core";
-import { diagnoseChains, isConverged, quantiles } from "@mcmcjs/diagnostics";
-import type { ForestData, ForestRow, TraceData } from "./types";
+import { diagnoseChains, isConverged, quantiles, stdev } from "@mcmcjs/diagnostics";
+import type { DensityData, ForestData, ForestRow, HistogramData, TraceData } from "./types";
+
+const INV_SQRT_2PI = 1 / Math.sqrt(2 * Math.PI);
+
+/** Silverman rule-of-thumb bandwidth; 0 when the sample has no spread. */
+function bandwidth(chain: Float64Array): number {
+  const n = chain.length;
+  if (n < 2) return 0;
+  const sd = stdev(chain);
+  const q = quantiles(chain);
+  const iqr = q.q75 - q.q25;
+  const sigma = iqr > 0 ? Math.min(sd, iqr / 1.349) : sd;
+  return sigma > 0 ? 1.06 * sigma * n ** (-1 / 5) : 0;
+}
 
 /** One variable's draws split per chain, as no-copy views over the Samples buffer. */
 export function chainsOf(samples: Samples, variable: string): Float64Array[] {
@@ -20,6 +34,66 @@ export function traceData(samples: Samples, variable: string): TraceData {
     rhat: d.rhat,
     essBulk: d.essBulk,
   };
+}
+
+/** Kernel-density data for one variable: a Gaussian KDE curve per chain on a shared grid. */
+export function densityData(
+  samples: Samples,
+  variable: string,
+  opts: { gridSize?: number } = {},
+): DensityData {
+  const gridSize = Math.max(2, opts.gridSize ?? 256);
+  const chains = chainsOf(samples, variable);
+  const pooled = samples.draws.get(variable) ?? chainView(samples, variable, 0);
+  const [lo, hi] = niceDomain(...extent(pooled));
+  const step = (hi - lo) / (gridSize - 1);
+  const x = Array.from({ length: gridSize }, (_, k) => lo + k * step);
+
+  const curves = chains.map((chain) => {
+    const h = bandwidth(chain);
+    if (h <= 0) return new Array<number>(gridSize).fill(0);
+    const norm = 1 / (chain.length * h);
+    return x.map((g) => {
+      let sum = 0;
+      for (const xi of chain) {
+        const z = (g - xi) / h;
+        sum += Math.exp(-0.5 * z * z);
+      }
+      return sum * norm * INV_SQRT_2PI;
+    });
+  });
+
+  return { kind: "density", variable, nChains: samples.nChains, x, chains: curves };
+}
+
+/** Pooled histogram for one variable; bin count via Freedman-Diaconis unless `bins` is given. */
+export function histogramData(
+  samples: Samples,
+  variable: string,
+  opts: { bins?: number } = {},
+): HistogramData {
+  const pooled = samples.draws.get(variable) ?? chainView(samples, variable, 0);
+  const values = Array.from(pooled).filter(Number.isFinite);
+  const total = values.length;
+  const [lo, hi] = extent(values);
+
+  let bins = opts.bins;
+  if (!bins || bins < 1) {
+    const q = quantiles(pooled);
+    const iqr = q.q75 - q.q25;
+    const fd = iqr > 0 && total > 0 ? 2 * iqr * total ** (-1 / 3) : 0;
+    bins = fd > 0 ? Math.ceil((hi - lo) / fd) : Math.ceil(Math.sqrt(Math.max(1, total)));
+    bins = Math.max(1, Math.min(120, bins));
+  }
+
+  const width = hi > lo ? (hi - lo) / bins : 1;
+  const counts = new Array<number>(bins).fill(0);
+  for (const v of values) {
+    const b = Math.min(bins - 1, Math.max(0, Math.floor((v - lo) / width)));
+    counts[b] = (counts[b] ?? 0) + 1;
+  }
+  const binEdges = Array.from({ length: bins + 1 }, (_, i) => lo + i * width);
+  return { kind: "histogram", variable, binEdges, counts, total };
 }
 
 /** Forest data: a point estimate, HDI, and IQR per variable, sharing an x-axis. */

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { renderForestTerminal, renderTraceTerminal } from "../src/terminal";
-import type { ForestData, TraceData } from "../src/types";
+import {
+  renderDensityTerminal,
+  renderForestTerminal,
+  renderHistogramTerminal,
+  renderTraceTerminal,
+} from "../src/terminal";
+import type { DensityData, ForestData, HistogramData, TraceData } from "../src/types";
 
 const trace: TraceData = {
   kind: "trace",
@@ -48,6 +53,41 @@ describe("renderTraceTerminal", () => {
     const out = renderTraceTerminal({ ...trace, rhat: Number.NaN, essBulk: Number.NaN });
     expect(out).toContain("R-hat n/a");
     expect(out).toContain("ESS n/a");
+  });
+});
+
+const density: DensityData = {
+  kind: "density",
+  variable: "mu",
+  nChains: 2,
+  x: [0, 1, 2, 3],
+  chains: [
+    [0, 0.5, 0.5, 0],
+    [0, 0.2, 0.8, 0],
+  ],
+};
+
+describe("renderDensityTerminal", () => {
+  it("renders a density header and a braille body", () => {
+    const out = renderDensityTerminal(density, { height: 4 });
+    expect(out).toContain("mu   density   (2 chains)");
+    expect(hasBraille(out)).toBe(true);
+  });
+});
+
+const histogram: HistogramData = {
+  kind: "histogram",
+  variable: "mu",
+  binEdges: [0, 1, 2, 3],
+  counts: [2, 5, 1],
+  total: 8,
+};
+
+describe("renderHistogramTerminal", () => {
+  it("renders a histogram header with bin and draw counts", () => {
+    const out = renderHistogramTerminal(histogram, { height: 4, charset: "ascii" });
+    expect(out).toContain("mu   histogram   (3 bins, 8 draws)");
+    expect(hasBraille(out)).toBe(false);
   });
 });
 
