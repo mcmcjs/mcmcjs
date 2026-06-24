@@ -1,5 +1,16 @@
 # @mcmcjs/plots
 
+## 0.2.0
+
+### Minor Changes
+
+- 43fd233: Add an interactive HTML backend. `buildHtmlDocument(data)` emits a single self-contained, offline-capable HTML file with the MIT-licensed uPlot bundle and CSS inlined, the plot specs embedded as JSON, and a bootstrap that rehydrates them into pan/zoom charts with per-plot PNG/SVG export. `htmlItemFor` builds function-free uPlot specs for the line/bar/step kinds and embeds existing SVG for forest and pair.
+
+### Patch Changes
+
+- Updated dependencies [4b38323]
+  - @mcmcjs/charts@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes
