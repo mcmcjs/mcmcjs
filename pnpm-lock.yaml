@@ -30,7 +30,11 @@ importers:
         specifier: 4.1.8
         version: 4.1.8(@types/node@24.12.4)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@24.12.4)(esbuild@0.27.7))
 
-  packages/charts: {}
+  packages/charts:
+    devDependencies:
+      uplot:
+        specifier: ^1.6.32
+        version: 1.6.32
 
   packages/cli:
     dependencies:
@@ -101,6 +105,10 @@ importers:
       '@mcmcjs/diagnostics':
         specifier: workspace:*
         version: link:../diagnostics
+    devDependencies:
+      uplot:
+        specifier: ^1.6.32
+        version: 1.6.32
 
 packages:
 
@@ -1410,6 +1418,9 @@ packages:
     resolution: {integrity: sha512-rBJeI5CXAlmy1pV+617WB9J63U6XcazHHF2f2dbJix4XzpUF0RS3Zbj0FGIOCAva5P/d/GBOYaACQ1w+0azUkg==}
     engines: {node: '>= 4.0.0'}
 
+  uplot@1.6.32:
+    resolution: {integrity: sha512-KIMVnG68zvu5XXUbC4LQEPnhwOxBuLyW1AHtpm6IKTXImkbLgkMy+jabjLgSLMasNuGGzQm/ep3tOkyTxpiQIw==}
+
   vite@8.0.16:
     resolution: {integrity: sha512-h9bXPmJichP5fLmVQo3PyaGSDE2n3aPuomeAlVRm0JLmt4rY6zmPKd59HYI4LNW8oTK7tlTsuC7l/m7awx9Jcw==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -2659,6 +2670,8 @@ snapshots:
   undici-types@7.16.0: {}
 
   universalify@0.1.2: {}
+
+  uplot@1.6.32: {}
 
   vite@8.0.16(@types/node@24.12.4)(esbuild@0.27.7):
     dependencies:

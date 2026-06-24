@@ -37,6 +37,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./dom": {
+      "types": "./dist/dom/index.d.ts",
+      "import": "./dist/dom/index.js",
+      "require": "./dist/dom/index.cjs"
     }
   },
   "files": [
@@ -47,6 +52,17 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "peerDependencies": {
+    "uplot": "^1.6.32"
+  },
+  "peerDependenciesMeta": {
+    "uplot": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "uplot": "^1.6.32"
   },
   "scripts": {
     "build": "tsup",
