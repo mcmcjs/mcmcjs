@@ -1,3 +1,4 @@
+export { stackSvg } from "@mcmcjs/charts";
 export {
   autocorrData,
   chainsOf,
@@ -7,6 +8,13 @@ export {
   rankData,
   traceData,
 } from "./data";
+export {
+  renderAutocorrSVG,
+  renderDensitySVG,
+  renderForestSVG,
+  renderHistogramSVG,
+  renderTraceSVG,
+} from "./svg";
 export {
   renderAutocorrTerminal,
   renderDensityTerminal,
@@ -25,6 +33,7 @@ export type {
   HistogramData,
   PlotKind,
   RankData,
+  SvgOptions,
   TerminalOptions,
   TraceData,
 } from "./types";

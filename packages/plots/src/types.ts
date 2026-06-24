@@ -105,3 +105,11 @@ export interface TerminalOptions {
   /** Colorizer for out-of-threshold values (e.g. a non-converged R-hat); identity when omitted. */
   warn?: (text: string) => string;
 }
+
+/** Options for the SVG renderers (pixel dimensions). */
+export interface SvgOptions {
+  /** Figure width in pixels (default 640). */
+  width?: number;
+  /** Figure height in pixels (default 220; forest scales with row count). */
+  height?: number;
+}

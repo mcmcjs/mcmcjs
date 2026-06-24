@@ -1,18 +1,30 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { parseSamples } from "@mcmcjs/core";
 import {
+  type AutocorrData,
   autocorrData,
+  type DensityData,
   densityData,
+  type ForestData,
   forestData,
+  type HistogramData,
   histogramData,
+  type RankData,
   rankData,
+  renderAutocorrSVG,
   renderAutocorrTerminal,
+  renderDensitySVG,
   renderDensityTerminal,
+  renderForestSVG,
   renderForestTerminal,
+  renderHistogramSVG,
   renderHistogramTerminal,
   renderRankTerminal,
+  renderTraceSVG,
   renderTraceTerminal,
+  stackSvg,
   type TerminalOptions,
+  type TraceData,
   traceData,
 } from "@mcmcjs/plots";
 import type { Command } from "commander";
@@ -22,9 +34,12 @@ import { parseFloatOption, parseIntOption } from "./options";
 
 const KINDS = ["trace", "density", "histogram", "rank", "autocorr", "forest"] as const;
 type PlotKind = (typeof KINDS)[number];
+const FORMATS = ["terminal", "svg"] as const;
+type Format = (typeof FORMATS)[number];
 
 interface PlotCliOptions {
   kind: string;
+  format: string;
   var?: string[];
   store?: string;
   width?: number;
@@ -40,6 +55,40 @@ interface PlotCliOptions {
 // picocolors auto-disables on a non-TTY / NO_COLOR, so these are safe to always apply.
 const PALETTE = [pc.cyan, pc.green, pc.yellow, pc.magenta, pc.blue, pc.red] as const;
 
+function renderTerminal(kind: PlotKind, data: unknown, term: TerminalOptions): string {
+  switch (kind) {
+    case "forest":
+      return renderForestTerminal(data as ForestData, term);
+    case "density":
+      return renderDensityTerminal(data as DensityData, term);
+    case "histogram":
+      return renderHistogramTerminal(data as HistogramData, term);
+    case "rank":
+      return renderRankTerminal(data as RankData, term);
+    case "autocorr":
+      return renderAutocorrTerminal(data as AutocorrData, term);
+    default:
+      return renderTraceTerminal(data as TraceData, term);
+  }
+}
+
+function renderSvg(kind: PlotKind, data: unknown): string {
+  switch (kind) {
+    case "forest":
+      return renderForestSVG(data as ForestData);
+    case "density":
+      return renderDensitySVG(data as DensityData);
+    case "histogram":
+      return renderHistogramSVG(data as HistogramData);
+    case "autocorr":
+      return renderAutocorrSVG(data as AutocorrData);
+    case "trace":
+      return renderTraceSVG(data as TraceData);
+    default:
+      throw new Error(`--format svg does not support --kind ${kind} yet`);
+  }
+}
+
 export function registerPlot(program: Command): void {
   program
     .command("plot")
@@ -51,15 +100,12 @@ export function registerPlot(program: Command): void {
     )
     .description("Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, forest)")
     .option("--kind <kind>", `plot type: ${KINDS.join(" | ")}`, "forest")
+    .option("--format <fmt>", `output format: ${FORMATS.join(" | ")}`, "terminal")
     .option("--var <name...>", "restrict to these variables (default: all)")
     .option("--store <dir>", "run store directory (default: nearest .mcmc above cwd)")
-    .option("--width <cells>", "plot width in characters", parseIntOption)
-    .option(
-      "--height <cells>",
-      "plot height in characters (trace/density/histogram)",
-      parseIntOption,
-    )
-    .option("--ascii", "use ASCII glyphs instead of Unicode braille/blocks")
+    .option("--width <n>", "plot width (characters for terminal, pixels for svg)", parseIntOption)
+    .option("--height <n>", "plot height (characters for terminal, pixels for svg)", parseIntOption)
+    .option("--ascii", "use ASCII glyphs instead of Unicode braille/blocks (terminal)")
     .option("--hdi-prob <value>", "HDI credible mass (forest)", parseFloatOption, 0.94)
     .option("--bins <n>", "histogram/rank bins (default: Freedman-Diaconis / 20)", parseIntOption)
     .option("--max-lag <n>", "autocorrelation max lag (default 40)", parseIntOption)
@@ -70,8 +116,52 @@ export function registerPlot(program: Command): void {
       if (!KINDS.includes(kind)) {
         throw new Error(`unknown --kind "${opts.kind}"; expected one of: ${KINDS.join(", ")}`);
       }
+      const format = opts.format as Format;
+      if (!FORMATS.includes(format)) {
+        throw new Error(
+          `unknown --format "${opts.format}"; expected one of: ${FORMATS.join(", ")}`,
+        );
+      }
       const samples = parseSamples(readFileSync(resolveSamplesPath(target, opts.store), "utf8"));
       const variables = opts.var ?? samples.variables;
+
+      // One data object for forest (all variables in one plot); one per variable otherwise.
+      const items: unknown[] =
+        kind === "forest"
+          ? [forestData(samples, { variables, hdiProb: opts.hdiProb })]
+          : variables.map((v) => {
+              switch (kind) {
+                case "density":
+                  return densityData(samples, v);
+                case "histogram":
+                  return histogramData(samples, v, { bins: opts.bins });
+                case "rank":
+                  return rankData(samples, v, { bins: opts.bins });
+                case "autocorr":
+                  return autocorrData(samples, v, { maxLag: opts.maxLag });
+                default:
+                  return traceData(samples, v);
+              }
+            });
+
+      const emit = (content: string, label: string): void => {
+        if (opts.out) {
+          writeFileSync(opts.out, content);
+          process.stdout.write(`wrote ${label} to ${opts.out}\n`);
+        } else {
+          process.stdout.write(content.endsWith("\n") ? content : `${content}\n`);
+        }
+      };
+
+      if (opts.json) {
+        emit(`${JSON.stringify(items.length === 1 ? items[0] : items, null, 2)}\n`, `${kind} data`);
+        return;
+      }
+
+      if (format === "svg") {
+        emit(stackSvg(items.map((d) => renderSvg(kind, d))), `${kind} SVG`);
+        return;
+      }
 
       const term: TerminalOptions = {
         width: opts.width,
@@ -80,51 +170,6 @@ export function registerPlot(program: Command): void {
         color: (text, chain) => (PALETTE[chain % PALETTE.length] ?? pc.white)(text),
         warn: (text) => pc.yellow(text),
       };
-
-      let rendered: string;
-      let data: unknown;
-      if (kind === "forest") {
-        const fd = forestData(samples, { variables, hdiProb: opts.hdiProb });
-        data = fd;
-        rendered = renderForestTerminal(fd, term);
-      } else {
-        // trace/density/histogram/rank/autocorr are per-variable; render one block each.
-        const perVar = variables.map((v) => {
-          if (kind === "density") {
-            const d = densityData(samples, v);
-            return { data: d, text: renderDensityTerminal(d, term) };
-          }
-          if (kind === "histogram") {
-            const d = histogramData(samples, v, { bins: opts.bins });
-            return { data: d, text: renderHistogramTerminal(d, term) };
-          }
-          if (kind === "rank") {
-            const d = rankData(samples, v, { bins: opts.bins });
-            return { data: d, text: renderRankTerminal(d, term) };
-          }
-          if (kind === "autocorr") {
-            const d = autocorrData(samples, v, { maxLag: opts.maxLag });
-            return { data: d, text: renderAutocorrTerminal(d, term) };
-          }
-          const d = traceData(samples, v);
-          return { data: d, text: renderTraceTerminal(d, term) };
-        });
-        data = perVar.length === 1 ? perVar[0]?.data : perVar.map((p) => p.data);
-        rendered = perVar.map((p) => p.text).join("\n");
-      }
-
-      if (opts.json) {
-        const json = `${JSON.stringify(data, null, 2)}\n`;
-        if (opts.out) writeFileSync(opts.out, json);
-        else process.stdout.write(json);
-        return;
-      }
-
-      if (opts.out) {
-        writeFileSync(opts.out, rendered);
-        process.stdout.write(`wrote ${kind} plot to ${opts.out}\n`);
-      } else {
-        process.stdout.write(rendered);
-      }
+      emit(items.map((d) => renderTerminal(kind, d, term)).join("\n"), `${kind} plot`);
     });
 }
