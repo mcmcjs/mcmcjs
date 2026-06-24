@@ -3,6 +3,7 @@ import { parseSamples } from "@mcmcjs/core";
 import {
   type AutocorrData,
   autocorrData,
+  buildHtmlDocument,
   type DensityData,
   densityData,
   type EnergyData,
@@ -12,6 +13,7 @@ import {
   type HistogramData,
   histogramData,
   type PairData,
+  type PlotData,
   pairData,
   type RankData,
   rankData,
@@ -52,7 +54,7 @@ const KINDS = [
   "forest",
 ] as const;
 type PlotKind = (typeof KINDS)[number];
-const FORMATS = ["terminal", "svg"] as const;
+const FORMATS = ["terminal", "svg", "html"] as const;
 type Format = (typeof FORMATS)[number];
 
 interface PlotCliOptions {
@@ -197,6 +199,12 @@ export function registerPlot(program: Command): void {
 
       if (format === "svg") {
         emit(stackSvg(items.map((d) => renderSvg(kind, d))), `${kind} SVG`);
+        return;
+      }
+
+      if (format === "html") {
+        const html = buildHtmlDocument(items as PlotData[], { title: `mcmc ${kind}` });
+        emit(html, `${kind} HTML`);
         return;
       }
 
