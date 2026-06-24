@@ -9,6 +9,7 @@ import { registerExport } from "./export";
 import { registerFit } from "./fit";
 import { registerInit } from "./init";
 import { registerJulia } from "./julia";
+import { registerPlot } from "./plot";
 import { registerPredict } from "./predict";
 import { registerRun } from "./run";
 import { registerRuns } from "./runs";
@@ -30,6 +31,7 @@ export function registerAll(program: Command, ctx: EngineContext, registry: Engi
   registerRuns(program);
   registerShow(program);
   registerDiagnose(program);
+  registerPlot(program);
   registerExport(program);
   registerInit(program);
   registerSandbox(program);

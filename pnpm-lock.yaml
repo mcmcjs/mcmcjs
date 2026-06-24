@@ -47,6 +47,9 @@ importers:
       '@mcmcjs/julia':
         specifier: workspace:*
         version: link:../julia
+      '@mcmcjs/plots':
+        specifier: workspace:*
+        version: link:../plots
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -84,6 +87,15 @@ importers:
       '@mcmcjs/engine':
         specifier: workspace:*
         version: link:../engine
+
+  packages/plots:
+    dependencies:
+      '@mcmcjs/core':
+        specifier: workspace:*
+        version: link:../core
+      '@mcmcjs/diagnostics':
+        specifier: workspace:*
+        version: link:../diagnostics
 
 packages:
 
