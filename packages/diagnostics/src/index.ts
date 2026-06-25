@@ -1,3 +1,4 @@
+export { pearson, spearman } from "./correlation";
 export {
   type ConvergenceThresholds,
   countDivergences,
