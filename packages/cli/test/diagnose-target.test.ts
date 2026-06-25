@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendLedgerEntry, ensureStore, type LedgerEntry } from "@mcmcjs/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveSamplesPath } from "../src/diagnose";
+import { resolveSamplesPath, resolveSamplesText } from "../src/diagnose";
 
 let dir: string;
 let store: string;
@@ -66,5 +66,13 @@ describe("resolveSamplesPath", () => {
   it("explains a run without samples", () => {
     addRun("20260611-000000-cccccc", "failed", false);
     expect(() => resolveSamplesPath("latest", store)).toThrow(/has no samples.*fit failed/);
+  });
+});
+
+describe("resolveSamplesText", () => {
+  it("reads the resolved file when --stdin is absent", () => {
+    const file = join(dir, "out.json");
+    writeFileSync(file, '{"hello":1}');
+    expect(resolveSamplesText(file, { store })).toBe('{"hello":1}');
   });
 });

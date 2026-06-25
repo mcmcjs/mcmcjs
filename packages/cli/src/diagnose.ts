@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   chainView,
+  dropWarmup,
   parseSamples,
   readLedger,
   resolveRunRef,
@@ -18,7 +19,7 @@ import {
 } from "@mcmcjs/diagnostics";
 import type { Command } from "commander";
 import pc from "picocolors";
-import { parseFloatOption } from "./options";
+import { parseFloatOption, parseIntOption } from "./options";
 import { locateStore } from "./store-cli";
 
 // Sampler-stat keys that flag a divergent draw, by source format.
@@ -138,6 +139,8 @@ export function formatReportHuman(report: DiagnosticsReport): string {
 interface DiagnoseCliOptions {
   json?: boolean;
   store?: string;
+  stdin?: boolean;
+  warmup?: number;
   rhatMax: number;
   essMin: number;
   hdiProb: number;
@@ -162,6 +165,19 @@ export function resolveSamplesPath(target: string | undefined, storeOverride?: s
   return path;
 }
 
+/** Reads samples text from stdin (when --stdin) or the resolved target file/run ref. */
+export function resolveSamplesText(
+  target: string | undefined,
+  opts: { stdin?: boolean; store?: string },
+): string {
+  if (opts.stdin) {
+    const text = readFileSync(0, "utf8");
+    if (text.trim() === "") throw new Error("no data on stdin");
+    return text;
+  }
+  return readFileSync(resolveSamplesPath(target, opts.store), "utf8");
+}
+
 export function registerDiagnose(program: Command): void {
   program
     .command("diagnose")
@@ -173,6 +189,12 @@ export function registerDiagnose(program: Command): void {
     )
     .description("Check MCMC convergence diagnostics (R-hat, ESS, MCSE, HDI) for a samples file")
     .option("--store <dir>", "run store directory (default: nearest .mcmc above cwd)")
+    .option("--stdin", "read the samples from stdin instead of a file/run ref")
+    .option(
+      "--warmup <n>",
+      "discard the first n draws of each chain before computing",
+      parseIntOption,
+    )
     .option("--json", "print the report as JSON")
     .option(
       "--rhat-max <value>",
@@ -190,7 +212,11 @@ export function registerDiagnose(program: Command): void {
     .option("--max-divergences <value>", "maximum acceptable divergent draws", parseFloatOption, 0)
     .addHelpText("after", "\nExit codes: 0 = converged, 1 = error, 2 = ran but not converged.")
     .action((target: string | undefined, opts: DiagnoseCliOptions) => {
-      const samples = parseSamples(readFileSync(resolveSamplesPath(target, opts.store), "utf8"));
+      if (opts.warmup !== undefined && opts.warmup < 0) {
+        throw new Error("--warmup must be a non-negative integer");
+      }
+      let samples = parseSamples(resolveSamplesText(target, opts));
+      if (opts.warmup !== undefined) samples = dropWarmup(samples, opts.warmup);
       const report = buildDiagnosticsReport(samples, {
         thresholds: { rhatMax: opts.rhatMax, essMin: opts.essMin },
         hdiProb: opts.hdiProb,

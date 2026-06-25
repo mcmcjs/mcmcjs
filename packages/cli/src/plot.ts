@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync } from "node:fs";
-import { parseSamples } from "@mcmcjs/core";
+import { writeFileSync } from "node:fs";
+import { dropWarmup, parseSamples } from "@mcmcjs/core";
 import {
   type AutocorrData,
   autocorrData,
@@ -72,7 +72,7 @@ import {
 } from "@mcmcjs/plots";
 import type { Command } from "commander";
 import pc from "picocolors";
-import { resolveSamplesPath } from "./diagnose";
+import { resolveSamplesText } from "./diagnose";
 import { parseFloatOption, parseIntOption } from "./options";
 
 const KINDS = [
@@ -103,6 +103,8 @@ interface PlotCliOptions {
   format: string;
   var?: string[];
   store?: string;
+  stdin?: boolean;
+  warmup?: number;
   width?: number;
   height?: number;
   ascii?: boolean;
@@ -209,6 +211,12 @@ export function registerPlot(program: Command): void {
     .option("--format <fmt>", `output format: ${FORMATS.join(" | ")}`, "terminal")
     .option("--var <name...>", "restrict to these variables (default: all)")
     .option("--store <dir>", "run store directory (default: nearest .mcmc above cwd)")
+    .option("--stdin", "read the samples from stdin instead of a file/run ref")
+    .option(
+      "--warmup <n>",
+      "discard the first n draws of each chain before computing",
+      parseIntOption,
+    )
     .option("--width <n>", "plot width (characters for terminal, pixels for svg)", parseIntOption)
     .option("--height <n>", "plot height (characters for terminal, pixels for svg)", parseIntOption)
     .option("--ascii", "use ASCII glyphs instead of Unicode braille/blocks (terminal)")
@@ -229,7 +237,11 @@ export function registerPlot(program: Command): void {
           `unknown --format "${opts.format}"; expected one of: ${FORMATS.join(", ")}`,
         );
       }
-      const samples = parseSamples(readFileSync(resolveSamplesPath(target, opts.store), "utf8"));
+      if (opts.warmup !== undefined && opts.warmup < 0) {
+        throw new Error("--warmup must be a non-negative integer");
+      }
+      let samples = parseSamples(resolveSamplesText(target, opts));
+      if (opts.warmup !== undefined) samples = dropWarmup(samples, opts.warmup);
       const variables = opts.var ?? samples.variables;
 
       // forest takes all variables in one plot; pair takes exactly two; the rest are per-variable.
