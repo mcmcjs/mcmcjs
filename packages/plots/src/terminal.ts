@@ -22,6 +22,7 @@ import type {
   PairData,
   RankData,
   RunningRhatData,
+  SplomData,
   SummaryTableData,
   TerminalOptions,
   TraceData,
@@ -674,6 +675,32 @@ export function renderDiagnosticsHeatmapTerminal(
       return cell && statusBucket(cell.score) === 2 ? warn(text) : text;
     });
     lines.push([row.variable.padEnd(labelW), ...cells].join("  "));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/** Renders a SPLOM as a compact Pearson-correlation matrix (diagonal 1.00). */
+export function renderSplomTerminal(data: SplomData, opts: TerminalOptions = {}): string {
+  const color = opts.color ?? identity;
+  const vars = data.vars;
+  if (vars.length === 0) return "(no variables)\n";
+
+  const pearsonAt = (row: number, col: number): number | undefined =>
+    data.corr.find((c) => c.row === Math.min(row, col) && c.col === Math.max(row, col))?.pearson;
+
+  const labelW = Math.max(4, ...vars.map((v) => v.length));
+  const colW = Math.max(5, ...vars.map((v) => v.length));
+  const pad = (text: string): string => text.padStart(colW);
+
+  const header = [" ".repeat(labelW), ...vars.map(pad)].join("  ");
+  const lines: string[] = [`pairs (${vars.length} vars, ${data.nChains} chains)`, header];
+  for (let row = 0; row < vars.length; row++) {
+    const cells = vars.map((_, col) => {
+      if (row === col) return pad("1.00");
+      const r = pearsonAt(row, col);
+      return pad(r === undefined ? "-" : r.toFixed(2));
+    });
+    lines.push([color((vars[row] ?? "").padEnd(labelW), row), ...cells].join("  "));
   }
   return `${lines.join("\n")}\n`;
 }

@@ -54,6 +54,8 @@ import {
   renderRankTerminal,
   renderRunningRhatSVG,
   renderRunningRhatTerminal,
+  renderSplomSVG,
+  renderSplomTerminal,
   renderSummaryTableSVG,
   renderSummaryTableTerminal,
   renderTraceSVG,
@@ -61,7 +63,9 @@ import {
   renderViolinSVG,
   renderViolinTerminal,
   runningRhatData,
+  type SplomData,
   type SummaryTableData,
+  splomData,
   stackSvg,
   summaryTableData,
   type TerminalOptions,
@@ -93,6 +97,7 @@ const KINDS = [
   "chain-intervals-all",
   "summary-table",
   "diagnostics-heatmap",
+  "splom",
 ] as const;
 type PlotKind = (typeof KINDS)[number];
 const FORMATS = ["terminal", "svg", "html"] as const;
@@ -152,6 +157,8 @@ function renderTerminal(kind: PlotKind, data: unknown, term: TerminalOptions): s
       return renderSummaryTableTerminal(data as SummaryTableData, term);
     case "diagnostics-heatmap":
       return renderDiagnosticsHeatmapTerminal(data as DiagnosticsHeatmapData, term);
+    case "splom":
+      return renderSplomTerminal(data as SplomData, term);
     default:
       return renderTraceTerminal(data as TraceData, term);
   }
@@ -190,6 +197,8 @@ function renderSvg(kind: PlotKind, data: unknown): string {
       return renderSummaryTableSVG(data as SummaryTableData);
     case "diagnostics-heatmap":
       return renderDiagnosticsHeatmapSVG(data as DiagnosticsHeatmapData);
+    case "splom":
+      return renderSplomSVG(data as SplomData);
     default:
       return renderTraceSVG(data as TraceData);
   }
@@ -205,7 +214,7 @@ export function registerPlot(program: Command): void {
       "samples file (MCMCChains JSON or ArviZ InferenceData JSON), or a run ref (latest, @N, id prefix); default: the latest store run",
     )
     .description(
-      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, scatter, energy, forest, ecdf, cumulative-mean, running-rhat, violin, chain-intervals, chain-intervals-all, summary-table, diagnostics-heatmap)",
+      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, scatter, energy, forest, ecdf, cumulative-mean, running-rhat, violin, chain-intervals, chain-intervals-all, summary-table, diagnostics-heatmap, splom)",
     )
     .option("--kind <kind>", `plot type: ${KINDS.join(" | ")}`, "forest")
     .option("--format <fmt>", `output format: ${FORMATS.join(" | ")}`, "terminal")
@@ -244,7 +253,7 @@ export function registerPlot(program: Command): void {
       if (opts.warmup !== undefined) samples = dropWarmup(samples, opts.warmup);
       const variables = opts.var ?? samples.variables;
 
-      // forest takes all variables in one plot; pair takes exactly two; the rest are per-variable.
+      // forest/splom take all variables in one plot; pair takes exactly two; the rest are per-variable.
       let items: unknown[];
       if (kind === "forest") {
         items = [forestData(samples, { variables, hdiProb: opts.hdiProb })];
@@ -256,6 +265,8 @@ export function registerPlot(program: Command): void {
         items = [summaryTableData(samples, { variables })];
       } else if (kind === "diagnostics-heatmap") {
         items = [diagnosticsHeatmapData(samples, { variables })];
+      } else if (kind === "splom") {
+        items = [splomData(samples, [...variables])];
       } else if (kind === "pair" || kind === "scatter") {
         if (variables.length !== 2) {
           throw new Error(`--kind ${kind} needs exactly two variables, e.g. --var alpha beta`);

@@ -12,6 +12,7 @@ import {
   renderDiagnosticsHeatmapSVG,
   renderForestSVG,
   renderPairSVG,
+  renderSplomSVG,
   renderSummaryTableSVG,
   renderViolinSVG,
 } from "../svg";
@@ -30,6 +31,7 @@ import type {
   PlotKind,
   RankData,
   RunningRhatData,
+  SplomData,
   SummaryTableData,
   TraceData,
   ViolinData,
@@ -52,7 +54,8 @@ export type PlotData =
   | ChainIntervalsData
   | ChainIntervalsAllData
   | SummaryTableData
-  | DiagnosticsHeatmapData;
+  | DiagnosticsHeatmapData
+  | SplomData;
 
 /** One uPlot series, described declaratively (no functions). */
 export interface UplotSeriesSpec {
@@ -282,5 +285,7 @@ export function htmlItemFor(d: PlotData): HtmlItem {
         title: "diagnostics",
         svg: renderDiagnosticsHeatmapSVG(d),
       };
+    case "splom":
+      return { mode: "svg", kind: d.kind, title: "pairs", svg: renderSplomSVG(d) };
   }
 }

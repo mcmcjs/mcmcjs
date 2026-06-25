@@ -25,6 +25,7 @@ import type {
   PairData,
   RankData,
   RunningRhatData,
+  SplomData,
   SummaryTableData,
   SvgOptions,
   TraceData,
@@ -654,5 +655,96 @@ export function renderDiagnosticsHeatmapSVG(
       parts.push(svgTextEl(cx + cellW / 2, y + cellH / 2 + 4, cell.text, "middle", "#fff"));
     });
   });
+  return wrapSvg(width, height, parts.join(""));
+}
+
+function svgTextSized(
+  x: number,
+  y: number,
+  text: string,
+  anchor: string,
+  fill: string,
+  size: number,
+): string {
+  return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" text-anchor="${anchor}" font-size="${size}" fill="${fill}">${escText(text)}</text>`;
+}
+
+/**
+ * Scatter-plot matrix: an N x N grid. The diagonal draws each variable's KDE and label,
+ * the upper triangle a correlation-tinted cell with the Pearson r (and smaller Spearman rho),
+ * and the lower triangle the joint draws colored by chain.
+ */
+export function renderSplomSVG(data: SplomData, opts: SvgOptions = {}): string {
+  const n = data.vars.length;
+  if (n === 0) return wrapSvg(opts.width ?? W, opts.height ?? 80, "");
+
+  const cell = Math.max(60, Math.floor(((opts.width ?? 520) - 16) / Math.max(1, n)));
+  const pad = 8;
+  const grid = n * cell + 2 * pad;
+  const width = opts.width ?? grid;
+  const height = opts.height ?? grid + 24;
+  const top = 24;
+
+  // Per-variable pooled extent (from the diagonal KDE grid) drives both axes.
+  const range = data.diagonals.map((d) => {
+    const lo = d.x[0] ?? 0;
+    const hi = d.x[d.x.length - 1] ?? 1;
+    return { lo, hi, span: hi - lo || 1 };
+  });
+  const corrAt = new Map<string, (typeof data.corr)[number]>();
+  for (const c of data.corr) corrAt.set(`${c.row}:${c.col}`, c);
+
+  const parts: string[] = [
+    svgTextEl(pad, 16, `pairs (${n} vars, ${data.nChains} chains)`, "start", "#111"),
+  ];
+  for (let row = 0; row < n; row++) {
+    for (let col = 0; col < n; col++) {
+      const x0 = pad + col * cell;
+      const y0 = top + row * cell;
+      parts.push(
+        `<rect x="${x0}" y="${y0}" width="${cell - 2}" height="${cell - 2}" fill="none" stroke="#e5e7eb"/>`,
+      );
+      const rx = range[col] ?? { lo: 0, hi: 1, span: 1 };
+      const ry = range[row] ?? { lo: 0, hi: 1, span: 1 };
+      const px = (v: number): number => x0 + ((v - rx.lo) / rx.span) * (cell - 2);
+      const py = (v: number): number => y0 + (cell - 2) - ((v - ry.lo) / ry.span) * (cell - 2);
+
+      if (row === col) {
+        const d = data.diagonals[row];
+        if (d) {
+          const pts: [number, number][] = d.x.map((xv, k) => [
+            px(xv),
+            y0 + (cell - 2) - (d.density[k] ?? 0) * (cell - 6),
+          ]);
+          parts.push(svgPolyline(pts, seriesColor(0)));
+          parts.push(svgTextSized(x0 + 4, y0 + 12, d.variable, "start", "#111", 11));
+        }
+      } else if (row < col) {
+        const c = corrAt.get(`${row}:${col}`);
+        const r = c?.pearson ?? 0;
+        const rho = c?.spearman ?? 0;
+        const alpha = Math.min(Math.abs(r) * 0.45, 0.42);
+        const tint =
+          r >= 0 ? `rgba(37,99,235,${alpha.toFixed(3)})` : `rgba(220,38,38,${alpha.toFixed(3)})`;
+        parts.push(svgRect(x0, y0, cell - 2, cell - 2, tint));
+        const cx = x0 + (cell - 2) / 2;
+        parts.push(
+          svgTextSized(cx, y0 + (cell - 2) / 2, `r ${r.toFixed(2)}`, "middle", "#111", 13),
+        );
+        parts.push(
+          svgTextSized(cx, y0 + (cell - 2) / 2 + 14, `rho ${rho.toFixed(2)}`, "middle", "#555", 10),
+        );
+      } else {
+        const c = data.cells.find((e) => e.row === row && e.col === col);
+        if (c) {
+          for (let i = 0; i < c.x.length; i++) {
+            parts.push(
+              svgCircle(px(c.x[i] ?? 0), py(c.y[i] ?? 0), 1, seriesColor(c.chain[i] ?? 0)),
+            );
+          }
+        }
+      }
+    }
+  }
   return wrapSvg(width, height, parts.join(""));
 }

@@ -7,8 +7,10 @@ import {
   geweke,
   isConverged,
   mean,
+  pearson,
   quantiles,
   rhat,
+  spearman,
   splitRhat,
   stdev,
 } from "@mcmcjs/diagnostics";
@@ -31,6 +33,10 @@ import {
   type PairData,
   type RankData,
   type RunningRhatData,
+  type SplomCell,
+  type SplomCorr,
+  type SplomData,
+  type SplomDiagonal,
   type SummaryRow,
   type SummaryTableData,
   type TraceData,
@@ -614,4 +620,67 @@ export function diagnosticsHeatmapData(
     return { variable, cells: heatmapCells(row, pooled.length) };
   });
   return { kind: "diagnostics-heatmap", metrics: [...HEATMAP_METRICS], rows };
+}
+
+/** One variable's peak-normalized 1-D KDE on a padded grid (reuses the density bandwidth). */
+function splomDiagonal(variable: string, pooled: Float64Array, gridSize: number): SplomDiagonal {
+  const [mn, mx] = extent(pooled);
+  const pad = (mx - mn) * 0.1 || 1;
+  const lo = mn - pad;
+  const hi = mx + pad;
+  const step = (hi - lo) / (gridSize - 1);
+  const x = Array.from({ length: gridSize }, (_, k) => lo + k * step);
+  let density = gaussianKde(pooled, x, bandwidth(pooled));
+  const peak = Math.max(0, ...density);
+  if (peak > 0) density = density.map((d) => d / peak);
+  return { variable, x, density };
+}
+
+/**
+ * Scatter-plot matrix data over `vars` (default: the first `min(6, variables.length)`). The
+ * diagonal holds each variable's 1-D KDE, the upper triangle its pairwise Pearson/Spearman
+ * correlations over pooled draws, and the lower triangle the joint draws subsampled to a cap.
+ */
+export function splomData(
+  samples: Samples,
+  vars?: string[],
+  opts: { maxVars?: number } = {},
+): SplomData {
+  const maxVars = Math.max(1, opts.maxVars ?? 6);
+  const all = vars ?? [...samples.variables];
+  const used = all.slice(0, Math.min(maxVars, all.length));
+  const gridSize = 128;
+  const cap = 3000;
+
+  const pooledOf = used.map((v) => samples.draws.get(v) ?? chainView(samples, v, 0));
+
+  const diagonals: SplomDiagonal[] = used.map((v, i) =>
+    splomDiagonal(v, pooledOf[i] ?? new Float64Array(0), gridSize),
+  );
+
+  const corr: SplomCorr[] = [];
+  const cells: SplomCell[] = [];
+  for (let row = 0; row < used.length; row++) {
+    for (let col = 0; col < used.length; col++) {
+      const xs = pooledOf[col] ?? new Float64Array(0);
+      const ys = pooledOf[row] ?? new Float64Array(0);
+      if (row < col) {
+        corr.push({ row, col, pearson: pearson(xs, ys), spearman: spearman(xs, ys) });
+      } else if (row > col) {
+        const n = Math.min(xs.length, ys.length);
+        const step = Math.max(1, Math.ceil(n / cap));
+        const cx: number[] = [];
+        const cy: number[] = [];
+        const chain: number[] = [];
+        for (let i = 0; i < n; i += step) {
+          cx.push(xs[i] ?? 0);
+          cy.push(ys[i] ?? 0);
+          chain.push(Math.floor(i / samples.nDraws));
+        }
+        cells.push({ row, col, x: cx, y: cy, chain });
+      }
+    }
+  }
+
+  return { kind: "splom", vars: used, nChains: samples.nChains, diagonals, corr, cells };
 }

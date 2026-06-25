@@ -26,7 +26,8 @@ export type PlotKind =
   | "chain-intervals"
   | "chain-intervals-all"
   | "summary-table"
-  | "diagnostics-heatmap";
+  | "diagnostics-heatmap"
+  | "splom";
 
 /** Per-variable trace: the raw draw sequence of each chain, plus its key diagnostics. */
 export interface TraceData {
@@ -283,6 +284,52 @@ export interface DiagnosticsHeatmapData {
   kind: "diagnostics-heatmap";
   metrics: string[];
   rows: HeatmapRow[];
+}
+
+/** One diagonal cell of a SPLOM: a variable's peak-normalized 1-D KDE curve. */
+export interface SplomDiagonal {
+  variable: string;
+  /** KDE grid (ascending). */
+  x: number[];
+  /** Peak-normalized density in [0,1], aligned to `x`. */
+  density: number[];
+}
+
+/** One upper-triangle cell of a SPLOM: the correlation of a variable pair (pooled draws). */
+export interface SplomCorr {
+  /** Row (y) variable index. */
+  row: number;
+  /** Column (x) variable index. */
+  col: number;
+  pearson: number;
+  spearman: number;
+}
+
+/** One lower-triangle cell of a SPLOM: subsampled joint draws of a variable pair. */
+export interface SplomCell {
+  /** Row (y) variable index. */
+  row: number;
+  /** Column (x) variable index. */
+  col: number;
+  /** Parallel pooled arrays of equal length (x = col variable, y = row variable). */
+  x: number[];
+  y: number[];
+  /** 0-based chain index per point. */
+  chain: number[];
+}
+
+/**
+ * Scatter-plot matrix: an N x N grid over `vars`. The diagonal carries each variable's
+ * 1-D KDE, the upper triangle the pairwise correlations, and the lower triangle the
+ * subsampled joint draws.
+ */
+export interface SplomData {
+  kind: "splom";
+  vars: string[];
+  nChains: number;
+  diagonals: SplomDiagonal[];
+  corr: SplomCorr[];
+  cells: SplomCell[];
 }
 
 /** Options shared by the terminal renderers. */
