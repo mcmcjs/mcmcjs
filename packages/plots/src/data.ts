@@ -3,30 +3,39 @@ import { chainView, type Samples } from "@mcmcjs/core";
 import {
   autocorr,
   diagnoseChains,
+  essIMSE,
+  geweke,
   isConverged,
   mean,
   quantiles,
   rhat,
+  splitRhat,
   stdev,
 } from "@mcmcjs/diagnostics";
-import type {
-  AutocorrData,
-  ChainIntervalsAllData,
-  ChainIntervalsData,
-  CumulativeMeanData,
-  DensityData,
-  EcdfData,
-  EnergyData,
-  ForestData,
-  ForestRow,
-  HistogramData,
-  IntervalRow,
-  PairData,
-  RankData,
-  RunningRhatData,
-  TraceData,
-  ViolinData,
-  ViolinRow,
+import {
+  type AutocorrData,
+  type ChainIntervalsAllData,
+  type ChainIntervalsData,
+  type CumulativeMeanData,
+  type DensityData,
+  type DiagnosticsHeatmapData,
+  type EcdfData,
+  type EnergyData,
+  type ForestData,
+  type ForestRow,
+  HEATMAP_METRICS,
+  type HeatmapCell,
+  type HeatmapRow,
+  type HistogramData,
+  type IntervalRow,
+  type PairData,
+  type RankData,
+  type RunningRhatData,
+  type SummaryRow,
+  type SummaryTableData,
+  type TraceData,
+  type ViolinData,
+  type ViolinRow,
 } from "./types";
 
 const INV_SQRT_2PI = 1 / Math.sqrt(2 * Math.PI);
@@ -399,4 +408,171 @@ export function violinData(
     violinRow(`chain ${i + 1}`, chain, gridSize),
   );
   return { kind: "violin", variable, gridSize, rows };
+}
+
+/** The full per-variable diagnostic row used by the summary table and heatmap. */
+function summaryRow(samples: Samples, variable: string, hdiProb: number): SummaryRow {
+  const chains = chainsOf(samples, variable);
+  const pooled = samples.draws.get(variable) ?? chainView(samples, variable, 0);
+  const q = quantiles(pooled);
+  const d = diagnoseChains(chains, hdiProb);
+  let ess = 0;
+  for (const c of chains) ess += essIMSE(c).ess;
+  return {
+    variable,
+    mean: mean(pooled),
+    std: stdev(pooled),
+    mcse: d.mcseMean,
+    q5: q.q5,
+    q25: q.q25,
+    q50: q.q50,
+    q75: q.q75,
+    q95: q.q95,
+    ess,
+    essBulk: d.essBulk,
+    essTail: d.essTail,
+    rhat: d.rhat,
+    splitRhat: splitRhat(chains),
+    gewekeZ: geweke(pooled).z,
+    hdi90: d.hdi,
+  };
+}
+
+/**
+ * Summary table data: the full diagnostic row per variable (mean, std, MCSE,
+ * quantiles, ESS variants, R-hats, Geweke z, and the HDI). The HDI defaults to a
+ * 0.9 credible mass to match the table convention.
+ */
+export function summaryTableData(
+  samples: Samples,
+  opts: { variables?: readonly string[]; hdiProb?: number } = {},
+): SummaryTableData {
+  const hdiProb = opts.hdiProb ?? 0.9;
+  const variables = opts.variables ?? samples.variables;
+  return { kind: "summary-table", rows: variables.map((v) => summaryRow(samples, v, hdiProb)) };
+}
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/** Maps an upper-is-bad metric to [0, 1]: <= good is 0, >= bad is 1; 0.5 when undefined. */
+function scoreUpper(value: number, good: number, bad: number): number {
+  return !Number.isFinite(value) ? 0.5 : clamp01((value - good) / (bad - good));
+}
+
+/** Maps a higher-is-better metric to [0, 1]: >= good is 0, <= bad is 1; 0.5 when undefined. */
+function scoreLower(value: number, good: number, bad: number): number {
+  return !Number.isFinite(value) ? 0.5 : clamp01((good - value) / (good - bad));
+}
+
+/** Piecewise-linear green-700 -> amber-700 -> red-700 ramp over a 0..1 score. */
+const CELL_RAMP: [number, [number, number, number]][] = [
+  [0, [21, 128, 61]],
+  [0.5, [180, 83, 9]],
+  [1, [185, 28, 28]],
+];
+
+function lerpRgb(t: number): [number, number, number] {
+  const tc = clamp01(t);
+  for (let i = 1; i < CELL_RAMP.length; i++) {
+    const stop = CELL_RAMP[i];
+    const prev = CELL_RAMP[i - 1];
+    if (!stop || !prev) continue;
+    const [t1, c1] = stop;
+    if (tc <= t1) {
+      const [t0, c0] = prev;
+      const u = (tc - t0) / (t1 - t0 || 1);
+      return [
+        Math.round((c0[0] ?? 0) + ((c1[0] ?? 0) - (c0[0] ?? 0)) * u),
+        Math.round((c0[1] ?? 0) + ((c1[1] ?? 0) - (c0[1] ?? 0)) * u),
+        Math.round((c0[2] ?? 0) + ((c1[2] ?? 0) - (c0[2] ?? 0)) * u),
+      ];
+    }
+  }
+  const last = CELL_RAMP[CELL_RAMP.length - 1];
+  const rgb = last ? last[1] : [0, 0, 0];
+  return [rgb[0] ?? 0, rgb[1] ?? 0, rgb[2] ?? 0];
+}
+
+const EM_DASH = "—";
+
+/** Format a metric value to 3 decimals, or an em dash when non-finite. */
+function fmt3(v: number): string {
+  return Number.isFinite(v) ? v.toFixed(3) : EM_DASH;
+}
+
+/** Format a metric value as a rounded integer, or an em dash when non-finite. */
+function integer(v: number): string {
+  return Number.isFinite(v) ? Math.round(v).toString() : EM_DASH;
+}
+
+function heatmapCells(row: SummaryRow, nDraws: number): HeatmapCell[] {
+  const essPerDraw = nDraws > 0 ? row.ess / nDraws : Number.NaN;
+  const mcseRatio = row.std === 0 ? 0 : row.mcse / row.std;
+  const gewekeAbs = Math.abs(row.gewekeZ);
+  const specs: { metric: string; value: number; text: string; score: number }[] = [
+    {
+      metric: "R-hat",
+      value: row.rhat,
+      text: fmt3(row.rhat),
+      score: scoreUpper(row.rhat, 1.01, 1.1),
+    },
+    {
+      metric: "Split R-hat",
+      value: row.splitRhat,
+      text: fmt3(row.splitRhat),
+      score: scoreUpper(row.splitRhat, 1.01, 1.1),
+    },
+    {
+      metric: "ESS / draw",
+      value: essPerDraw,
+      text: fmt3(essPerDraw),
+      score: scoreLower(essPerDraw, 0.25, 0.05),
+    },
+    {
+      metric: "Bulk ESS",
+      value: row.essBulk,
+      text: integer(row.essBulk),
+      score: scoreLower(row.essBulk, 400, 100),
+    },
+    {
+      metric: "Tail ESS",
+      value: row.essTail,
+      text: integer(row.essTail),
+      score: scoreLower(row.essTail, 400, 100),
+    },
+    {
+      metric: "MCSE / sd",
+      value: mcseRatio,
+      text: row.std === 0 ? "0.000" : fmt3(mcseRatio),
+      score: scoreUpper(mcseRatio, 0.02, 0.1),
+    },
+    {
+      metric: "|Geweke z|",
+      value: gewekeAbs,
+      text: fmt3(gewekeAbs),
+      score: scoreUpper(gewekeAbs, 1.96, 3.0),
+    },
+  ];
+  return specs.map((s) => ({ ...s, rgb: lerpRgb(s.score) }));
+}
+
+/**
+ * Diagnostics heatmap data: one row per variable, each with a pre-scored,
+ * pre-colored cell per metric (R-hat, Split R-hat, ESS/draw, Bulk ESS, Tail ESS,
+ * MCSE/sd, |Geweke z|). The HDI credible mass defaults to 0.9 to match the table.
+ */
+export function diagnosticsHeatmapData(
+  samples: Samples,
+  opts: { variables?: readonly string[]; hdiProb?: number } = {},
+): DiagnosticsHeatmapData {
+  const hdiProb = opts.hdiProb ?? 0.9;
+  const variables = opts.variables ?? samples.variables;
+  const rows: HeatmapRow[] = variables.map((variable) => {
+    const row = summaryRow(samples, variable, hdiProb);
+    const pooled = samples.draws.get(variable) ?? chainView(samples, variable, 0);
+    return { variable, cells: heatmapCells(row, pooled.length) };
+  });
+  return { kind: "diagnostics-heatmap", metrics: [...HEATMAP_METRICS], rows };
 }

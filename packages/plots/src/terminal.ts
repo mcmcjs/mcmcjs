@@ -13,6 +13,7 @@ import type {
   ChainIntervalsData,
   CumulativeMeanData,
   DensityData,
+  DiagnosticsHeatmapData,
   EcdfData,
   EnergyData,
   ForestData,
@@ -21,6 +22,7 @@ import type {
   PairData,
   RankData,
   RunningRhatData,
+  SummaryTableData,
   TerminalOptions,
   TraceData,
   ViolinData,
@@ -543,5 +545,135 @@ export function renderForestTerminal(data: ForestData, opts: TerminalOptions = {
     lines.push(`${label.padEnd(labelW)}  ${cells.join("")}  ${rhatCell}   ${annot[i] ?? ""}`);
   }
 
+  return `${lines.join("\n")}\n`;
+}
+
+const DASH = "-";
+
+function fixed3(v: number): string {
+  return Number.isFinite(v) ? v.toFixed(3) : DASH;
+}
+function fixed4(v: number): string {
+  return Number.isFinite(v) ? v.toFixed(4) : DASH;
+}
+function rounded(v: number): string {
+  return Number.isFinite(v) ? String(Math.round(v)) : DASH;
+}
+
+/** Renders the per-variable summary table as a fixed-width ASCII table. */
+export function renderSummaryTableTerminal(
+  data: SummaryTableData,
+  opts: TerminalOptions = {},
+): string {
+  const warn = opts.warn ?? identity;
+  if (data.rows.length === 0) return "(no variables)\n";
+
+  const headers = [
+    "parameter",
+    "Mean",
+    "Std",
+    "MCSE",
+    "5%",
+    "25%",
+    "50%",
+    "75%",
+    "95%",
+    "ESS",
+    "BulkESS",
+    "TailESS",
+    "R-hat",
+    "SplitRhat",
+    "GewekeZ",
+    "HDI90",
+  ];
+
+  // Each cell carries its plain text plus an optional traffic-light flag so the
+  // column width is measured on the uncolored text.
+  const cellsFor = (r: SummaryTableData["rows"][number]): { text: string; warn: boolean }[] => {
+    const hdi = `[${fixed3(r.hdi90[0])}, ${fixed3(r.hdi90[1])}]`;
+    const rhatBad = Number.isFinite(r.rhat) && r.rhat >= 1.05;
+    const splitBad = Number.isFinite(r.splitRhat) && r.splitRhat >= 1.05;
+    const gewekeBad = Number.isFinite(r.gewekeZ) && Math.abs(r.gewekeZ) >= 1.96;
+    const essBad = (v: number) => Number.isFinite(v) && v <= 400;
+    return [
+      { text: r.variable, warn: false },
+      { text: fixed4(r.mean), warn: false },
+      { text: fixed4(r.std), warn: false },
+      { text: fixed4(r.mcse), warn: false },
+      { text: fixed4(r.q5), warn: false },
+      { text: fixed4(r.q25), warn: false },
+      { text: fixed4(r.q50), warn: false },
+      { text: fixed4(r.q75), warn: false },
+      { text: fixed4(r.q95), warn: false },
+      { text: rounded(r.ess), warn: essBad(r.ess) },
+      { text: rounded(r.essBulk), warn: essBad(r.essBulk) },
+      { text: rounded(r.essTail), warn: essBad(r.essTail) },
+      { text: fixed3(r.rhat), warn: rhatBad },
+      { text: fixed3(r.splitRhat), warn: splitBad },
+      { text: fixed3(r.gewekeZ), warn: gewekeBad },
+      { text: hdi, warn: false },
+    ];
+  };
+
+  const rows = data.rows.map(cellsFor);
+  const widths = headers.map((h, c) =>
+    Math.max(h.length, ...rows.map((cells) => (cells[c]?.text ?? "").length)),
+  );
+
+  const pad = (text: string, c: number, left: boolean): string => {
+    const w = widths[c] ?? text.length;
+    return left ? text.padStart(w) : text.padEnd(w);
+  };
+
+  const lines: string[] = [];
+  lines.push(headers.map((h, c) => pad(h, c, c !== 0)).join("  "));
+  for (const cells of rows) {
+    const line = cells
+      .map((cell, c) => {
+        const padded = pad(cell.text, c, c !== 0);
+        return cell.warn ? warn(padded) : padded;
+      })
+      .join("  ");
+    lines.push(line);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/** Buckets a 0..1 score into a good/warn/poor status (matches the heatmap tooltip). */
+function statusBucket(score: number): 0 | 1 | 2 {
+  if (score < 0.35) return 0;
+  if (score < 0.65) return 1;
+  return 2;
+}
+
+/** Renders the diagnostics heatmap as a metric grid with traffic-light coloring. */
+export function renderDiagnosticsHeatmapTerminal(
+  data: DiagnosticsHeatmapData,
+  opts: TerminalOptions = {},
+): string {
+  const warn = opts.warn ?? identity;
+  if (data.rows.length === 0) return "(no variables)\n";
+
+  const labelW = Math.max("parameter".length, ...data.rows.map((r) => r.variable.length));
+  const colW = data.metrics.map((m, c) =>
+    Math.max(m.length, ...data.rows.map((r) => (r.cells[c]?.text ?? "").length)),
+  );
+
+  const header = [
+    "parameter".padEnd(labelW),
+    ...data.metrics.map((m, c) => m.padStart(colW[c] ?? m.length)),
+  ].join("  ");
+
+  const lines: string[] = [header];
+  for (const row of data.rows) {
+    const cells = data.metrics.map((_, c) => {
+      const cell = row.cells[c];
+      const text = (cell?.text ?? DASH).padStart(colW[c] ?? 0);
+      // Color only poor (red) cells via `warn`; good/warning stay plain so the
+      // table reads cleanly on terminals without a green/amber ANSI palette.
+      return cell && statusBucket(cell.score) === 2 ? warn(text) : text;
+    });
+    lines.push([row.variable.padEnd(labelW), ...cells].join("  "));
+  }
   return `${lines.join("\n")}\n`;
 }

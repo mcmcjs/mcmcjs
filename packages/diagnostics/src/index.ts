@@ -8,6 +8,7 @@ export {
 } from "./diagnose";
 export {
   autocorr,
+  computeESS as essIMSE,
   computeEssBasic as essBasic,
   computeEssBulk as essBulk,
   computeEssTail as essTail,
@@ -19,6 +20,7 @@ export {
   computeMCSEStd as mcseStd,
 } from "./mcse";
 export { computeRhat as rhat, type RhatKind } from "./rhat";
+export { splitRhat } from "./split-rhat";
 export {
   computeExcessKurtosis,
   computeHDI as hdi,

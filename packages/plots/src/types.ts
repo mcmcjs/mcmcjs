@@ -24,7 +24,9 @@ export type PlotKind =
   | "running-rhat"
   | "violin"
   | "chain-intervals"
-  | "chain-intervals-all";
+  | "chain-intervals-all"
+  | "summary-table"
+  | "diagnostics-heatmap";
 
 /** Per-variable trace: the raw draw sequence of each chain, plus its key diagnostics. */
 export interface TraceData {
@@ -208,6 +210,71 @@ export interface ViolinData {
   variable: string;
   gridSize: number;
   rows: ViolinRow[];
+}
+
+/** One row of the summary table: the full per-variable diagnostic line. */
+export interface SummaryRow {
+  variable: string;
+  mean: number;
+  std: number;
+  mcse: number;
+  q5: number;
+  q25: number;
+  q50: number;
+  q75: number;
+  q95: number;
+  /** Summed single-chain IMSE ESS (distinct from bulk/tail ESS). */
+  ess: number;
+  essBulk: number;
+  essTail: number;
+  /** Rank-normalized R-hat (NaN when undefined, e.g. < 2 chains). */
+  rhat: number;
+  /** Classic (non-rank) split-R-hat (NaN when undefined). */
+  splitRhat: number;
+  /** Geweke z-score of the pooled draws (NaN when undefined). */
+  gewekeZ: number;
+  hdi90: [number, number];
+}
+
+/** Summary table: one diagnostic row per variable. */
+export interface SummaryTableData {
+  kind: "summary-table";
+  rows: SummaryRow[];
+}
+
+/** Metric column labels for the diagnostics heatmap, in display order. */
+export const HEATMAP_METRICS = [
+  "R-hat",
+  "Split R-hat",
+  "ESS / draw",
+  "Bulk ESS",
+  "Tail ESS",
+  "MCSE / sd",
+  "|Geweke z|",
+] as const;
+
+/** One pre-rendered heatmap cell: value, formatted text, score, and ramp color. */
+export interface HeatmapCell {
+  metric: string;
+  value: number;
+  text: string;
+  /** Normalized 0 (good) .. 1 (poor) score driving the cell color. */
+  score: number;
+  /** Cell background color as an [r, g, b] triple (0..255), from the green/amber/red ramp. */
+  rgb: [number, number, number];
+}
+
+/** One heatmap row: a variable and its cells (one per metric, in `metrics` order). */
+export interface HeatmapRow {
+  variable: string;
+  cells: HeatmapCell[];
+}
+
+/** Diagnostics heatmap: a variable x metric grid of pre-scored, pre-colored cells. */
+export interface DiagnosticsHeatmapData {
+  kind: "diagnostics-heatmap";
+  metrics: string[];
+  rows: HeatmapRow[];
 }
 
 /** Options shared by the terminal renderers. */

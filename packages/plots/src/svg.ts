@@ -14,6 +14,7 @@ import type {
   ChainIntervalsData,
   CumulativeMeanData,
   DensityData,
+  DiagnosticsHeatmapData,
   EcdfData,
   EnergyData,
   ForestData,
@@ -22,6 +23,7 @@ import type {
   PairData,
   RankData,
   RunningRhatData,
+  SummaryTableData,
   SvgOptions,
   TraceData,
   ViolinData,
@@ -29,6 +31,12 @@ import type {
 
 const W = 640;
 const H = 220;
+
+const FONT = "12px ui-monospace, SFMono-Regular, Menlo, monospace";
+
+function escText(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 /** Trace plot: one line per chain over iteration. */
 export function renderTraceSVG(data: TraceData, opts: SvgOptions = {}): string {
@@ -457,4 +465,145 @@ export function renderForestSVG(data: ForestData, opts: SvgOptions = {}): string
     })
     .join("");
   return frame.render(content);
+}
+
+const TABLE_BAD = "#ef4444";
+const TABLE_WARN = "#eab308";
+const TABLE_GOOD = "#22c55e";
+
+function essColor(v: number): string {
+  if (!Number.isFinite(v)) return "#888";
+  return v > 400 ? TABLE_GOOD : v > 100 ? TABLE_WARN : TABLE_BAD;
+}
+function rhatColor(v: number): string {
+  if (!Number.isFinite(v)) return "#888";
+  return v < 1.05 ? TABLE_GOOD : v < 1.1 ? TABLE_WARN : TABLE_BAD;
+}
+function gewekeColor(z: number): string {
+  if (!Number.isFinite(z)) return "#888";
+  const a = Math.abs(z);
+  return a < 1.96 ? TABLE_GOOD : a < 2.58 ? TABLE_WARN : TABLE_BAD;
+}
+function sNum3(v: number): string {
+  return Number.isFinite(v) ? v.toFixed(3) : "—";
+}
+function sNum4(v: number): string {
+  return Number.isFinite(v) ? v.toFixed(4) : "—";
+}
+function sInt(v: number): string {
+  return Number.isFinite(v) ? String(Math.round(v)) : "—";
+}
+
+function svgTextEl(x: number, y: number, text: string, anchor: string, fill: string): string {
+  return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" text-anchor="${anchor}" fill="${fill}">${escText(text)}</text>`;
+}
+
+function wrapSvg(width: number, height: number, body: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="${FONT}" font-size="12"><rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff"/>${body}</svg>`;
+}
+
+/** Summary table as an SVG grid of right-aligned cells with traffic-light coloring. */
+export function renderSummaryTableSVG(data: SummaryTableData, opts: SvgOptions = {}): string {
+  const headers = [
+    "parameter",
+    "Mean",
+    "Std",
+    "MCSE",
+    "5%",
+    "25%",
+    "50%",
+    "75%",
+    "95%",
+    "ESS",
+    "Bulk ESS",
+    "Tail ESS",
+    "R̂",
+    "Split R̂",
+    "Geweke z",
+    "HDI 90%",
+  ];
+  const cellsFor = (r: SummaryTableData["rows"][number]): { text: string; fill: string }[] => [
+    { text: r.variable, fill: "#111" },
+    { text: sNum4(r.mean), fill: "#333" },
+    { text: sNum4(r.std), fill: "#333" },
+    { text: sNum4(r.mcse), fill: "#333" },
+    { text: sNum4(r.q5), fill: "#333" },
+    { text: sNum4(r.q25), fill: "#333" },
+    { text: sNum4(r.q50), fill: "#333" },
+    { text: sNum4(r.q75), fill: "#333" },
+    { text: sNum4(r.q95), fill: "#333" },
+    { text: sInt(r.ess), fill: essColor(r.ess) },
+    { text: sInt(r.essBulk), fill: essColor(r.essBulk) },
+    { text: sInt(r.essTail), fill: essColor(r.essTail) },
+    { text: sNum3(r.rhat), fill: rhatColor(r.rhat) },
+    { text: sNum3(r.splitRhat), fill: rhatColor(r.splitRhat) },
+    { text: sNum3(r.gewekeZ), fill: gewekeColor(r.gewekeZ) },
+    { text: `[${sNum3(r.hdi90[0])}, ${sNum3(r.hdi90[1])}]`, fill: "#333" },
+  ];
+
+  const body = data.rows.map(cellsFor);
+  const charW = 7.4;
+  const widths = headers.map((h, c) =>
+    Math.max(h.length, ...body.map((cells) => (cells[c]?.text ?? "").length)),
+  );
+  const colX: number[] = [];
+  let x = 12;
+  for (let c = 0; c < widths.length; c++) {
+    colX.push(x);
+    x += (widths[c] ?? 0) * charW + 14;
+  }
+  const width = opts.width ?? Math.ceil(x);
+  const rowH = 20;
+  const top = 28;
+  const height = opts.height ?? top + (body.length + 1) * rowH + 8;
+
+  const parts: string[] = [];
+  parts.push(svgTextEl(12, 18, "summary", "start", "#111"));
+  headers.forEach((h, c) => {
+    const cx = (colX[c] ?? 0) + (c === 0 ? 0 : (widths[c] ?? 0) * charW);
+    parts.push(svgTextEl(cx, top, h, c === 0 ? "start" : "end", "#111"));
+  });
+  body.forEach((cells, i) => {
+    const y = top + (i + 1) * rowH;
+    if (i % 2 === 1) {
+      parts.push(svgRect(0, y - 14, width, rowH, "#f3f4f6"));
+    }
+    cells.forEach((cell, c) => {
+      const cx = (colX[c] ?? 0) + (c === 0 ? 0 : (widths[c] ?? 0) * charW);
+      parts.push(svgTextEl(cx, y, cell.text, c === 0 ? "start" : "end", cell.fill));
+    });
+  });
+  return wrapSvg(width, height, parts.join(""));
+}
+
+/** Diagnostics heatmap: a variable x metric grid of color-filled cells with centered text. */
+export function renderDiagnosticsHeatmapSVG(
+  data: DiagnosticsHeatmapData,
+  opts: SvgOptions = {},
+): string {
+  const labelW = 90;
+  const cellW = 92;
+  const cellH = 26;
+  const top = 28;
+  const headerH = 22;
+  const width = opts.width ?? labelW + data.metrics.length * cellW + 12;
+  const height = opts.height ?? top + headerH + data.rows.length * cellH + 8;
+
+  const parts: string[] = [];
+  parts.push(svgTextEl(12, 18, "diagnostics", "start", "#111"));
+  data.metrics.forEach((m, c) => {
+    const cx = labelW + c * cellW + cellW / 2;
+    parts.push(svgTextEl(cx, top + headerH - 8, m, "middle", "#111"));
+  });
+  data.rows.forEach((row, i) => {
+    const y = top + headerH + i * cellH;
+    parts.push(svgTextEl(labelW - 6, y + cellH / 2 + 4, row.variable, "end", "#111"));
+    row.cells.forEach((cell, c) => {
+      const cx = labelW + c * cellW;
+      const [r, g, b] = cell.rgb;
+      parts.push(svgRect(cx, y, cellW - 2, cellH - 2, `rgb(${r},${g},${b})`));
+      parts.push(svgTextEl(cx + cellW / 2, y + cellH / 2 + 4, cell.text, "middle", "#fff"));
+    });
+  });
+  return wrapSvg(width, height, parts.join(""));
 }

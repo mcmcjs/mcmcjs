@@ -11,7 +11,9 @@ import {
   chainIntervalsData,
   cumulativeMeanData,
   type DensityData,
+  type DiagnosticsHeatmapData,
   densityData,
+  diagnosticsHeatmapData,
   type EcdfData,
   type EnergyData,
   ecdfData,
@@ -36,6 +38,8 @@ import {
   renderCumulativeMeanTerminal,
   renderDensitySVG,
   renderDensityTerminal,
+  renderDiagnosticsHeatmapSVG,
+  renderDiagnosticsHeatmapTerminal,
   renderEcdfSVG,
   renderEcdfTerminal,
   renderEnergySVG,
@@ -50,12 +54,16 @@ import {
   renderRankTerminal,
   renderRunningRhatSVG,
   renderRunningRhatTerminal,
+  renderSummaryTableSVG,
+  renderSummaryTableTerminal,
   renderTraceSVG,
   renderTraceTerminal,
   renderViolinSVG,
   renderViolinTerminal,
   runningRhatData,
+  type SummaryTableData,
   stackSvg,
+  summaryTableData,
   type TerminalOptions,
   type TraceData,
   traceData,
@@ -82,6 +90,8 @@ const KINDS = [
   "violin",
   "chain-intervals",
   "chain-intervals-all",
+  "summary-table",
+  "diagnostics-heatmap",
 ] as const;
 type PlotKind = (typeof KINDS)[number];
 const FORMATS = ["terminal", "svg", "html"] as const;
@@ -133,6 +143,10 @@ function renderTerminal(kind: PlotKind, data: unknown, term: TerminalOptions): s
       return renderChainIntervalsTerminal(data as ChainIntervalsData, term);
     case "chain-intervals-all":
       return renderChainIntervalsAllTerminal(data as ChainIntervalsAllData, term);
+    case "summary-table":
+      return renderSummaryTableTerminal(data as SummaryTableData, term);
+    case "diagnostics-heatmap":
+      return renderDiagnosticsHeatmapTerminal(data as DiagnosticsHeatmapData, term);
     default:
       return renderTraceTerminal(data as TraceData, term);
   }
@@ -166,6 +180,10 @@ function renderSvg(kind: PlotKind, data: unknown): string {
       return renderChainIntervalsSVG(data as ChainIntervalsData);
     case "chain-intervals-all":
       return renderChainIntervalsAllSVG(data as ChainIntervalsAllData);
+    case "summary-table":
+      return renderSummaryTableSVG(data as SummaryTableData);
+    case "diagnostics-heatmap":
+      return renderDiagnosticsHeatmapSVG(data as DiagnosticsHeatmapData);
     default:
       return renderTraceSVG(data as TraceData);
   }
@@ -181,7 +199,7 @@ export function registerPlot(program: Command): void {
       "samples file (MCMCChains JSON or ArviZ InferenceData JSON), or a run ref (latest, @N, id prefix); default: the latest store run",
     )
     .description(
-      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, energy, forest, ecdf, cumulative-mean, running-rhat, violin, chain-intervals, chain-intervals-all)",
+      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, energy, forest, ecdf, cumulative-mean, running-rhat, violin, chain-intervals, chain-intervals-all, summary-table, diagnostics-heatmap)",
     )
     .option("--kind <kind>", `plot type: ${KINDS.join(" | ")}`, "forest")
     .option("--format <fmt>", `output format: ${FORMATS.join(" | ")}`, "terminal")
@@ -217,6 +235,10 @@ export function registerPlot(program: Command): void {
         items = [energyData(samples, { bins: opts.bins })];
       } else if (kind === "chain-intervals-all") {
         items = [chainIntervalsAllData(samples, { variables })];
+      } else if (kind === "summary-table") {
+        items = [summaryTableData(samples, { variables })];
+      } else if (kind === "diagnostics-heatmap") {
+        items = [diagnosticsHeatmapData(samples, { variables })];
       } else if (kind === "pair") {
         if (variables.length !== 2) {
           throw new Error("--kind pair needs exactly two variables, e.g. --var alpha beta");

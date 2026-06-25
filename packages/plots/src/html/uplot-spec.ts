@@ -9,8 +9,10 @@ import { seriesColor } from "@mcmcjs/charts";
 import {
   renderChainIntervalsAllSVG,
   renderChainIntervalsSVG,
+  renderDiagnosticsHeatmapSVG,
   renderForestSVG,
   renderPairSVG,
+  renderSummaryTableSVG,
   renderViolinSVG,
 } from "../svg";
 import type {
@@ -19,6 +21,7 @@ import type {
   ChainIntervalsData,
   CumulativeMeanData,
   DensityData,
+  DiagnosticsHeatmapData,
   EcdfData,
   EnergyData,
   ForestData,
@@ -27,6 +30,7 @@ import type {
   PlotKind,
   RankData,
   RunningRhatData,
+  SummaryTableData,
   TraceData,
   ViolinData,
 } from "../types";
@@ -46,7 +50,9 @@ export type PlotData =
   | RunningRhatData
   | ViolinData
   | ChainIntervalsData
-  | ChainIntervalsAllData;
+  | ChainIntervalsAllData
+  | SummaryTableData
+  | DiagnosticsHeatmapData;
 
 /** One uPlot series, described declaratively (no functions). */
 export interface UplotSeriesSpec {
@@ -266,6 +272,15 @@ export function htmlItemFor(d: PlotData): HtmlItem {
         kind: d.kind,
         title: "chain intervals",
         svg: renderChainIntervalsAllSVG(d),
+      };
+    case "summary-table":
+      return { mode: "svg", kind: d.kind, title: "summary", svg: renderSummaryTableSVG(d) };
+    case "diagnostics-heatmap":
+      return {
+        mode: "svg",
+        kind: d.kind,
+        title: "diagnostics",
+        svg: renderDiagnosticsHeatmapSVG(d),
       };
   }
 }
