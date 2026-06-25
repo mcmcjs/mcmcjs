@@ -189,23 +189,62 @@ function divergingFlags(samples: Samples): boolean[] {
   return Array.from({ length: n }, (_, i) => (series[i] ?? 0) !== 0);
 }
 
-/** Pair plot data: pooled joint draws of two variables, labeled by chain and divergence. */
-export function pairData(samples: Samples, xVar: string, yVar: string): PairData {
+/**
+ * Pair plot data: pooled joint draws of two variables, labeled by chain and divergence.
+ * With `opts.colorVar`, a parallel per-point value of a third variable is attached so a
+ * renderer can shade points through a continuous colormap; without it, the result is
+ * byte-for-byte the color-by-chain object (no color fields).
+ */
+export function pairData(
+  samples: Samples,
+  xVar: string,
+  yVar: string,
+  opts: { colorVar?: string } = {},
+): PairData {
   const xs = samples.draws.get(xVar) ?? chainView(samples, xVar, 0);
   const ys = samples.draws.get(yVar) ?? chainView(samples, yVar, 0);
+  const cs = opts.colorVar
+    ? (samples.draws.get(opts.colorVar) ?? chainView(samples, opts.colorVar, 0))
+    : undefined;
   const div = divergingFlags(samples);
-  const n = Math.min(xs.length, ys.length);
+  const n = cs ? Math.min(xs.length, ys.length, cs.length) : Math.min(xs.length, ys.length);
   const x: number[] = [];
   const y: number[] = [];
   const chain: number[] = [];
   const diverging: boolean[] = [];
+  const color: number[] | undefined = cs ? [] : undefined;
   for (let i = 0; i < n; i++) {
     x.push(xs[i] as number);
     y.push(ys[i] as number);
     chain.push(Math.floor(i / samples.nDraws));
     diverging.push(div[i] ?? false);
+    if (color && cs) color.push(cs[i] ?? Number.NaN);
   }
-  return { kind: "pair", xVar, yVar, nChains: samples.nChains, x, y, chain, diverging };
+
+  const base: PairData = {
+    kind: "pair",
+    xVar,
+    yVar,
+    nChains: samples.nChains,
+    x,
+    y,
+    chain,
+    diverging,
+  };
+  if (!color || !opts.colorVar) return base;
+
+  let colorMin = Number.POSITIVE_INFINITY;
+  let colorMax = Number.NEGATIVE_INFINITY;
+  for (const v of color) {
+    if (!Number.isFinite(v)) continue;
+    if (v < colorMin) colorMin = v;
+    if (v > colorMax) colorMax = v;
+  }
+  if (!Number.isFinite(colorMin) || !Number.isFinite(colorMax)) {
+    colorMin = 0;
+    colorMax = 1;
+  }
+  return { ...base, colorVar: opts.colorVar, color, colorMin, colorMax };
 }
 
 /**

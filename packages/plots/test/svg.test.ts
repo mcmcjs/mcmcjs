@@ -106,6 +106,47 @@ describe("SVG renderers", () => {
     expect(out).toContain("a vs b");
   });
 
+  it("renderPairSVG shades points via viridis and draws a legend when color is present", () => {
+    const out = renderPairSVG({
+      kind: "pair",
+      xVar: "a",
+      yVar: "b",
+      nChains: 1,
+      x: [0, 1, 2, 3, 4],
+      y: [0, 1, 2, 3, 4],
+      chain: [0, 0, 0, 0, 0],
+      diverging: [false, false, false, false, false],
+      colorVar: "c",
+      color: [0, 2.5, 5, 7.5, 10],
+      colorMin: 0,
+      colorMax: 10,
+    });
+    // The midpoint value (cv=5, t=0.5) maps to viridis #21968b.
+    expect(out).toContain('fill="#21968b"');
+    // Endpoints: cv=0 -> #440154, cv=10 -> #fde725.
+    expect(out).toContain('fill="#440154"');
+    expect(out).toContain('fill="#fde725"');
+    // Legend caption and min/max labels.
+    expect(out).toContain("color: c");
+    expect(out).toContain(">0</text>");
+    expect(out).toContain(">10</text>");
+  });
+
+  it("renderPairSVG stays color-by-chain when no color channel is present", () => {
+    const out = renderPairSVG({
+      kind: "pair",
+      xVar: "a",
+      yVar: "b",
+      nChains: 1,
+      x: [0, 1],
+      y: [1, 0],
+      chain: [0, 0],
+      diverging: [false, false],
+    });
+    expect(out).not.toContain("color: ");
+    expect(out).toContain('fill="#1f77b4"'); // seriesColor(0)
+  });
+
   it("renderEnergySVG emits two overlaid curves with the E-BFMI in the title", () => {
     const out = renderEnergySVG({
       kind: "energy",

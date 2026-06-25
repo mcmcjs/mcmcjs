@@ -1,5 +1,6 @@
 import {
   extent,
+  fmtNum,
   niceDomain,
   seriesColor,
   svgCircle,
@@ -7,6 +8,7 @@ import {
   svgLine,
   svgPolyline,
   svgRect,
+  viridisHex,
 } from "@mcmcjs/charts";
 import type {
   AutocorrData,
@@ -198,7 +200,41 @@ export function renderEnergySVG(data: EnergyData, opts: SvgOptions = {}): string
   return frame.render(curve(data.marginal, 0) + curve(data.transition, 1));
 }
 
-/** Pair (joint) scatter of two variables, colored by chain; divergences drawn on top in red. */
+/** A horizontal viridis gradient legend bar with min/max labels and a caption. */
+function viridisLegend(
+  frame: ReturnType<typeof svgFrame>,
+  label: string,
+  lo: number,
+  hi: number,
+): string {
+  const segments = 32;
+  const barW = Math.min(160, frame.area.right - frame.area.left - 8);
+  const barH = 8;
+  const x0 = frame.area.right - barW;
+  const y0 = frame.area.top + 2;
+  const segW = barW / segments;
+  const parts: string[] = [];
+  for (let s = 0; s < segments; s++) {
+    const t = segments > 1 ? s / (segments - 1) : 0;
+    parts.push(svgRect(x0 + s * segW, y0, segW + 0.5, barH, viridisHex(t)));
+  }
+  parts.push(
+    `<text x="${x0.toFixed(2)}" y="${(y0 + barH + 11).toFixed(2)}" text-anchor="start" fill="#333">${escText(fmtNum(lo))}</text>`,
+  );
+  parts.push(
+    `<text x="${(x0 + barW).toFixed(2)}" y="${(y0 + barH + 11).toFixed(2)}" text-anchor="end" fill="#333">${escText(fmtNum(hi))}</text>`,
+  );
+  parts.push(
+    `<text x="${(x0 + barW / 2).toFixed(2)}" y="${(y0 - 3).toFixed(2)}" text-anchor="middle" fill="#333">color: ${escText(label)}</text>`,
+  );
+  return parts.join("");
+}
+
+/**
+ * Pair (joint) scatter of two variables. Points are colored by chain, or, when the
+ * data carries a `color` channel, shaded through the viridis colormap with a gradient
+ * legend. Divergences are always drawn on top in red.
+ */
 export function renderPairSVG(data: PairData, opts: SvgOptions = {}): string {
   const [xmin, xmax] = niceDomain(...extent(data.x));
   const [ymin, ymax] = niceDomain(...extent(data.y));
@@ -219,14 +255,27 @@ export function renderPairSVG(data: PairData, opts: SvgOptions = {}): string {
   for (let i = 0; i < data.x.length; i++) (data.diverging[i] ? divergentIdx : normalIdx).push(i);
   const step = Math.max(1, Math.ceil(normalIdx.length / cap));
 
+  const color = data.color;
+  const colorMin = data.colorMin ?? 0;
+  const colorMax = data.colorMax ?? 1;
+  const span = Math.max(colorMax - colorMin, 1e-9);
+  const fillFor = (i: number): string => {
+    if (!color) return seriesColor(data.chain[i] ?? 0);
+    const cv = color[i] ?? colorMin;
+    const t = (cv - colorMin) / span;
+    return viridisHex(t < 0 ? 0 : t > 1 ? 1 : t);
+  };
+
   const dot = (i: number, r: number, fill: string): string =>
     svgCircle(frame.x.map(data.x[i] ?? 0), frame.y.map(data.y[i] ?? 0), r, fill);
   const normal = normalIdx
     .filter((_, k) => k % step === 0)
-    .map((i) => dot(i, 1.4, seriesColor(data.chain[i] ?? 0)))
+    .map((i) => dot(i, 1.4, fillFor(i)))
     .join("");
   const divergent = divergentIdx.map((i) => dot(i, 2.5, "#d62728")).join("");
-  return frame.render(normal + divergent);
+  const legend =
+    color && data.colorVar ? viridisLegend(frame, data.colorVar, colorMin, colorMax) : "";
+  return frame.render(normal + divergent + legend);
 }
 
 /** Empirical CDF: one monotone step curve per chain on a fixed [0,1] y-axis. */

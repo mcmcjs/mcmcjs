@@ -133,6 +133,25 @@ describe("pairData", () => {
     expect(pd.chain[n - 1]).toBe(samples.nChains - 1);
     expect(pd.diverging.every((d) => d === false)).toBe(true);
   });
+
+  it("carries no color fields when colorVar is omitted", () => {
+    const pd = pairData(samples, "mu", "theta");
+    expect(pd.color).toBeUndefined();
+    expect(pd.colorVar).toBeUndefined();
+    expect(pd.colorMin).toBeUndefined();
+    expect(pd.colorMax).toBeUndefined();
+  });
+
+  it("attaches a per-point color channel aligned to x/y with finite min/max", () => {
+    const pd = pairData(samples, "mu", "theta", { colorVar: "theta" });
+    const n = samples.nChains * samples.nDraws;
+    expect(pd.colorVar).toBe("theta");
+    expect(pd.color).toHaveLength(n);
+    expect(pd.color?.[0]).toBe(pd.y[0]); // colorVar == yVar here, so they match
+    // theta ranges over [-2, 2] across the fixture.
+    expect(pd.colorMin).toBe(-2);
+    expect(pd.colorMax).toBe(2);
+  });
 });
 
 describe("energyData", () => {

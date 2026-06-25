@@ -82,6 +82,7 @@ const KINDS = [
   "rank",
   "autocorr",
   "pair",
+  "scatter",
   "energy",
   "forest",
   "ecdf",
@@ -108,6 +109,7 @@ interface PlotCliOptions {
   hdiProb: number;
   bins?: number;
   maxLag?: number;
+  colorBy?: string;
   out?: string;
   json?: boolean;
 }
@@ -128,6 +130,7 @@ function renderTerminal(kind: PlotKind, data: unknown, term: TerminalOptions): s
     case "autocorr":
       return renderAutocorrTerminal(data as AutocorrData, term);
     case "pair":
+    case "scatter":
       return renderPairTerminal(data as PairData, term);
     case "energy":
       return renderEnergyTerminal(data as EnergyData, term);
@@ -165,6 +168,7 @@ function renderSvg(kind: PlotKind, data: unknown): string {
     case "rank":
       return renderRankSVG(data as RankData);
     case "pair":
+    case "scatter":
       return renderPairSVG(data as PairData);
     case "energy":
       return renderEnergySVG(data as EnergyData);
@@ -199,7 +203,7 @@ export function registerPlot(program: Command): void {
       "samples file (MCMCChains JSON or ArviZ InferenceData JSON), or a run ref (latest, @N, id prefix); default: the latest store run",
     )
     .description(
-      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, energy, forest, ecdf, cumulative-mean, running-rhat, violin, chain-intervals, chain-intervals-all, summary-table, diagnostics-heatmap)",
+      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, scatter, energy, forest, ecdf, cumulative-mean, running-rhat, violin, chain-intervals, chain-intervals-all, summary-table, diagnostics-heatmap)",
     )
     .option("--kind <kind>", `plot type: ${KINDS.join(" | ")}`, "forest")
     .option("--format <fmt>", `output format: ${FORMATS.join(" | ")}`, "terminal")
@@ -211,6 +215,7 @@ export function registerPlot(program: Command): void {
     .option("--hdi-prob <value>", "HDI credible mass (forest)", parseFloatOption, 0.94)
     .option("--bins <n>", "histogram/rank bins (default: Freedman-Diaconis / 20)", parseIntOption)
     .option("--max-lag <n>", "autocorrelation max lag (default 40)", parseIntOption)
+    .option("--color-by <var>", "color scatter points by a third variable via viridis (svg/html)")
     .option("-o, --out <file>", "write the rendered plot to a file instead of stdout")
     .option("--json", "print the underlying plot data as JSON instead of rendering")
     .action((target: string | undefined, opts: PlotCliOptions) => {
@@ -239,11 +244,15 @@ export function registerPlot(program: Command): void {
         items = [summaryTableData(samples, { variables })];
       } else if (kind === "diagnostics-heatmap") {
         items = [diagnosticsHeatmapData(samples, { variables })];
-      } else if (kind === "pair") {
+      } else if (kind === "pair" || kind === "scatter") {
         if (variables.length !== 2) {
-          throw new Error("--kind pair needs exactly two variables, e.g. --var alpha beta");
+          throw new Error(`--kind ${kind} needs exactly two variables, e.g. --var alpha beta`);
         }
-        items = [pairData(samples, variables[0] as string, variables[1] as string)];
+        items = [
+          pairData(samples, variables[0] as string, variables[1] as string, {
+            colorVar: opts.colorBy,
+          }),
+        ];
       } else {
         items = variables.map((v) => {
           switch (kind) {

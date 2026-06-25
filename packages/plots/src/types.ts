@@ -113,6 +113,14 @@ export interface PairData {
   chain: number[];
   /** Whether each draw was a divergent transition. */
   diverging: boolean[];
+  /** Name of the color-by variable; when set, points are shaded by `color` via viridis. */
+  colorVar?: string;
+  /** Per-point value of the color-by variable, parallel to `x`/`y` (undefined when not coloring). */
+  color?: number[];
+  /** Finite min of `color` over the kept points. */
+  colorMin?: number;
+  /** Finite max of `color` over the kept points. */
+  colorMax?: number;
 }
 
 /** One row of a forest plot: a point estimate with a credible interval and IQR. */

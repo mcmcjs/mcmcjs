@@ -1,5 +1,6 @@
 export { blockBar, sparkline } from "./blocks";
 export { type Charset, type ColorFn, DotCanvas } from "./canvas";
+export { VIRIDIS_STOPS, viridisCss, viridisHex, viridisRgb } from "./colormap";
 export { extent, fmtNum } from "./format";
 export { axisFrame, type FrameOptions } from "./frame";
 export { linearScale, niceDomain, type Scale } from "./scale";
