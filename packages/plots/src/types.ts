@@ -27,7 +27,8 @@ export type PlotKind =
   | "chain-intervals-all"
   | "summary-table"
   | "diagnostics-heatmap"
-  | "splom";
+  | "splom"
+  | "parallel-coords";
 
 /** Per-variable trace: the raw draw sequence of each chain, plus its key diagnostics. */
 export interface TraceData {
@@ -330,6 +331,33 @@ export interface SplomData {
   diagonals: SplomDiagonal[];
   corr: SplomCorr[];
   cells: SplomCell[];
+}
+
+/** Per-variable axis bounds for a parallel-coordinates plot. */
+export interface ParallelCoordsBound {
+  variable: string;
+  min: number;
+  max: number;
+}
+
+/** One polyline of a parallel-coordinates plot: a chain index and one value per variable. */
+export interface ParallelCoordsLine {
+  /** 0-based chain index. */
+  chain: number;
+  /** One value per variable, aligned to `vars` (normalize at render time via `bounds`). */
+  values: number[];
+}
+
+/**
+ * Parallel-coordinates plot: one vertical axis per variable (bounded by `bounds`) and one
+ * polyline per sampled draw across the axes, colored by chain.
+ */
+export interface ParallelCoordsData {
+  kind: "parallel-coords";
+  vars: string[];
+  nChains: number;
+  bounds: ParallelCoordsBound[];
+  lines: ParallelCoordsLine[];
 }
 
 /** Options shared by the terminal renderers. */

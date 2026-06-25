@@ -23,6 +23,7 @@ import type {
   HistogramData,
   IntervalRow,
   PairData,
+  ParallelCoordsData,
   RankData,
   RunningRhatData,
   SplomData,
@@ -746,5 +747,59 @@ export function renderSplomSVG(data: SplomData, opts: SvgOptions = {}): string {
       }
     }
   }
+  return wrapSvg(width, height, parts.join(""));
+}
+
+/**
+ * Parallel-coordinates plot: one vertical axis per variable (labeled with its min/max) and
+ * one polyline per sampled draw across the axes, normalized per axis and colored by chain.
+ */
+export function renderParallelCoordsSVG(data: ParallelCoordsData, opts: SvgOptions = {}): string {
+  const n = data.vars.length;
+  const width = opts.width ?? Math.max(W, 80 * n);
+  const height = opts.height ?? 300;
+  if (n === 0) return wrapSvg(width, 80, "");
+
+  const left = 40;
+  const right = width - 40;
+  const top = 36;
+  const bottom = height - 36;
+  const span = bottom - top;
+  const axisX = (i: number): number =>
+    n === 1 ? (left + right) / 2 : left + (i / (n - 1)) * (right - left);
+
+  const norm = data.bounds.map((b) => ({ min: b.min, range: b.max - b.min || 1 }));
+  const yOf = (vi: number, value: number): number => {
+    const nb = norm[vi] ?? { min: 0, range: 1 };
+    const t = (value - nb.min) / nb.range;
+    const tc = t < 0 ? 0 : t > 1 ? 1 : t;
+    return bottom - tc * span;
+  };
+
+  const parts: string[] = [
+    svgTextEl(
+      left,
+      18,
+      `parallel coordinates (${n} vars, ${data.lines.length} draws)`,
+      "start",
+      "#111",
+    ),
+  ];
+
+  // Lines first so axes and labels sit on top.
+  for (const line of data.lines) {
+    const pts: [number, number][] = line.values.map((v, vi) => [axisX(vi), yOf(vi, v)]);
+    parts.push(svgPolyline(pts, seriesColor(line.chain), 0.6));
+  }
+
+  data.vars.forEach((variable, i) => {
+    const x = axisX(i);
+    parts.push(svgLine(x, top, x, bottom, "#333"));
+    const b = data.bounds[i] ?? { min: 0, max: 1 };
+    parts.push(svgTextSized(x, top - 6, variable, "middle", "#111", 11));
+    parts.push(svgTextSized(x, top - 18, fmtNum(b.max), "middle", "#555", 10));
+    parts.push(svgTextSized(x, bottom + 14, fmtNum(b.min), "middle", "#555", 10));
+  });
+
   return wrapSvg(width, height, parts.join(""));
 }

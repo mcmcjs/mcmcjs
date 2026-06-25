@@ -20,6 +20,7 @@ import type {
   HistogramData,
   IntervalRow,
   PairData,
+  ParallelCoordsData,
   RankData,
   RunningRhatData,
   SplomData,
@@ -702,5 +703,41 @@ export function renderSplomTerminal(data: SplomData, opts: TerminalOptions = {})
     });
     lines.push([color((vars[row] ?? "").padEnd(labelW), row), ...cells].join("  "));
   }
+  return `${lines.join("\n")}\n`;
+}
+
+/** Renders a parallel-coordinates plot as a per-variable min/mean/max summary table. */
+export function renderParallelCoordsTerminal(
+  data: ParallelCoordsData,
+  opts: TerminalOptions = {},
+): string {
+  const color = opts.color ?? identity;
+  const vars = data.vars;
+  if (vars.length === 0) return "(no variables)\n";
+
+  // Mean per variable over the sampled lines (a cheap, text-friendly summary).
+  const sums = new Array<number>(vars.length).fill(0);
+  const counts = new Array<number>(vars.length).fill(0);
+  for (const line of data.lines) {
+    line.values.forEach((v, vi) => {
+      if (!Number.isFinite(v)) return;
+      sums[vi] = (sums[vi] ?? 0) + v;
+      counts[vi] = (counts[vi] ?? 0) + 1;
+    });
+  }
+
+  const labelW = Math.max("variable".length, ...vars.map((v) => v.length));
+  const lines: string[] = [
+    `parallel coordinates (${vars.length} vars, ${data.lines.length} draws)`,
+    `${"variable".padEnd(labelW)}  ${"min".padStart(12)}  ${"mean".padStart(12)}  ${"max".padStart(12)}`,
+  ];
+  vars.forEach((v, vi) => {
+    const b = data.bounds[vi] ?? { min: Number.NaN, max: Number.NaN };
+    const c = counts[vi] ?? 0;
+    const mean = c > 0 ? (sums[vi] ?? 0) / c : Number.NaN;
+    lines.push(
+      `${color(v.padEnd(labelW), vi)}  ${fmtNum(b.min).padStart(12)}  ${fmtNum(mean).padStart(12)}  ${fmtNum(b.max).padStart(12)}`,
+    );
+  });
   return `${lines.join("\n")}\n`;
 }

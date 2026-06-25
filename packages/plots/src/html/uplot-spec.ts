@@ -12,6 +12,7 @@ import {
   renderDiagnosticsHeatmapSVG,
   renderForestSVG,
   renderPairSVG,
+  renderParallelCoordsSVG,
   renderSplomSVG,
   renderSummaryTableSVG,
   renderViolinSVG,
@@ -28,6 +29,7 @@ import type {
   ForestData,
   HistogramData,
   PairData,
+  ParallelCoordsData,
   PlotKind,
   RankData,
   RunningRhatData,
@@ -55,7 +57,8 @@ export type PlotData =
   | ChainIntervalsAllData
   | SummaryTableData
   | DiagnosticsHeatmapData
-  | SplomData;
+  | SplomData
+  | ParallelCoordsData;
 
 /** One uPlot series, described declaratively (no functions). */
 export interface UplotSeriesSpec {
@@ -287,5 +290,12 @@ export function htmlItemFor(d: PlotData): HtmlItem {
       };
     case "splom":
       return { mode: "svg", kind: d.kind, title: "pairs", svg: renderSplomSVG(d) };
+    case "parallel-coords":
+      return {
+        mode: "svg",
+        kind: d.kind,
+        title: "parallel coordinates",
+        svg: renderParallelCoordsSVG(d),
+      };
   }
 }

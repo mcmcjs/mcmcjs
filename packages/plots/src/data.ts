@@ -31,6 +31,9 @@ import {
   type HistogramData,
   type IntervalRow,
   type PairData,
+  type ParallelCoordsBound,
+  type ParallelCoordsData,
+  type ParallelCoordsLine,
   type RankData,
   type RunningRhatData,
   type SplomCell,
@@ -683,4 +686,53 @@ export function splomData(
   }
 
   return { kind: "splom", vars: used, nChains: samples.nChains, diagonals, corr, cells };
+}
+
+/** Per-variable min/max over pooled draws; degenerate spans widen so axes stay drawable. */
+function parallelCoordsBound(variable: string, pooled: Float64Array): ParallelCoordsBound {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (const v of pooled) {
+    if (!Number.isFinite(v)) continue;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return { variable, min: 0, max: 1 };
+  if (max - min < 1e-9) return { variable, min, max: min + 1 };
+  return { variable, min, max };
+}
+
+/**
+ * Parallel-coordinates data over `vars` (default: all variables). `bounds` are per-variable
+ * min/max over pooled draws; `lines` are per-chain sampled draws, each carrying that draw's
+ * value of every variable, with the total line count capped by `opts.maxSamples`.
+ */
+export function parallelCoordsData(
+  samples: Samples,
+  vars?: string[],
+  opts: { maxSamples?: number } = {},
+): ParallelCoordsData {
+  const maxSamples = Math.max(1, opts.maxSamples ?? 500);
+  const used = vars ?? [...samples.variables];
+  const { nChains, nDraws } = samples;
+
+  const pooledOf = used.map((v) => samples.draws.get(v) ?? chainView(samples, v, 0));
+  const bounds: ParallelCoordsBound[] = used.map((v, i) =>
+    parallelCoordsBound(v, pooledOf[i] ?? new Float64Array(0)),
+  );
+
+  const perChain = Math.max(1, Math.floor(maxSamples / Math.max(1, nChains)));
+  const step = Math.max(1, Math.ceil(nDraws / perChain));
+  const lines: ParallelCoordsLine[] = [];
+  const views = used.map((v) =>
+    Array.from({ length: nChains }, (_, c) => chainView(samples, v, c)),
+  );
+  for (let c = 0; c < nChains; c++) {
+    for (let d = 0; d < nDraws; d += step) {
+      const values = used.map((_, vi) => views[vi]?.[c]?.[d] ?? Number.NaN);
+      lines.push({ chain: c, values });
+    }
+  }
+
+  return { kind: "parallel-coords", vars: used, nChains, bounds, lines };
 }
