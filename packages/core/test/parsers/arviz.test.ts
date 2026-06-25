@@ -91,4 +91,64 @@ describe("parseArvizJson", () => {
   it("throws when posterior is missing", () => {
     expect(() => parseArvizJson({})).toThrow(/posterior/);
   });
+
+  it("flattens an N-dimensional variable in C-order", () => {
+    const s = parseArvizJson({
+      posterior: {
+        data_vars: {
+          theta: {
+            dims: ["chain", "draw", "dim0", "dim1"],
+            data: [
+              [
+                [
+                  [1, 2],
+                  [3, 4],
+                ],
+                [
+                  [5, 6],
+                  [7, 8],
+                ],
+              ],
+              [
+                [
+                  [10, 20],
+                  [30, 40],
+                ],
+                [
+                  [50, 60],
+                  [70, 80],
+                ],
+              ],
+            ],
+          },
+        },
+      },
+    });
+    expect(s.variables).toEqual(["theta[0,0]", "theta[0,1]", "theta[1,0]", "theta[1,1]"]);
+    expect(s.nChains).toBe(2);
+    expect(s.nDraws).toBe(2);
+    expect(Array.from(s.draws.get("theta[0,0]") as Float64Array)).toEqual([1, 5, 10, 50]);
+    expect(Array.from(s.draws.get("theta[1,1]") as Float64Array)).toEqual([4, 8, 40, 80]);
+  });
+
+  it("honors a transposed draw,chain dim order", () => {
+    const s = parseArvizJson({
+      posterior: {
+        data_vars: {
+          mu: {
+            dims: ["draw", "chain"],
+            data: [
+              [1, 2],
+              [3, 4],
+              [5, 6],
+            ],
+          },
+        },
+      },
+    });
+    expect(s.nChains).toBe(2);
+    expect(s.nDraws).toBe(3);
+    expect(Array.from(chainView(s, "mu", 0))).toEqual([1, 3, 5]);
+    expect(Array.from(chainView(s, "mu", 1))).toEqual([2, 4, 6]);
+  });
 });

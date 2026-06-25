@@ -32,10 +32,11 @@ function* productIndices(dims: number[]): Generator<number[]> {
   }
 }
 
-function at(data: unknown, indices: number[]): number {
+// Reads a nested array at an index tuple; out-of-bounds or non-array yields NaN.
+function readAt(data: unknown, indices: number[]): number {
   let node: unknown = data;
   for (const k of indices) {
-    if (!Array.isArray(node)) throw new Error("arviz json: ragged or malformed data array");
+    if (!Array.isArray(node) || k >= node.length) return Number.NaN;
     node = node[k];
   }
   return Number(node);
@@ -48,19 +49,33 @@ function ingest(
   let nChains = 0;
   let nDraws = 0;
   for (const [name, variable] of Object.entries(group.data_vars)) {
+    const dims = variable.dims;
+    // Locate the chain/draw axes by name so any axis order is handled; a variable
+    // lacking either axis is skipped (matching the reference parser).
+    const chainDim = dims.indexOf("chain");
+    const drawDim = dims.indexOf("draw");
+    if (chainDim < 0 || drawDim < 0) continue;
+
     const shape = shapeOf(variable.data);
-    if (shape.length < 2) throw new Error(`arviz json: variable ${name} needs chain and draw dims`);
-    const chains = shape[0] ?? 0;
-    const draws = shape[1] ?? 0;
-    const extra = shape.slice(2);
+    const chains = shape[chainDim] ?? 0;
+    const draws = shape[drawDim] ?? 0;
     nChains = chains;
     nDraws = draws;
-    for (const idx of productIndices(extra)) {
-      const key = idx.length > 0 ? `${name}[${idx.join(",")}]` : name;
+
+    const extraAxes = dims.map((_, i) => i).filter((i) => i !== chainDim && i !== drawDim);
+    const extraShape = extraAxes.map((i) => shape[i] ?? 0);
+    for (const extraIdx of productIndices(extraShape)) {
+      const key = extraAxes.length > 0 ? `${name}[${extraIdx.join(",")}]` : name;
       const out = new Float64Array(chains * draws);
       for (let c = 0; c < chains; c++) {
         for (let d = 0; d < draws; d++) {
-          out[c * draws + d] = at(variable.data, [c, d, ...idx]);
+          const fullIdx = new Array<number>(dims.length).fill(0);
+          fullIdx[chainDim] = c;
+          fullIdx[drawDim] = d;
+          extraAxes.forEach((ax, k) => {
+            fullIdx[ax] = extraIdx[k] ?? 0;
+          });
+          out[c * draws + d] = readAt(variable.data, fullIdx);
         }
       }
       target.set(key, out);

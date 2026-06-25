@@ -71,7 +71,7 @@ export function validateCanonicalData(
 // Minimal RFC-4180 CSV reader: quoted fields, escaped quotes, CRLF. Tracks
 // whether a row used quotes so a quoted empty field is not mistaken for a
 // blank line.
-function parseCsv(text: string): { cells: string[]; quoted: boolean }[] {
+export function parseCsvRows(text: string): { cells: string[]; quoted: boolean }[] {
   const rows: { cells: string[]; quoted: boolean }[] = [];
   let row: string[] = [];
   let field = "";
@@ -118,7 +118,7 @@ const NUMERIC = /^[+-]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][+-]?\d+)?$/;
 
 /** CSV columns become numeric arrays keyed by header; N defaults to the row count. */
 function fromCsv(text: string, source: string): CanonicalData {
-  const rows = parseCsv(text);
+  const rows = parseCsvRows(text);
   const header = rows[0]?.cells;
   if (!header || header.length === 0) throw new Error(`empty CSV ${source}: expected a header row`);
   const keys = header.map((name, c) => {

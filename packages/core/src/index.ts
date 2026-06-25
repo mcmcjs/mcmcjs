@@ -2,8 +2,11 @@ export type { CanonicalArray, CanonicalData, CanonicalValue, ResolvedData } from
 export { loadDataFile, resolveData, validateCanonicalData } from "./data";
 export { parseSamples } from "./parse-samples";
 export { parseArvizJson } from "./parsers/arviz";
+export { fromChainArrays } from "./parsers/from-chains";
 export type { MCMCChainsJson } from "./parsers/mcmcchains";
 export { parseMCMCChainsJson, toMCMCChainsJson } from "./parsers/mcmcchains";
+export { fromStanCSV, fromStanCSVFiles, fromStanName } from "./parsers/stan";
+export { looksLikeTuringCsv, parseTuringCsv } from "./parsers/turing-csv";
 export { canonicalJson, hashSpec, normalizeSpec } from "./spec/normalize";
 export type { ResolvedSpec } from "./spec/parse";
 export { parseSpec } from "./spec/parse";
