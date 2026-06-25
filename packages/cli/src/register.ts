@@ -16,6 +16,7 @@ import { registerRuns } from "./runs";
 import { registerSandbox } from "./sandbox";
 import { registerSetup } from "./setup";
 import { registerShow } from "./show";
+import { registerSummary } from "./summary";
 import { registerUpdateCheck } from "./update-check";
 
 /**
@@ -31,6 +32,7 @@ export function registerAll(program: Command, ctx: EngineContext, registry: Engi
   registerRuns(program);
   registerShow(program);
   registerDiagnose(program);
+  registerSummary(program);
   registerPlot(program);
   registerExport(program);
   registerInit(program);
