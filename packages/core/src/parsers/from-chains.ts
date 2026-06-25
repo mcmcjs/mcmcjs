@@ -1,4 +1,4 @@
-import type { Samples } from "../types";
+import { chainView, type Samples } from "../types";
 
 /**
  * Builds `Samples` from per-chain, per-variable arrays:
@@ -33,4 +33,20 @@ export function fromChainArrays(input: Record<string, Record<string, number[]>>)
   }
 
   return { variables, nChains, nDraws, draws, sampleStats: new Map() };
+}
+
+/**
+ * Inverse of `fromChainArrays`: a chain-major `{ chain_<c>: { variable: number[] } }`
+ * object keyed `chain_1 .. chain_N`. Model variables only (sampler stats excluded).
+ */
+export function toChainArrays(samples: Samples): Record<string, Record<string, number[]>> {
+  const out: Record<string, Record<string, number[]>> = {};
+  for (let c = 0; c < samples.nChains; c++) {
+    const chain: Record<string, number[]> = {};
+    for (const variable of samples.variables) {
+      chain[variable] = Array.from(chainView(samples, variable, c));
+    }
+    out[`chain_${c + 1}`] = chain;
+  }
+  return out;
 }

@@ -2,7 +2,7 @@ export type { CanonicalArray, CanonicalData, CanonicalValue, ResolvedData } from
 export { loadDataFile, resolveData, validateCanonicalData } from "./data";
 export { parseSamples } from "./parse-samples";
 export { parseArvizJson } from "./parsers/arviz";
-export { fromChainArrays } from "./parsers/from-chains";
+export { fromChainArrays, toChainArrays } from "./parsers/from-chains";
 export type { MCMCChainsJson } from "./parsers/mcmcchains";
 export { parseMCMCChainsJson, toMCMCChainsJson } from "./parsers/mcmcchains";
 export { fromStanCSV, fromStanCSVFiles, fromStanName } from "./parsers/stan";
@@ -44,3 +44,4 @@ export type { RunKeyParts } from "./store/refs";
 export { computeRunKey, makeRunId, resolveRunRef } from "./store/refs";
 export type { Samples } from "./types";
 export { chainView } from "./types";
+export { dropWarmup } from "./warmup";
