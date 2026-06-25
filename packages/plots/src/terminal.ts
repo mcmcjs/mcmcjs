@@ -9,17 +9,21 @@ import {
 } from "@mcmcjs/charts";
 import type {
   AutocorrData,
+  ChainIntervalsAllData,
+  ChainIntervalsData,
   CumulativeMeanData,
   DensityData,
   EcdfData,
   EnergyData,
   ForestData,
   HistogramData,
+  IntervalRow,
   PairData,
   RankData,
   RunningRhatData,
   TerminalOptions,
   TraceData,
+  ViolinData,
 } from "./types";
 
 const identity = (text: string): string => text;
@@ -409,6 +413,82 @@ export function renderRunningRhatTerminal(
     header,
     gutter: GUTTER,
   });
+}
+
+/** Shared interval-row terminal layout (q5..q95 thin, q25..q75 thick, median dot). */
+function renderIntervalRowsTerminal(
+  rows: IntervalRow[],
+  title: string,
+  opts: TerminalOptions,
+): string {
+  const charset = opts.charset ?? "unicode";
+  const color = opts.color ?? identity;
+  const totalWidth = opts.width ?? 72;
+  if (rows.length === 0) return `${title}\n(no data)\n`;
+
+  const thinGlyph = charset === "ascii" ? "-" : "─";
+  const thickGlyph = charset === "ascii" ? "=" : "━";
+  const medianGlyph = charset === "ascii" ? "*" : "●";
+
+  const labelW = Math.min(20, Math.max(8, ...rows.map((r) => r.label.length)));
+  const annot = rows.map((r) => `${fmtNum(r.q50)}  [${fmtNum(r.q5)}, ${fmtNum(r.q95)}]`);
+  const annotW = Math.max(...annot.map((a) => a.length));
+  const axisW = Math.max(12, totalWidth - labelW - annotW - 6);
+
+  let xmin = Number.POSITIVE_INFINITY;
+  let xmax = Number.NEGATIVE_INFINITY;
+  for (const r of rows) {
+    xmin = Math.min(xmin, r.q5);
+    xmax = Math.max(xmax, r.q95);
+  }
+  if (!Number.isFinite(xmin) || !Number.isFinite(xmax) || xmin === xmax) {
+    xmin = (xmin || 0) - 1;
+    xmax = (xmax || 0) + 1;
+  }
+  const scaleX = linearScale([xmin, xmax], [0, axisW - 1]);
+  const col = (v: number): number => Math.max(0, Math.min(axisW - 1, Math.round(scaleX.map(v))));
+
+  const lines: string[] = [title];
+  rows.forEach((r, i) => {
+    const cells = new Array<string>(axisW).fill(" ");
+    for (let c = col(r.q5); c <= col(r.q95); c++) cells[c] = thinGlyph;
+    for (let c = col(r.q25); c <= col(r.q75); c++) cells[c] = thickGlyph;
+    cells[col(r.q50)] = medianGlyph;
+    const label = r.label.length > labelW ? `${r.label.slice(0, labelW - 1)}…` : r.label;
+    lines.push(`${color(label.padEnd(labelW), i)}  ${color(cells.join(""), i)}  ${annot[i] ?? ""}`);
+  });
+  return `${lines.join("\n")}\n`;
+}
+
+/** Per-chain credible intervals for one variable as terminal text. */
+export function renderChainIntervalsTerminal(
+  data: ChainIntervalsData,
+  opts: TerminalOptions = {},
+): string {
+  return renderIntervalRowsTerminal(data.rows, `chain intervals: ${data.variable}`, opts);
+}
+
+/** Pooled credible intervals across variables as terminal text. */
+export function renderChainIntervalsAllTerminal(
+  data: ChainIntervalsAllData,
+  opts: TerminalOptions = {},
+): string {
+  return renderIntervalRowsTerminal(data.rows, "chain intervals (all variables)", opts);
+}
+
+/** Renders each chain's peak-normalized KDE band as a sparkline row. */
+export function renderViolinTerminal(data: ViolinData, opts: TerminalOptions = {}): string {
+  const charset = opts.charset ?? "unicode";
+  const color = opts.color ?? identity;
+  if (data.rows.length === 0) return `${data.variable}  violin\n(no data)\n`;
+
+  const labelW = Math.max(8, ...data.rows.map((r) => r.label.length));
+  const lines: string[] = [`${data.variable}   violin   (${data.rows.length} chains)`];
+  data.rows.forEach((r, i) => {
+    const bars = sparkline(r.density, { max: 1, charset });
+    lines.push(`  ${color(r.label.padEnd(labelW), i)} ${color(bars, i)}`);
+  });
+  return `${lines.join("\n")}\n`;
 }
 
 /** Renders a forest plot (point estimate + HDI + IQR per variable) as terminal text. */

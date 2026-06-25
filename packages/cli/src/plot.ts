@@ -4,7 +4,11 @@ import {
   type AutocorrData,
   autocorrData,
   buildHtmlDocument,
+  type ChainIntervalsAllData,
+  type ChainIntervalsData,
   type CumulativeMeanData,
+  chainIntervalsAllData,
+  chainIntervalsData,
   cumulativeMeanData,
   type DensityData,
   densityData,
@@ -24,6 +28,10 @@ import {
   rankData,
   renderAutocorrSVG,
   renderAutocorrTerminal,
+  renderChainIntervalsAllSVG,
+  renderChainIntervalsAllTerminal,
+  renderChainIntervalsSVG,
+  renderChainIntervalsTerminal,
   renderCumulativeMeanSVG,
   renderCumulativeMeanTerminal,
   renderDensitySVG,
@@ -44,11 +52,15 @@ import {
   renderRunningRhatTerminal,
   renderTraceSVG,
   renderTraceTerminal,
+  renderViolinSVG,
+  renderViolinTerminal,
   runningRhatData,
   stackSvg,
   type TerminalOptions,
   type TraceData,
   traceData,
+  type ViolinData,
+  violinData,
 } from "@mcmcjs/plots";
 import type { Command } from "commander";
 import pc from "picocolors";
@@ -67,6 +79,9 @@ const KINDS = [
   "ecdf",
   "cumulative-mean",
   "running-rhat",
+  "violin",
+  "chain-intervals",
+  "chain-intervals-all",
 ] as const;
 type PlotKind = (typeof KINDS)[number];
 const FORMATS = ["terminal", "svg", "html"] as const;
@@ -112,6 +127,12 @@ function renderTerminal(kind: PlotKind, data: unknown, term: TerminalOptions): s
       return renderCumulativeMeanTerminal(data as CumulativeMeanData, term);
     case "running-rhat":
       return renderRunningRhatTerminal(data as RunningRhatData, term);
+    case "violin":
+      return renderViolinTerminal(data as ViolinData, term);
+    case "chain-intervals":
+      return renderChainIntervalsTerminal(data as ChainIntervalsData, term);
+    case "chain-intervals-all":
+      return renderChainIntervalsAllTerminal(data as ChainIntervalsAllData, term);
     default:
       return renderTraceTerminal(data as TraceData, term);
   }
@@ -139,6 +160,12 @@ function renderSvg(kind: PlotKind, data: unknown): string {
       return renderCumulativeMeanSVG(data as CumulativeMeanData);
     case "running-rhat":
       return renderRunningRhatSVG(data as RunningRhatData);
+    case "violin":
+      return renderViolinSVG(data as ViolinData);
+    case "chain-intervals":
+      return renderChainIntervalsSVG(data as ChainIntervalsData);
+    case "chain-intervals-all":
+      return renderChainIntervalsAllSVG(data as ChainIntervalsAllData);
     default:
       return renderTraceSVG(data as TraceData);
   }
@@ -154,7 +181,7 @@ export function registerPlot(program: Command): void {
       "samples file (MCMCChains JSON or ArviZ InferenceData JSON), or a run ref (latest, @N, id prefix); default: the latest store run",
     )
     .description(
-      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, energy, forest, ecdf, cumulative-mean, running-rhat)",
+      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, energy, forest, ecdf, cumulative-mean, running-rhat, violin, chain-intervals, chain-intervals-all)",
     )
     .option("--kind <kind>", `plot type: ${KINDS.join(" | ")}`, "forest")
     .option("--format <fmt>", `output format: ${FORMATS.join(" | ")}`, "terminal")
@@ -188,6 +215,8 @@ export function registerPlot(program: Command): void {
         items = [forestData(samples, { variables, hdiProb: opts.hdiProb })];
       } else if (kind === "energy") {
         items = [energyData(samples, { bins: opts.bins })];
+      } else if (kind === "chain-intervals-all") {
+        items = [chainIntervalsAllData(samples, { variables })];
       } else if (kind === "pair") {
         if (variables.length !== 2) {
           throw new Error("--kind pair needs exactly two variables, e.g. --var alpha beta");
@@ -210,6 +239,10 @@ export function registerPlot(program: Command): void {
               return cumulativeMeanData(samples, v);
             case "running-rhat":
               return runningRhatData(samples, v);
+            case "violin":
+              return violinData(samples, v);
+            case "chain-intervals":
+              return chainIntervalsData(samples, v);
             default:
               return traceData(samples, v);
           }

@@ -1,6 +1,8 @@
 export { stackSvg } from "@mcmcjs/charts";
 export {
   autocorrData,
+  chainIntervalsAllData,
+  chainIntervalsData,
   chainsOf,
   cumulativeMeanData,
   densityData,
@@ -12,6 +14,7 @@ export {
   rankData,
   runningRhatData,
   traceData,
+  violinData,
 } from "./data";
 export {
   buildHtmlDocument,
@@ -24,6 +27,8 @@ export {
 } from "./html";
 export {
   renderAutocorrSVG,
+  renderChainIntervalsAllSVG,
+  renderChainIntervalsSVG,
   renderCumulativeMeanSVG,
   renderDensitySVG,
   renderEcdfSVG,
@@ -34,9 +39,12 @@ export {
   renderRankSVG,
   renderRunningRhatSVG,
   renderTraceSVG,
+  renderViolinSVG,
 } from "./svg";
 export {
   renderAutocorrTerminal,
+  renderChainIntervalsAllTerminal,
+  renderChainIntervalsTerminal,
   renderCumulativeMeanTerminal,
   renderDensityTerminal,
   renderEcdfTerminal,
@@ -47,9 +55,12 @@ export {
   renderRankTerminal,
   renderRunningRhatTerminal,
   renderTraceTerminal,
+  renderViolinTerminal,
 } from "./terminal";
 export type {
   AutocorrData,
+  ChainIntervalsAllData,
+  ChainIntervalsData,
   Charset,
   ColorFn,
   CumulativeMeanData,
@@ -59,6 +70,7 @@ export type {
   ForestData,
   ForestRow,
   HistogramData,
+  IntervalRow,
   PairData,
   PlotKind,
   RankData,
@@ -66,4 +78,6 @@ export type {
   SvgOptions,
   TerminalOptions,
   TraceData,
+  ViolinData,
+  ViolinRow,
 } from "./types";

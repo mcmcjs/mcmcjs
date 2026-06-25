@@ -10,17 +10,21 @@ import {
 } from "@mcmcjs/charts";
 import type {
   AutocorrData,
+  ChainIntervalsAllData,
+  ChainIntervalsData,
   CumulativeMeanData,
   DensityData,
   EcdfData,
   EnergyData,
   ForestData,
   HistogramData,
+  IntervalRow,
   PairData,
   RankData,
   RunningRhatData,
   SvgOptions,
   TraceData,
+  ViolinData,
 } from "./types";
 
 const W = 640;
@@ -300,6 +304,118 @@ export function renderRunningRhatSVG(data: RunningRhatData, opts: SvgOptions = {
     seriesColor(0),
   );
   return frame.render(ref(1, "#22c55e") + ref(1.05, "#ef4444") + line);
+}
+
+/** Shared layout for interval rows (q5..q95 thin, q25..q75 thick, median dot). */
+function renderIntervalRows(
+  rows: IntervalRow[],
+  opts: SvgOptions,
+  title: string,
+  perRowColor: boolean,
+): string {
+  if (rows.length === 0)
+    return svgFrame({
+      width: opts.width ?? W,
+      height: 80,
+      xDomain: [0, 1],
+      yDomain: [0, 1],
+      title,
+    }).render("");
+
+  let xmin = Number.POSITIVE_INFINITY;
+  let xmax = Number.NEGATIVE_INFINITY;
+  for (const r of rows) {
+    xmin = Math.min(xmin, r.q5);
+    xmax = Math.max(xmax, r.q95);
+  }
+  const [lo, hi] = niceDomain(xmin, xmax);
+  const height = opts.height ?? Math.max(120, 48 + rows.length * 26);
+  const frame = svgFrame({
+    width: opts.width ?? W,
+    height,
+    xDomain: [lo, hi],
+    yDomain: [rows.length, 0],
+    title,
+    yLabels: rows.map((r) => r.label),
+  });
+  const content = rows
+    .map((r, i) => {
+      const yc = frame.y.map(i + 0.5);
+      const col = perRowColor ? seriesColor(i) : seriesColor(0);
+      return [
+        svgLine(frame.x.map(r.q5), yc, frame.x.map(r.q95), yc, col, 1),
+        svgLine(frame.x.map(r.q25), yc, frame.x.map(r.q75), yc, col, 4),
+        svgCircle(frame.x.map(r.q50), yc, 3, "#111"),
+      ].join("");
+    })
+    .join("");
+  return frame.render(content);
+}
+
+/** Per-chain credible intervals for one variable. */
+export function renderChainIntervalsSVG(data: ChainIntervalsData, opts: SvgOptions = {}): string {
+  return renderIntervalRows(data.rows, opts, `chain intervals: ${data.variable}`, true);
+}
+
+/** Pooled credible intervals across variables. */
+export function renderChainIntervalsAllSVG(
+  data: ChainIntervalsAllData,
+  opts: SvgOptions = {},
+): string {
+  return renderIntervalRows(data.rows, opts, "chain intervals (all variables)", false);
+}
+
+/** Violin plot: a mirrored, peak-normalized KDE band per chain with a median tick. */
+export function renderViolinSVG(data: ViolinData, opts: SvgOptions = {}): string {
+  const rows = data.rows;
+  if (rows.length === 0)
+    return svgFrame({
+      width: opts.width ?? W,
+      height: 80,
+      xDomain: [0, 1],
+      yDomain: [0, 1],
+    }).render("");
+
+  let xmin = Number.POSITIVE_INFINITY;
+  let xmax = Number.NEGATIVE_INFINITY;
+  for (const r of rows) {
+    xmin = Math.min(xmin, r.x[0] ?? 0);
+    xmax = Math.max(xmax, r.x[r.x.length - 1] ?? 1);
+  }
+  const [lo, hi] = niceDomain(xmin, xmax);
+  const height = opts.height ?? Math.max(140, 48 + rows.length * 48);
+  const frame = svgFrame({
+    width: opts.width ?? W,
+    height,
+    xDomain: [lo, hi],
+    yDomain: [rows.length, 0],
+    title: `${data.variable}  violin`,
+    yLabels: rows.map((r) => r.label),
+  });
+  const half = 0.42;
+  const content = rows
+    .map((r, i) => {
+      const center = i + 0.5;
+      const top: [number, number][] = r.x.map((xv, k) => [
+        frame.x.map(xv),
+        frame.y.map(center - (r.density[k] ?? 0) * half),
+      ]);
+      const bottom: [number, number][] = r.x.map((xv, k) => [
+        frame.x.map(xv),
+        frame.y.map(center + (r.density[k] ?? 0) * half),
+      ]);
+      const outline = svgPolyline([...top, ...bottom.reverse()], seriesColor(i));
+      const median = svgLine(
+        frame.x.map(r.q50),
+        frame.y.map(center - half),
+        frame.x.map(r.q50),
+        frame.y.map(center + half),
+        "#111",
+      );
+      return outline + median;
+    })
+    .join("");
+  return frame.render(content);
 }
 
 /** Forest plot: a point estimate, HDI, and IQR row per variable on a shared x-axis. */

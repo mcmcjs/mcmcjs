@@ -1,8 +1,18 @@
 import { extent, niceDomain } from "@mcmcjs/charts";
 import { chainView, type Samples } from "@mcmcjs/core";
-import { autocorr, diagnoseChains, isConverged, quantiles, rhat, stdev } from "@mcmcjs/diagnostics";
+import {
+  autocorr,
+  diagnoseChains,
+  isConverged,
+  mean,
+  quantiles,
+  rhat,
+  stdev,
+} from "@mcmcjs/diagnostics";
 import type {
   AutocorrData,
+  ChainIntervalsAllData,
+  ChainIntervalsData,
   CumulativeMeanData,
   DensityData,
   EcdfData,
@@ -10,16 +20,19 @@ import type {
   ForestData,
   ForestRow,
   HistogramData,
+  IntervalRow,
   PairData,
   RankData,
   RunningRhatData,
   TraceData,
+  ViolinData,
+  ViolinRow,
 } from "./types";
 
 const INV_SQRT_2PI = 1 / Math.sqrt(2 * Math.PI);
 
 /** Silverman rule-of-thumb bandwidth; 0 when the sample has no spread. */
-function bandwidth(chain: Float64Array): number {
+export function bandwidth(chain: Float64Array): number {
   const n = chain.length;
   if (n < 2) return 0;
   const sd = stdev(chain);
@@ -27,6 +40,20 @@ function bandwidth(chain: Float64Array): number {
   const iqr = q.q75 - q.q25;
   const sigma = iqr > 0 ? Math.min(sd, iqr / 1.349) : sd;
   return sigma > 0 ? 1.06 * sigma * n ** (-1 / 5) : 0;
+}
+
+/** Gaussian KDE of `values` evaluated on `grid` with bandwidth `h` (zeros when h <= 0). */
+export function gaussianKde(values: Float64Array, grid: number[], h: number): number[] {
+  if (h <= 0) return new Array<number>(grid.length).fill(0);
+  const norm = 1 / (values.length * h);
+  return grid.map((g) => {
+    let sum = 0;
+    for (const xi of values) {
+      const z = (g - xi) / h;
+      sum += Math.exp(-0.5 * z * z);
+    }
+    return sum * norm * INV_SQRT_2PI;
+  });
 }
 
 /** One variable's draws split per chain, as no-copy views over the Samples buffer. */
@@ -62,19 +89,7 @@ export function densityData(
   const step = (hi - lo) / (gridSize - 1);
   const x = Array.from({ length: gridSize }, (_, k) => lo + k * step);
 
-  const curves = chains.map((chain) => {
-    const h = bandwidth(chain);
-    if (h <= 0) return new Array<number>(gridSize).fill(0);
-    const norm = 1 / (chain.length * h);
-    return x.map((g) => {
-      let sum = 0;
-      for (const xi of chain) {
-        const z = (g - xi) / h;
-        sum += Math.exp(-0.5 * z * z);
-      }
-      return sum * norm * INV_SQRT_2PI;
-    });
-  });
+  const curves = chains.map((chain) => gaussianKde(chain, x, bandwidth(chain)));
 
   return { kind: "density", variable, nChains: samples.nChains, x, chains: curves };
 }
@@ -318,4 +333,70 @@ export function runningRhatData(samples: Samples, variable: string): RunningRhat
     }
   }
   return { kind: "running-rhat", variable, nChains, iterations, rhat: rhats };
+}
+
+function intervalRow(label: string, draws: Float64Array): IntervalRow {
+  const q = quantiles(draws);
+  return { label, q5: q.q5, q25: q.q25, q50: q.q50, q75: q.q75, q95: q.q95 };
+}
+
+/** Per-chain credible intervals (q5..q95, q25..q75, median) for one variable. */
+export function chainIntervalsData(samples: Samples, variable: string): ChainIntervalsData {
+  const rows: IntervalRow[] = [];
+  chainsOf(samples, variable).forEach((chain, i) => {
+    if (chain.length === 0) return;
+    rows.push(intervalRow(`chain ${i + 1}`, chain));
+  });
+  return { kind: "chain-intervals", variable, rows };
+}
+
+/** Pooled credible intervals, one row per variable (median is the point estimate). */
+export function chainIntervalsAllData(
+  samples: Samples,
+  opts: { variables?: readonly string[] } = {},
+): ChainIntervalsAllData {
+  const variables = opts.variables ?? samples.variables;
+  const rows: IntervalRow[] = [];
+  for (const v of variables) {
+    const pooled = samples.draws.get(v) ?? chainView(samples, v, 0);
+    if (pooled.length === 0) continue;
+    rows.push(intervalRow(v, pooled));
+  }
+  return { kind: "chain-intervals-all", rows };
+}
+
+function violinRow(label: string, values: Float64Array, gridSize: number): ViolinRow {
+  const [mn, mx] = extent(values);
+  const pad = (mx - mn) * 0.1 || 1;
+  const lo = mn - pad;
+  const hi = mx + pad;
+  const step = (hi - lo) / (gridSize - 1);
+  const x = Array.from({ length: gridSize }, (_, k) => lo + k * step);
+  let density = gaussianKde(values, x, bandwidth(values));
+  const peak = Math.max(0, ...density);
+  if (peak > 0) density = density.map((d) => d / peak);
+  const q = quantiles(values);
+  return {
+    label,
+    x,
+    density,
+    mean: mean(values),
+    stdev: stdev(values),
+    q5: q.q5,
+    q50: q.q50,
+    q95: q.q95,
+  };
+}
+
+/** Violin data: a peak-normalized KDE band per chain (reuses the density bandwidth). */
+export function violinData(
+  samples: Samples,
+  variable: string,
+  opts: { gridSize?: number } = {},
+): ViolinData {
+  const gridSize = Math.max(2, opts.gridSize ?? 256);
+  const rows = chainsOf(samples, variable).map((chain, i) =>
+    violinRow(`chain ${i + 1}`, chain, gridSize),
+  );
+  return { kind: "violin", variable, gridSize, rows };
 }

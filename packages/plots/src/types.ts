@@ -21,7 +21,10 @@ export type PlotKind =
   | "forest"
   | "ecdf"
   | "cumulative-mean"
-  | "running-rhat";
+  | "running-rhat"
+  | "violin"
+  | "chain-intervals"
+  | "chain-intervals-all";
 
 /** Per-variable trace: the raw draw sequence of each chain, plus its key diagnostics. */
 export interface TraceData {
@@ -160,6 +163,51 @@ export interface RunningRhatData {
   iterations: number[];
   /** Basic split-R-hat aligned to `iterations`. */
   rhat: number[];
+}
+
+/** One interval row: a 90% (q5..q95) and 50% (q25..q75) band around the median q50. */
+export interface IntervalRow {
+  label: string;
+  q5: number;
+  q25: number;
+  q50: number;
+  q75: number;
+  q95: number;
+}
+
+/** Per-chain credible intervals for one variable (one row per chain). */
+export interface ChainIntervalsData {
+  kind: "chain-intervals";
+  variable: string;
+  rows: IntervalRow[];
+}
+
+/** Pooled credible intervals across variables (one row per variable). */
+export interface ChainIntervalsAllData {
+  kind: "chain-intervals-all";
+  rows: IntervalRow[];
+}
+
+/** One violin row: a peak-normalized KDE band plus summary stats. */
+export interface ViolinRow {
+  label: string;
+  /** KDE grid (length gridSize), ascending. */
+  x: number[];
+  /** Peak-normalized density in [0,1], aligned to `x`. */
+  density: number[];
+  mean: number;
+  stdev: number;
+  q5: number;
+  q50: number;
+  q95: number;
+}
+
+/** Violin plot: one mirrored KDE band per chain for a variable. */
+export interface ViolinData {
+  kind: "violin";
+  variable: string;
+  gridSize: number;
+  rows: ViolinRow[];
 }
 
 /** Options shared by the terminal renderers. */

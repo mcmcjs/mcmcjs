@@ -6,9 +6,17 @@
  * pair) are emitted as embedded SVG instead.
  */
 import { seriesColor } from "@mcmcjs/charts";
-import { renderForestSVG, renderPairSVG } from "../svg";
+import {
+  renderChainIntervalsAllSVG,
+  renderChainIntervalsSVG,
+  renderForestSVG,
+  renderPairSVG,
+  renderViolinSVG,
+} from "../svg";
 import type {
   AutocorrData,
+  ChainIntervalsAllData,
+  ChainIntervalsData,
   CumulativeMeanData,
   DensityData,
   EcdfData,
@@ -20,6 +28,7 @@ import type {
   RankData,
   RunningRhatData,
   TraceData,
+  ViolinData,
 } from "../types";
 
 /** Any of the renderer-agnostic plot data objects. */
@@ -34,7 +43,10 @@ export type PlotData =
   | ForestData
   | EcdfData
   | CumulativeMeanData
-  | RunningRhatData;
+  | RunningRhatData
+  | ViolinData
+  | ChainIntervalsData
+  | ChainIntervalsAllData;
 
 /** One uPlot series, described declaratively (no functions). */
 export interface UplotSeriesSpec {
@@ -244,5 +256,16 @@ export function htmlItemFor(d: PlotData): HtmlItem {
       };
     case "forest":
       return { mode: "svg", kind: d.kind, title: "forest", svg: renderForestSVG(d) };
+    case "violin":
+      return { mode: "svg", kind: d.kind, title: d.variable, svg: renderViolinSVG(d) };
+    case "chain-intervals":
+      return { mode: "svg", kind: d.kind, title: d.variable, svg: renderChainIntervalsSVG(d) };
+    case "chain-intervals-all":
+      return {
+        mode: "svg",
+        kind: d.kind,
+        title: "chain intervals",
+        svg: renderChainIntervalsAllSVG(d),
+      };
   }
 }
