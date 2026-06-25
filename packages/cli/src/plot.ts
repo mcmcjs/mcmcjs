@@ -4,9 +4,13 @@ import {
   type AutocorrData,
   autocorrData,
   buildHtmlDocument,
+  type CumulativeMeanData,
+  cumulativeMeanData,
   type DensityData,
   densityData,
+  type EcdfData,
   type EnergyData,
+  ecdfData,
   energyData,
   type ForestData,
   forestData,
@@ -16,11 +20,16 @@ import {
   type PlotData,
   pairData,
   type RankData,
+  type RunningRhatData,
   rankData,
   renderAutocorrSVG,
   renderAutocorrTerminal,
+  renderCumulativeMeanSVG,
+  renderCumulativeMeanTerminal,
   renderDensitySVG,
   renderDensityTerminal,
+  renderEcdfSVG,
+  renderEcdfTerminal,
   renderEnergySVG,
   renderEnergyTerminal,
   renderForestSVG,
@@ -31,8 +40,11 @@ import {
   renderPairTerminal,
   renderRankSVG,
   renderRankTerminal,
+  renderRunningRhatSVG,
+  renderRunningRhatTerminal,
   renderTraceSVG,
   renderTraceTerminal,
+  runningRhatData,
   stackSvg,
   type TerminalOptions,
   type TraceData,
@@ -52,6 +64,9 @@ const KINDS = [
   "pair",
   "energy",
   "forest",
+  "ecdf",
+  "cumulative-mean",
+  "running-rhat",
 ] as const;
 type PlotKind = (typeof KINDS)[number];
 const FORMATS = ["terminal", "svg", "html"] as const;
@@ -91,6 +106,12 @@ function renderTerminal(kind: PlotKind, data: unknown, term: TerminalOptions): s
       return renderPairTerminal(data as PairData, term);
     case "energy":
       return renderEnergyTerminal(data as EnergyData, term);
+    case "ecdf":
+      return renderEcdfTerminal(data as EcdfData, term);
+    case "cumulative-mean":
+      return renderCumulativeMeanTerminal(data as CumulativeMeanData, term);
+    case "running-rhat":
+      return renderRunningRhatTerminal(data as RunningRhatData, term);
     default:
       return renderTraceTerminal(data as TraceData, term);
   }
@@ -112,6 +133,12 @@ function renderSvg(kind: PlotKind, data: unknown): string {
       return renderPairSVG(data as PairData);
     case "energy":
       return renderEnergySVG(data as EnergyData);
+    case "ecdf":
+      return renderEcdfSVG(data as EcdfData);
+    case "cumulative-mean":
+      return renderCumulativeMeanSVG(data as CumulativeMeanData);
+    case "running-rhat":
+      return renderRunningRhatSVG(data as RunningRhatData);
     default:
       return renderTraceSVG(data as TraceData);
   }
@@ -127,7 +154,7 @@ export function registerPlot(program: Command): void {
       "samples file (MCMCChains JSON or ArviZ InferenceData JSON), or a run ref (latest, @N, id prefix); default: the latest store run",
     )
     .description(
-      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, energy, forest)",
+      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, energy, forest, ecdf, cumulative-mean, running-rhat)",
     )
     .option("--kind <kind>", `plot type: ${KINDS.join(" | ")}`, "forest")
     .option("--format <fmt>", `output format: ${FORMATS.join(" | ")}`, "terminal")
@@ -177,6 +204,12 @@ export function registerPlot(program: Command): void {
               return rankData(samples, v, { bins: opts.bins });
             case "autocorr":
               return autocorrData(samples, v, { maxLag: opts.maxLag });
+            case "ecdf":
+              return ecdfData(samples, v);
+            case "cumulative-mean":
+              return cumulativeMeanData(samples, v);
+            case "running-rhat":
+              return runningRhatData(samples, v);
             default:
               return traceData(samples, v);
           }

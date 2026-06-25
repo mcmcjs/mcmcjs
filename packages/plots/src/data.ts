@@ -1,15 +1,18 @@
 import { extent, niceDomain } from "@mcmcjs/charts";
 import { chainView, type Samples } from "@mcmcjs/core";
-import { autocorr, diagnoseChains, isConverged, quantiles, stdev } from "@mcmcjs/diagnostics";
+import { autocorr, diagnoseChains, isConverged, quantiles, rhat, stdev } from "@mcmcjs/diagnostics";
 import type {
   AutocorrData,
+  CumulativeMeanData,
   DensityData,
+  EcdfData,
   EnergyData,
   ForestData,
   ForestRow,
   HistogramData,
   PairData,
   RankData,
+  RunningRhatData,
   TraceData,
 } from "./types";
 
@@ -262,4 +265,57 @@ export function forestData(
     };
   });
   return { kind: "forest", hdiProb, rows };
+}
+
+/** Empirical CDF per chain: sorted draws with cumulative probability `(i+1)/n`. */
+export function ecdfData(samples: Samples, variable: string): EcdfData {
+  const series = chainsOf(samples, variable).map((c, chain) => {
+    const sorted = Array.from(c).sort((a, b) => a - b);
+    const n = sorted.length;
+    const y = sorted.map((_, i) => (i + 1) / n);
+    return { chain, x: sorted, y };
+  });
+  return { kind: "ecdf", variable, nChains: samples.nChains, series };
+}
+
+/** Running mean per chain over shared 1-based iterations. */
+export function cumulativeMeanData(samples: Samples, variable: string): CumulativeMeanData {
+  const chains = chainsOf(samples, variable);
+  const maxLen = Math.max(0, ...chains.map((c) => c.length));
+  const iterations = Array.from({ length: maxLen }, (_, i) => i + 1);
+  const out = chains.map((c) => {
+    const v = new Array<number>(c.length);
+    let sum = 0;
+    for (let j = 0; j < c.length; j++) {
+      sum += c[j] ?? 0;
+      v[j] = sum / (j + 1);
+    }
+    return v;
+  });
+  return { kind: "cumulative-mean", variable, nChains: samples.nChains, iterations, chains: out };
+}
+
+/** Basic split-R-hat over an increasing prefix of draws (needs >= 2 chains, >= 6 draws). */
+export function runningRhatData(samples: Samples, variable: string): RunningRhatData {
+  const nChains = samples.nChains;
+  const chains = chainsOf(samples, variable).filter((c) => c.length > 0);
+  if (chains.length < 2) {
+    return { kind: "running-rhat", variable, nChains, iterations: [], rhat: [] };
+  }
+  const minLen = Math.min(...chains.map((c) => c.length));
+  const step = Math.max(1, Math.floor(minLen / 200));
+  const startAt = Math.max(6, step);
+  const iterations: number[] = [];
+  const rhats: number[] = [];
+  for (let n = startAt; n <= minLen; n += step) {
+    const r = rhat(
+      chains.map((c) => c.slice(0, n)),
+      "basic",
+    );
+    if (Number.isFinite(r)) {
+      iterations.push(n);
+      rhats.push(r);
+    }
+  }
+  return { kind: "running-rhat", variable, nChains, iterations, rhat: rhats };
 }

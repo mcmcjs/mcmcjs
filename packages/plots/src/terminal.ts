@@ -9,12 +9,15 @@ import {
 } from "@mcmcjs/charts";
 import type {
   AutocorrData,
+  CumulativeMeanData,
   DensityData,
+  EcdfData,
   EnergyData,
   ForestData,
   HistogramData,
   PairData,
   RankData,
+  RunningRhatData,
   TerminalOptions,
   TraceData,
 } from "./types";
@@ -279,6 +282,129 @@ export function renderEnergyTerminal(data: EnergyData, opts: TerminalOptions = {
     yMax: maxC,
     xLeft: fmtNum(centers[0] ?? 0),
     xRight: fmtNum(centers[centers.length - 1] ?? 0),
+    charset,
+    header,
+    gutter: GUTTER,
+  });
+}
+
+/** Renders the empirical CDF (one monotone step per chain) as colored terminal text. */
+export function renderEcdfTerminal(data: EcdfData, opts: TerminalOptions = {}): string {
+  const charset = opts.charset ?? "unicode";
+  const color = opts.color ?? identity;
+  const totalWidth = opts.width ?? 72;
+  const height = opts.height ?? 12;
+  const plotW = Math.max(8, totalWidth - GUTTER - 2);
+
+  const allX = data.series.flatMap((s) => s.x);
+  const [xmin, xmax] = niceDomain(...extent(allX));
+  const canvas = new DotCanvas(plotW, height);
+  const scaleX = linearScale([xmin, xmax], [0, canvas.wDots - 1]);
+  const scaleY = linearScale([0, 1], [canvas.hDots - 1, 0]);
+
+  data.series.forEach((s, chain) => {
+    for (let i = 1; i < s.x.length; i++) {
+      const x0 = s.x[i - 1];
+      const x1 = s.x[i];
+      const y0 = s.y[i - 1];
+      const y1 = s.y[i];
+      if (x0 === undefined || x1 === undefined || y0 === undefined || y1 === undefined) continue;
+      canvas.line(scaleX.map(x0), scaleY.map(y0), scaleX.map(x1), scaleY.map(y1), chain);
+    }
+  });
+
+  const header = `${data.variable}   ECDF   (${data.nChains} chains)`;
+  return axisFrame(canvas.rows(charset, color), {
+    width: plotW,
+    yMin: 0,
+    yMax: 1,
+    xLeft: fmtNum(xmin),
+    xRight: fmtNum(xmax),
+    charset,
+    header,
+    gutter: GUTTER,
+  });
+}
+
+/** Renders the cumulative (running) mean of each chain as colored terminal text. */
+export function renderCumulativeMeanTerminal(
+  data: CumulativeMeanData,
+  opts: TerminalOptions = {},
+): string {
+  const charset = opts.charset ?? "unicode";
+  const color = opts.color ?? identity;
+  const totalWidth = opts.width ?? 72;
+  const height = opts.height ?? 12;
+  const plotW = Math.max(8, totalWidth - GUTTER - 2);
+
+  const [rawMin, rawMax] = extent(data.chains.flat());
+  const [ymin, ymax] = niceDomain(rawMin, rawMax);
+  const maxLen = data.iterations.length;
+  const canvas = new DotCanvas(plotW, height);
+  const scaleX = linearScale([1, Math.max(2, maxLen)], [0, canvas.wDots - 1]);
+  const scaleY = linearScale([ymin, ymax], [canvas.hDots - 1, 0]);
+
+  data.chains.forEach((vals, chain) => {
+    for (let i = 1; i < vals.length; i++) {
+      const y0 = vals[i - 1];
+      const y1 = vals[i];
+      if (y0 === undefined || y1 === undefined) continue;
+      canvas.line(scaleX.map(i), scaleY.map(y0), scaleX.map(i + 1), scaleY.map(y1), chain);
+    }
+  });
+
+  const header = `${data.variable}   cumulative mean   (${data.nChains} chains)`;
+  return axisFrame(canvas.rows(charset, color), {
+    width: plotW,
+    yMin: ymin,
+    yMax: ymax,
+    xLeft: "1",
+    xRight: String(maxLen),
+    charset,
+    header,
+    gutter: GUTTER,
+  });
+}
+
+/** Renders running basic R-hat as a single line over increasing prefix length. */
+export function renderRunningRhatTerminal(
+  data: RunningRhatData,
+  opts: TerminalOptions = {},
+): string {
+  const charset = opts.charset ?? "unicode";
+  const color = opts.color ?? identity;
+  const totalWidth = opts.width ?? 72;
+  const height = opts.height ?? 10;
+  const plotW = Math.max(8, totalWidth - GUTTER - 2);
+
+  if (data.iterations.length === 0) {
+    return `${data.variable}   running R-hat   (needs >= 2 chains and >= 6 draws)\n`;
+  }
+
+  const [rawMin, rawMax] = extent([...data.rhat, 1, 1.05]);
+  const [ymin, ymax] = niceDomain(rawMin, rawMax);
+  const xLo = data.iterations[0] ?? 0;
+  const xHi = data.iterations[data.iterations.length - 1] ?? 1;
+  const canvas = new DotCanvas(plotW, height);
+  const scaleX = linearScale([xLo, Math.max(xLo + 1, xHi)], [0, canvas.wDots - 1]);
+  const scaleY = linearScale([ymin, ymax], [canvas.hDots - 1, 0]);
+
+  for (let i = 1; i < data.iterations.length; i++) {
+    const x0 = data.iterations[i - 1];
+    const x1 = data.iterations[i];
+    const y0 = data.rhat[i - 1];
+    const y1 = data.rhat[i];
+    if (x0 === undefined || x1 === undefined || y0 === undefined || y1 === undefined) continue;
+    canvas.line(scaleX.map(x0), scaleY.map(y0), scaleX.map(x1), scaleY.map(y1), 0);
+  }
+
+  const header = `${data.variable}   running basic R-hat`;
+  return axisFrame(canvas.rows(charset, color), {
+    width: plotW,
+    yMin: ymin,
+    yMax: ymax,
+    xLeft: String(xLo),
+    xRight: String(xHi),
     charset,
     header,
     gutter: GUTTER,

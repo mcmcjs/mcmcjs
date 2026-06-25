@@ -10,12 +10,15 @@ import {
 } from "@mcmcjs/charts";
 import type {
   AutocorrData,
+  CumulativeMeanData,
   DensityData,
+  EcdfData,
   EnergyData,
   ForestData,
   HistogramData,
   PairData,
   RankData,
+  RunningRhatData,
   SvgOptions,
   TraceData,
 } from "./types";
@@ -212,6 +215,91 @@ export function renderPairSVG(data: PairData, opts: SvgOptions = {}): string {
     .join("");
   const divergent = divergentIdx.map((i) => dot(i, 2.5, "#d62728")).join("");
   return frame.render(normal + divergent);
+}
+
+/** Empirical CDF: one monotone step curve per chain on a fixed [0,1] y-axis. */
+export function renderEcdfSVG(data: EcdfData, opts: SvgOptions = {}): string {
+  const [xmin, xmax] = niceDomain(...extent(data.series.flatMap((s) => s.x)));
+  const frame = svgFrame({
+    width: opts.width ?? W,
+    height: opts.height ?? H,
+    xDomain: [xmin, xmax],
+    yDomain: [0, 1],
+    title: `${data.variable}  ECDF`,
+    xLabel: data.variable,
+    yLabel: "P",
+  });
+  const content = data.series
+    .map((s, chain) =>
+      svgPolyline(
+        s.x.map((xv, i) => [frame.x.map(xv), frame.y.map(s.y[i] ?? 0)] as [number, number]),
+        seriesColor(chain),
+      ),
+    )
+    .join("");
+  return frame.render(content);
+}
+
+/** Cumulative-mean: one running-mean line per chain over iteration. */
+export function renderCumulativeMeanSVG(data: CumulativeMeanData, opts: SvgOptions = {}): string {
+  const [rmin, rmax] = extent(data.chains.flat());
+  const [ymin, ymax] = niceDomain(rmin, rmax);
+  const maxLen = data.iterations.length;
+  const frame = svgFrame({
+    width: opts.width ?? W,
+    height: opts.height ?? H,
+    xDomain: [1, Math.max(2, maxLen)],
+    yDomain: [ymin, ymax],
+    title: `${data.variable}  cumulative mean`,
+    xLabel: "iteration",
+    yLabel: `mean (${data.variable})`,
+  });
+  const content = data.chains
+    .map((vals, chain) =>
+      svgPolyline(
+        vals.map((v, i) => [frame.x.map(i + 1), frame.y.map(v)] as [number, number]),
+        seriesColor(chain),
+      ),
+    )
+    .join("");
+  return frame.render(content);
+}
+
+/** Running basic R-hat: a single line with 1.00 and 1.05 reference lines. */
+export function renderRunningRhatSVG(data: RunningRhatData, opts: SvgOptions = {}): string {
+  const width = opts.width ?? W;
+  const height = opts.height ?? H;
+  if (data.iterations.length === 0) {
+    return svgFrame({
+      width,
+      height: 80,
+      xDomain: [0, 1],
+      yDomain: [0, 1],
+      title: `${data.variable}  running R-hat (needs >= 2 chains)`,
+    }).render("");
+  }
+  const [rmin, rmax] = extent([...data.rhat, 1, 1.05]);
+  const [ymin, ymax] = niceDomain(rmin, rmax);
+  const xLo = data.iterations[0] ?? 0;
+  const xHi = data.iterations[data.iterations.length - 1] ?? 1;
+  const frame = svgFrame({
+    width,
+    height,
+    xDomain: [xLo, Math.max(xLo + 1, xHi)],
+    yDomain: [ymin, ymax],
+    title: `${data.variable}  running basic R-hat`,
+    xLabel: "iteration",
+    yLabel: "R-hat",
+  });
+  const ref = (y: number, col: string): string =>
+    svgLine(frame.area.left, frame.y.map(y), frame.area.right, frame.y.map(y), col);
+  const line = svgPolyline(
+    data.iterations.map(
+      (it, i) => [frame.x.map(it), frame.y.map(data.rhat[i] ?? 0)] as [number, number],
+    ),
+    seriesColor(0),
+  );
+  return frame.render(ref(1, "#22c55e") + ref(1.05, "#ef4444") + line);
 }
 
 /** Forest plot: a point estimate, HDI, and IQR row per variable on a shared x-axis. */

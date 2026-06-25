@@ -18,7 +18,10 @@ export type PlotKind =
   | "autocorr"
   | "pair"
   | "energy"
-  | "forest";
+  | "forest"
+  | "ecdf"
+  | "cumulative-mean"
+  | "running-rhat";
 
 /** Per-variable trace: the raw draw sequence of each chain, plus its key diagnostics. */
 export interface TraceData {
@@ -126,6 +129,37 @@ export interface ForestData {
   kind: "forest";
   hdiProb: number;
   rows: ForestRow[];
+}
+
+/** Empirical CDF: per chain, the sorted draws and their cumulative probabilities. */
+export interface EcdfData {
+  kind: "ecdf";
+  variable: string;
+  nChains: number;
+  /** One series per chain; `x` (sorted draws) and `y` (cumulative prob) are equal length. */
+  series: { chain: number; x: number[]; y: number[] }[];
+}
+
+/** Cumulative (running) mean per chain over shared 1-based iterations. */
+export interface CumulativeMeanData {
+  kind: "cumulative-mean";
+  variable: string;
+  nChains: number;
+  /** Shared iteration axis `1..maxLen`. */
+  iterations: number[];
+  /** One running-mean array per chain (may be shorter than `iterations`). */
+  chains: number[][];
+}
+
+/** Running split-R-hat over an increasing prefix of draws (empty when undefined). */
+export interface RunningRhatData {
+  kind: "running-rhat";
+  variable: string;
+  nChains: number;
+  /** Prefix lengths at which R-hat was evaluated. */
+  iterations: number[];
+  /** Basic split-R-hat aligned to `iterations`. */
+  rhat: number[];
 }
 
 /** Options shared by the terminal renderers. */

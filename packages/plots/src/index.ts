@@ -2,12 +2,15 @@ export { stackSvg } from "@mcmcjs/charts";
 export {
   autocorrData,
   chainsOf,
+  cumulativeMeanData,
   densityData,
+  ecdfData,
   energyData,
   forestData,
   histogramData,
   pairData,
   rankData,
+  runningRhatData,
   traceData,
 } from "./data";
 export {
@@ -21,29 +24,37 @@ export {
 } from "./html";
 export {
   renderAutocorrSVG,
+  renderCumulativeMeanSVG,
   renderDensitySVG,
+  renderEcdfSVG,
   renderEnergySVG,
   renderForestSVG,
   renderHistogramSVG,
   renderPairSVG,
   renderRankSVG,
+  renderRunningRhatSVG,
   renderTraceSVG,
 } from "./svg";
 export {
   renderAutocorrTerminal,
+  renderCumulativeMeanTerminal,
   renderDensityTerminal,
+  renderEcdfTerminal,
   renderEnergyTerminal,
   renderForestTerminal,
   renderHistogramTerminal,
   renderPairTerminal,
   renderRankTerminal,
+  renderRunningRhatTerminal,
   renderTraceTerminal,
 } from "./terminal";
 export type {
   AutocorrData,
   Charset,
   ColorFn,
+  CumulativeMeanData,
   DensityData,
+  EcdfData,
   EnergyData,
   ForestData,
   ForestRow,
@@ -51,6 +62,7 @@ export type {
   PairData,
   PlotKind,
   RankData,
+  RunningRhatData,
   SvgOptions,
   TerminalOptions,
   TraceData,
