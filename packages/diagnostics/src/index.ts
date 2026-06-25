@@ -12,6 +12,7 @@ export {
   computeEssBulk as essBulk,
   computeEssTail as essTail,
 } from "./ess";
+export { type GewekeResult, geweke } from "./geweke";
 export {
   computeMCSEMultiChain as mcseMean,
   computeMCSEQuantile as mcseQuantile,
@@ -19,8 +20,10 @@ export {
 } from "./mcse";
 export { computeRhat as rhat, type RhatKind } from "./rhat";
 export {
+  computeExcessKurtosis,
   computeHDI as hdi,
   computeMean as mean,
   computeQuantiles as quantiles,
+  computeSkewness,
   computeStdev as stdev,
 } from "./summary";
