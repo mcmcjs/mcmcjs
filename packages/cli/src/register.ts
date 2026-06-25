@@ -13,6 +13,7 @@ import { registerPlot } from "./plot";
 import { registerPredict } from "./predict";
 import { registerRun } from "./run";
 import { registerRuns } from "./runs";
+import { registerSamples } from "./samples";
 import { registerSandbox } from "./sandbox";
 import { registerSetup } from "./setup";
 import { registerShow } from "./show";
@@ -33,6 +34,7 @@ export function registerAll(program: Command, ctx: EngineContext, registry: Engi
   registerShow(program);
   registerDiagnose(program);
   registerSummary(program);
+  registerSamples(program);
   registerPlot(program);
   registerExport(program);
   registerInit(program);

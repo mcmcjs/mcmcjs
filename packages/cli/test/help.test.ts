@@ -23,6 +23,7 @@ const GROUPS: Record<string, string> = {
   show: "Inspect runs:",
   diagnose: "Inspect runs:",
   summary: "Inspect runs:",
+  samples: "Inspect runs:",
   plot: "Inspect runs:",
   export: "Inspect runs:",
   init: "Start a project:",
