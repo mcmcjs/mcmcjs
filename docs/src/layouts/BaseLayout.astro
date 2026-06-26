@@ -187,7 +187,7 @@ const jsonLdItems = [defaultStructuredData, ...extraStructuredData];
 					if (pre.parentElement?.classList.contains('code-frame')) {
 						continue;
 					}
-					if (pre.closest('.hero-demo')) {
+					if (pre.closest('.hero-demo') || pre.closest('.run-it')) {
 						continue;
 					}
 

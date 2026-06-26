@@ -1,7 +1,15 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { withBase } from "../lib/paths";
-import densitySvg from "../plots/eight-schools-density.svg?raw";
+import plotSpecs from "../plots/eight-schools.json";
+
+type PlotSpec = {
+	key: string;
+	label: string;
+	mode: "uplot" | "svg";
+	svg?: string;
+};
+const plots = plotSpecs as PlotSpec[];
 
 const siteOrigin = Astro.site ?? Astro.url;
 const appUrl = new URL(withBase("/"), siteOrigin).href;
@@ -68,17 +76,58 @@ const structuredData = [
 
 const eightSchoolsModel = `using Turing
 
-@model function eight_schools(y, sigma)
+@model function eight_schools(J, y, sigma)
     mu ~ Normal(0, 5)
     tau ~ truncated(Cauchy(0, 5); lower = 0)
-    theta ~ filldist(Normal(mu, tau), length(y))
-    y .~ Normal.(theta, sigma)
+    theta ~ filldist(Normal(mu, tau), J)
+    for j in 1:J
+        y[j] ~ Normal(theta[j], sigma[j])
+    end
 end
 
-build_model(data) = eight_schools(data.y, data.sigma)`;
+build_model(data) = eight_schools(data.J, data.y, data.sigma)`;
 
-const eightSchoolsCommands = `mcmc run eight_schools.jl --data schools.json
-mcmc plot --kind density --var mu --format svg -o mu.svg`;
+const eightSchoolsSpec = `schema_version = "0"
+seed = 20260608
+
+[backend]
+id = "turing"
+
+[sampler]
+algorithm = "NUTS"
+draws = 1000
+warmup = 1000
+chains = 4
+
+[model]
+kind = "file"
+path = "./eight_schools.jl"
+
+[data]
+J = 8
+y = [28, 8, -3, 7, -1, 1, 18, 12]
+sigma = [15, 10, 16, 11, 9, 11, 10, 18]`;
+
+const eightSchoolsRun = `$ mcmc run eight_schools.jl
+using settings from eight_schools.toml; flags override
+Fitting eight_schools.jl with Turing.jl (NUTS, 4 chains x 1000 draws + 1000 warmup, seed 20260608) on Julia 1.12.6...
+ok: run 20260626-062103-35158c (19.8 s, Julia 1.12.6) saved to .mcmc
+
+variable  mean   std    r_hat  ess_bulk  ess_tail  mcse   hdi
+--------  -----  -----  -----  --------  --------  -----  ----------------
+mu        4.748  3.219  1.042  114       1250      0.319  [-1.604, 10.218]
+tau       3.436  3.375  1.359  17        15        0.498  [0.310, 9.348]
+theta[1]  6.447  5.424  1.186  578       983       0.198  [-3.527, 16.557]
+theta[2]  5.339  4.501  1.101  350       1279      0.202  [-3.439, 13.942]
+theta[3]  4.312  5.244  1.047  153       1185      0.383  [-6.738, 12.959]
+theta[4]  5.192  4.664  1.094  304       1534      0.239  [-3.846, 14.176]
+theta[5]  3.962  4.562  1.043  110       1208      0.449  [-5.701, 11.438]
+theta[6]  4.378  4.658  1.082  190       1622      0.325  [-4.396, 13.254]
+theta[7]  6.530  4.773  1.188  579       675       0.183  [-2.170, 15.820]
+theta[8]  5.309  5.205  1.089  338       1464      0.180  [-4.724, 15.047]
+
+divergences: 503
+not converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
 
 // Real terminal output of `mcmc run` on the scaffolded demo model.
 const runTranscript = `$ mcmc run demo/model.jl
@@ -131,27 +180,47 @@ converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
 
 	<section class="section example">
 		<div class="section-header">
-			<h2>Eight schools, in two commands.</h2>
+			<h2>Eight schools, end to end.</h2>
 			<p>
-				The classic hierarchical model. Write it in Turing, then read the pooled
-				effects as a forest plot right in your terminal.
+				The textbook hierarchical model, and a textbook trap. Run it, and the
+				diagnostics flag the funnel the centered parameterization hides: high
+				R-hat, low ESS, hundreds of divergences. Drag to zoom any plot.
 			</p>
 		</div>
-		<div class="example-grid">
-			<div class="example-code">
-				<div class="example-block">
-					<span class="example-label">eight_schools.jl</span>
-					<pre><code>{eightSchoolsModel}</code></pre>
+		<div class="demo-split">
+			<div class="demo-left">
+				<div class="tabs" data-tabs>
+					<div class="tablist" role="tablist" aria-label="Model source">
+						<button class="tab is-active" type="button" role="tab" data-tab="model">eight_schools.jl</button>
+						<button class="tab" type="button" role="tab" data-tab="spec">eight_schools.toml</button>
+					</div>
+					<div class="tabpanel is-active" data-panel="model"><pre><code>{eightSchoolsModel}</code></pre></div>
+					<div class="tabpanel" data-panel="spec"><pre><code>{eightSchoolsSpec}</code></pre></div>
 				</div>
-				<div class="example-block">
-					<span class="example-label">run it</span>
-					<pre><code>{eightSchoolsCommands}</code></pre>
+				<div class="run-it">
+					<span class="run-it-label">Run it</span>
+					<pre class="run-transcript">{eightSchoolsRun}</pre>
 				</div>
 			</div>
-			<figure class="plot-figure">
-				<div class="plot-svg" set:html={densitySvg}></div>
-				<figcaption>The posterior of <code>mu</code>, one curve per chain. The same plot renders to the terminal, to SVG, or to a self-contained interactive HTML page.</figcaption>
-			</figure>
+			<div class="demo-right">
+				<div class="tabs" data-tabs data-plot-tabs>
+					<div class="tablist" role="tablist" aria-label="Diagnostic plots">
+						{plots.map((p, i) => (
+							<button class:list={["tab", { "is-active": i === 0 }]} type="button" role="tab" data-tab={p.key}>{p.label}</button>
+						))}
+					</div>
+					<div class="plot-stage">
+						{plots.map((p, i) => (
+							<div
+								class:list={["tabpanel", "plot-panel", { "is-active": i === 0 }]}
+								data-panel={p.key}
+								data-mode={p.mode}
+								set:html={p.mode === "svg" ? p.svg : ""}
+							/>
+						))}
+					</div>
+				</div>
+			</div>
 		</div>
 	</section>
 
@@ -236,3 +305,86 @@ converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
 		</div>
 	</section>
 </BaseLayout>
+
+<script>
+	import uPlot from "uplot";
+	import "uplot/dist/uPlot.min.css";
+	import rawSpecs from "../plots/eight-schools.json";
+
+	type PlotItem = {
+		key: string;
+		mode: string;
+		// biome-ignore lint/suspicious/noExplicitAny: function-free uPlot spec from @mcmcjs/plots
+		spec?: any;
+	};
+
+	const specs = rawSpecs as PlotItem[];
+	const AXIS = "#8a8a8a";
+	const GRID = "rgba(140, 140, 140, 0.18)";
+	const byKey = new Map(specs.map((s) => [s.key, s]));
+	const mounted = new WeakSet<HTMLElement>();
+
+	function pathFor(s: { paths?: string }) {
+		const paths = uPlot.paths as Record<string, (o: unknown) => unknown>;
+		if (s.paths === "bars" && paths.bars) return paths.bars({ size: [0.85, Number.POSITIVE_INFINITY] });
+		if (s.paths === "stepped" && paths.stepped) return paths.stepped({ align: 1 });
+		return null;
+	}
+
+	// biome-ignore lint/suspicious/noExplicitAny: spec mirrors @mcmcjs/plots UplotSpec
+	function mountPlot(panel: HTMLElement, spec: any) {
+		const series: Record<string, unknown>[] = [{}];
+		for (const s of spec.series) {
+			const o: Record<string, unknown> = { label: s.label, stroke: s.stroke, width: s.width ?? 1.5 };
+			if (s.fill) o.fill = s.fill;
+			if (s.dash) o.dash = s.dash;
+			const path = pathFor(s);
+			if (path) {
+				o.paths = path;
+				o.points = { show: false };
+			}
+			series.push(o);
+		}
+		const width = () => Math.max(280, panel.clientWidth - 4);
+		const axis = { stroke: AXIS, grid: { stroke: GRID }, ticks: { stroke: AXIS } };
+		const opts = {
+			width: width(),
+			height: 300,
+			scales: { x: { time: false } },
+			axes: [
+				{ ...axis, label: spec.xLabel || "" },
+				{ ...axis, label: spec.yLabel || "" },
+			],
+			series,
+			legend: { show: true },
+			cursor: { drag: { x: true, y: true, uni: 12 } },
+		} as unknown as uPlot.Options;
+		const u = new uPlot(opts, spec.data as uPlot.AlignedData, panel);
+		window.addEventListener("resize", () => u.setSize({ width: width(), height: 300 }));
+	}
+
+	function ensurePlot(panel: HTMLElement) {
+		if (mounted.has(panel) || panel.dataset.mode !== "uplot") return;
+		const spec = byKey.get(panel.dataset.panel ?? "")?.spec;
+		if (!spec) return;
+		mounted.add(panel);
+		mountPlot(panel, spec);
+	}
+
+	for (const group of document.querySelectorAll<HTMLElement>("[data-tabs]")) {
+		const tabs = [...group.querySelectorAll<HTMLElement>("[data-tab]")];
+		const panels = [...group.querySelectorAll<HTMLElement>("[data-panel]")];
+		for (const tab of tabs) {
+			tab.addEventListener("click", () => {
+				for (const t of tabs) t.classList.toggle("is-active", t === tab);
+				for (const panel of panels) {
+					const on = panel.dataset.panel === tab.dataset.tab;
+					panel.classList.toggle("is-active", on);
+					if (on) ensurePlot(panel);
+				}
+			});
+		}
+	}
+
+	for (const panel of document.querySelectorAll<HTMLElement>(".plot-panel.is-active")) ensurePlot(panel);
+</script>

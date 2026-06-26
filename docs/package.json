@@ -19,7 +19,8 @@
 	},
 	"dependencies": {
 		"@astrojs/sitemap": "^3.7.2",
-		"astro": "^6.3.1"
+		"astro": "^6.3.1",
+		"uplot": "^1.6.32"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.15",

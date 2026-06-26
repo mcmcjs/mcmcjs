@@ -187,39 +187,56 @@ pre {
 	box-shadow: 0 12px 32px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
-/* Hover/focus prompt nudging visitors to star the repo. */
+/* Hover/focus tooltip nudging visitors to star the repo. */
 .github-cta .star-hint {
 	position: absolute;
-	top: calc(100% + 0.5rem);
+	top: calc(100% + 0.6rem);
 	right: 0;
 	display: inline-flex;
 	align-items: center;
-	gap: 0.32rem;
-	padding: 0.36rem 0.62rem;
+	gap: 0.36rem;
+	padding: 0.42rem 0.66rem;
 	border: 1px solid var(--line);
-	border-radius: 8px;
+	border-radius: 9px;
 	background: var(--surface);
-	box-shadow: var(--shadow);
+	box-shadow: 0 8px 22px rgba(0, 0, 0, 0.16);
 	color: var(--text);
-	font-size: 0.78rem;
+	font-size: 0.76rem;
 	font-weight: 650;
+	line-height: 1;
 	white-space: nowrap;
 	opacity: 0;
-	transform: translateY(-4px);
+	transform: translateY(-6px) scale(0.96);
+	transform-origin: top right;
 	pointer-events: none;
 	transition:
 		opacity 0.16s ease,
 		transform 0.16s ease;
 }
 
+/* Caret connecting the tooltip to the button. */
+.github-cta .star-hint::before {
+	content: "";
+	position: absolute;
+	bottom: 100%;
+	right: 1.15rem;
+	width: 9px;
+	height: 9px;
+	background: var(--surface);
+	border-top: 1px solid var(--line);
+	border-left: 1px solid var(--line);
+	transform: translateY(50%) rotate(45deg);
+}
+
 .github-cta .star-hint-icon {
 	color: var(--logo-purple);
+	font-size: 0.85rem;
 }
 
 .github-cta:hover .star-hint,
 .github-cta:focus-visible .star-hint {
 	opacity: 1;
-	transform: translateY(0);
+	transform: translateY(0) scale(1);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -598,27 +615,74 @@ pre {
 	white-space: pre;
 }
 
-/* Eight-schools example: model + commands beside a rendered web plot. */
-.example-grid {
+/* Eight-schools demo: tabbed source on the left, interactive plots on the right. */
+.demo-split {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 	gap: 1.5rem;
 	align-items: start;
 }
 
-.example-code {
-	display: grid;
-	gap: 1rem;
+.demo-left,
+.demo-right,
+.tabs {
 	min-width: 0;
 }
 
-.example-block {
-	min-width: 0;
+.tablist {
+	display: flex;
+	gap: 0.1rem;
+	border-bottom: 1px solid var(--line);
+	overflow-x: auto;
 }
 
-.example-label {
+.tab {
+	margin-bottom: -1px;
+	padding: 0.5rem 0.8rem;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	background: none;
+	color: var(--muted);
+	font: inherit;
+	font-size: 0.86rem;
+	font-weight: 600;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.tab:hover {
+	color: var(--text);
+}
+
+.tab.is-active {
+	color: var(--accent-strong);
+	border-bottom-color: var(--accent);
+}
+
+.tab:focus-visible {
+	outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+	outline-offset: 2px;
+}
+
+.tabpanel {
+	display: none;
+}
+
+.tabpanel.is-active {
 	display: block;
-	margin-bottom: 0.4rem;
+}
+
+.tabs > .tabpanel {
+	margin-top: 0.9rem;
+}
+
+.run-it {
+	margin-top: 1.4rem;
+}
+
+.run-it-label {
+	display: block;
+	margin-bottom: 0.45rem;
 	color: var(--muted);
 	font-size: 0.72rem;
 	font-weight: 760;
@@ -626,31 +690,49 @@ pre {
 	letter-spacing: 0.08em;
 }
 
-.plot-figure {
+.run-transcript {
 	margin: 0;
-	padding: 1rem 1.15rem 0.9rem;
+	max-height: 19rem;
+	padding: 1rem 1.1rem;
+	overflow: auto;
 	border: 1px solid var(--line);
-	border-radius: 14px;
+	border-radius: 12px;
+	background: var(--code-bg);
+	font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+	font-size: 0.78rem;
+	line-height: 1.6;
+	color: var(--code-text);
+	white-space: pre;
+}
+
+.plot-stage {
+	margin-top: 0.9rem;
+	min-height: 340px;
+	padding: 0.9rem 1rem;
+	border: 1px solid var(--line);
+	border-radius: 12px;
 	background: var(--surface);
 	box-shadow: var(--shadow);
 }
 
-.plot-svg svg {
-	display: block;
+.plot-panel {
+	min-width: 0;
+}
+
+/* The forest plot ships as inline SVG; uPlot kinds mount a canvas. */
+.plot-panel svg {
 	width: 100%;
 	height: auto;
 	color: var(--text);
 }
 
-.plot-figure figcaption {
-	margin-top: 0.7rem;
-	color: var(--muted);
-	font-size: 0.82rem;
-	line-height: 1.55;
+.plot-stage .u-legend {
+	font-size: 0.78rem;
+	color: var(--text);
 }
 
 @media (max-width: 860px) {
-	.example-grid {
+	.demo-split {
 		grid-template-columns: 1fr;
 	}
 }
