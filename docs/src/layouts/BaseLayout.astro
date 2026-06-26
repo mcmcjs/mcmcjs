@@ -4,7 +4,6 @@ import { quickLinks } from "../data/navigation";
 import Logo from "../components/Logo.astro";
 import Search from "../components/Search.astro";
 import GitHubIcon from "../components/icons/GitHubIcon.astro";
-import HeartIcon from "../components/icons/HeartIcon.astro";
 import { withBase } from "../lib/paths";
 
 interface Props {
@@ -95,13 +94,10 @@ const jsonLdItems = [defaultStructuredData, ...extraStructuredData];
 			<nav class="top-nav" aria-label="Main navigation">
 				<a href={withBase('/docs/')}>Docs</a>
 				<a href={withBase('/docs/install/')}>Install</a>
-				<a class="nav-heart" href={githubUrl} target="_blank">
-					<HeartIcon />
-					Support
-				</a>
-				<a class="icon-link" href={githubUrl} aria-label="GitHub repository" target="_blank">
+				<a class="github-cta" href={githubUrl} aria-label="Star MCMC.js on GitHub" target="_blank" rel="noopener">
 					<GitHubIcon />
 					<span>GitHub</span>
+					<span class="star-hint" aria-hidden="true"><span class="star-hint-icon">&#9733;</span> Star the repo</span>
 				</a>
 			</nav>
 			<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle dark mode">
@@ -137,10 +133,6 @@ const jsonLdItems = [defaultStructuredData, ...extraStructuredData];
 						<GitHubIcon />
 						GitHub
 					</a>
-					<a class="nav-heart" href={githubUrl} target="_blank">
-						<HeartIcon />
-						Support
-					</a>
 				</div>
 			</div>
 		</header>
@@ -160,11 +152,7 @@ const jsonLdItems = [defaultStructuredData, ...extraStructuredData];
 					{quickLinks.slice(0, 4).map((link) => <a href={withBase(link.href)}>{link.title}</a>)}
 				</nav>
 				<div class="footer-actions">
-					<a class="nav-heart" href={githubUrl} target="_blank">
-						<HeartIcon />
-						Support
-					</a>
-					<a class="icon-link" href={githubUrl} target="_blank">
+					<a class="icon-link" href={githubUrl} target="_blank" rel="noopener">
 						<GitHubIcon />
 						GitHub
 					</a>
@@ -197,6 +185,9 @@ const jsonLdItems = [defaultStructuredData, ...extraStructuredData];
 				const blocks = document.querySelectorAll('main pre');
 				for (const pre of blocks) {
 					if (pre.parentElement?.classList.contains('code-frame')) {
+						continue;
+					}
+					if (pre.closest('.hero-demo')) {
 						continue;
 					}
 

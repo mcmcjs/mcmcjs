@@ -13,8 +13,9 @@
 	--header-bg: rgba(251, 251, 250, 0.85);
 	--code-bg: #f6f6f5;
 	--code-text: #1a1a1a;
-	--logo-accent: #1a1a1a;
-	--logo-warn: #6b6b6b;
+	/* The logo is the single spot of brand color on the paper page. */
+	--logo-navy: #1e2749;
+	--logo-purple: #5b3fd6;
 	--shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.05);
 	font-family:
 		Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
@@ -36,8 +37,8 @@
 	--header-bg: rgba(18, 18, 18, 0.85);
 	--code-bg: #0d0d0d;
 	--code-text: #ededed;
-	--logo-accent: #ededed;
-	--logo-warn: #a0a0a0;
+	--logo-navy: #c7cddb;
+	--logo-purple: #9d87f0;
 	--shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
@@ -159,9 +160,10 @@ pre {
 	color: var(--text);
 }
 
-.nav-heart {
+.github-cta {
+	position: relative;
 	min-height: 2.2rem;
-	padding: 0 0.72rem;
+	padding: 0 0.78rem;
 	border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
 	border-radius: 999px;
 	background:
@@ -174,10 +176,57 @@ pre {
 	color: var(--accent-strong);
 	font-weight: 760;
 	box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 14%, transparent);
+	transition:
+		transform 0.15s ease,
+		box-shadow 0.2s ease;
 }
 
-.nav-heart:hover {
+.github-cta:hover,
+.github-cta:focus-visible {
 	transform: translateY(-1px);
+	box-shadow: 0 12px 32px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* Hover/focus prompt nudging visitors to star the repo. */
+.github-cta .star-hint {
+	position: absolute;
+	top: calc(100% + 0.5rem);
+	right: 0;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.32rem;
+	padding: 0.36rem 0.62rem;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--surface);
+	box-shadow: var(--shadow);
+	color: var(--text);
+	font-size: 0.78rem;
+	font-weight: 650;
+	white-space: nowrap;
+	opacity: 0;
+	transform: translateY(-4px);
+	pointer-events: none;
+	transition:
+		opacity 0.16s ease,
+		transform 0.16s ease;
+}
+
+.github-cta .star-hint-icon {
+	color: var(--logo-purple);
+}
+
+.github-cta:hover .star-hint,
+.github-cta:focus-visible .star-hint {
+	opacity: 1;
+	transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.github-cta,
+	.github-cta .star-hint {
+		transition: none;
+	}
 }
 
 .site-search {
@@ -392,12 +441,6 @@ pre {
 	color: var(--text);
 }
 
-.mobile-menu .nav-heart {
-	justify-content: center;
-	margin-top: 0.25rem;
-	color: var(--accent-strong);
-}
-
 .mobile-backdrop {
 	position: fixed;
 	inset: 0;
@@ -546,27 +589,70 @@ pre {
 	overflow-x: auto;
 }
 
-.hero-terminal-body .t-line {
-	display: block;
+.hero-transcript {
+	margin: 0;
+	font-family: inherit;
+	font-size: 0.82rem;
+	line-height: 1.65;
+	color: var(--code-text);
 	white-space: pre;
 }
 
-.hero-terminal-body .t-prompt {
+/* Eight-schools example: model + commands beside a rendered web plot. */
+.example-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 1.5rem;
+	align-items: start;
+}
+
+.example-code {
+	display: grid;
+	gap: 1rem;
+	min-width: 0;
+}
+
+.example-block {
+	min-width: 0;
+}
+
+.example-label {
+	display: block;
+	margin-bottom: 0.4rem;
 	color: var(--muted);
-	font-weight: 700;
+	font-size: 0.72rem;
+	font-weight: 760;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
 }
 
-.hero-terminal-body .t-cmd {
-	color: var(--code-text);
+.plot-figure {
+	margin: 0;
+	padding: 1rem 1.15rem 0.9rem;
+	border: 1px solid var(--line);
+	border-radius: 14px;
+	background: var(--surface);
+	box-shadow: var(--shadow);
 }
 
-.hero-terminal-body .t-out {
-	color: var(--muted);
-}
-
-.hero-terminal-body .t-ok {
+.plot-svg svg {
+	display: block;
+	width: 100%;
+	height: auto;
 	color: var(--text);
-	font-weight: 700;
+}
+
+.plot-figure figcaption {
+	margin-top: 0.7rem;
+	color: var(--muted);
+	font-size: 0.82rem;
+	line-height: 1.55;
+}
+
+@media (max-width: 860px) {
+	.example-grid {
+		grid-template-columns: 1fr;
+	}
 }
 
 .button {
@@ -809,16 +895,53 @@ pre {
 	color: var(--accent-strong);
 }
 
-.docs-sidebar section + section {
-	margin-top: 1.2rem;
+.docs-sidebar .docs-group {
+	margin-top: 0.35rem;
 }
 
-.docs-sidebar h2 {
-	margin: 0 0 0.45rem;
+.docs-sidebar .docs-group > summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin: 0 0 0.3rem;
+	padding: 0.35rem 0.1rem;
 	color: var(--muted);
 	font-size: 0.76rem;
+	font-weight: 760;
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
+	cursor: pointer;
+	list-style: none;
+	user-select: none;
+}
+
+.docs-sidebar .docs-group > summary::-webkit-details-marker {
+	display: none;
+}
+
+.docs-sidebar .docs-group > summary::after {
+	content: "";
+	width: 0.42rem;
+	height: 0.42rem;
+	margin-left: 0.5rem;
+	border-right: 1.5px solid currentColor;
+	border-bottom: 1.5px solid currentColor;
+	transform: rotate(-45deg);
+	transition: transform 0.18s ease;
+}
+
+.docs-sidebar .docs-group[open] > summary::after {
+	transform: rotate(45deg);
+}
+
+.docs-sidebar .docs-group > summary:hover {
+	color: var(--accent-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.docs-sidebar .docs-group > summary::after {
+		transition: none;
+	}
 }
 
 .docs-sidebar ul {

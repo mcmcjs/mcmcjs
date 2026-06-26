@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { withBase } from "../lib/paths";
+import densitySvg from "../plots/eight-schools-density.svg?raw";
 
 const siteOrigin = Astro.site ?? Astro.url;
 const appUrl = new URL(withBase("/"), siteOrigin).href;
@@ -64,6 +65,39 @@ const structuredData = [
 		],
 	},
 ];
+
+const eightSchoolsModel = `using Turing
+
+@model function eight_schools(y, sigma)
+    mu ~ Normal(0, 5)
+    tau ~ truncated(Cauchy(0, 5); lower = 0)
+    theta ~ filldist(Normal(mu, tau), length(y))
+    y .~ Normal.(theta, sigma)
+end
+
+build_model(data) = eight_schools(data.y, data.sigma)`;
+
+const eightSchoolsCommands = `mcmc run eight_schools.jl --data schools.json
+mcmc plot --kind density --var mu --format svg -o mu.svg`;
+
+// Real terminal output of `mcmc run` on the scaffolded demo model.
+const runTranscript = `$ mcmc run demo/model.jl
+using data from demo/data.csv (pass --data to override)
+Fitting model.jl with Turing.jl (NUTS, 4 chains x 1000 draws + 1000 warmup) on Julia 1.12.6...
+sampling chain 1 of 4: 100%
+sampling chain 2 of 4: 100%
+sampling chain 3 of 4: 100%
+sampling chain 4 of 4: 100%
+ok: run 20260626-060443-61ae20 (22.5 s, Julia 1.12.6) saved to demo/.mcmc
+
+variable  mean   std    r_hat  ess_bulk  ess_tail  mcse   hdi
+--------  -----  -----  -----  --------  --------  -----  --------------
+alpha     2.047  0.251  1.002  1414      1376      0.007  [1.580, 2.498]
+beta      2.991  0.041  1.003  1420      1320      0.001  [2.917, 3.068]
+sigma     0.346  0.111  1.002  1385      1499      0.003  [0.189, 0.547]
+
+divergences: 0
+converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
 ---
 
 <BaseLayout
@@ -84,11 +118,8 @@ const structuredData = [
 				</span>
 				<span class="chrome-title">mcmc — zsh</span>
 			</div>
-			<div class="hero-terminal-body" aria-label="Example mcmc session">
-				<span class="t-line"><span class="t-prompt">$</span><span class="t-cmd"> mcmc setup</span></span>
-				<span class="t-line"><span class="t-prompt">$</span><span class="t-cmd"> mcmc init demo</span></span>
-				<span class="t-line"><span class="t-prompt">$</span><span class="t-cmd"> mcmc run demo/model.jl</span></span>
-				<span class="t-line"><span class="t-out">-> fit + diagnose; verdict: </span><span class="t-ok">converged (R-hat &lt; 1.01)</span></span>
+			<div class="hero-terminal-body" aria-label="Example mcmc run session">
+				<pre class="hero-transcript">{runTranscript}</pre>
 			</div>
 		</div>
 		<p class="hero-copy">
@@ -96,6 +127,32 @@ const structuredData = [
 			model, and run post-inference diagnostics. Stages compose through one declarative
 			spec file in and one samples file out, so each step stays small and predictable.
 		</p>
+	</section>
+
+	<section class="section example">
+		<div class="section-header">
+			<h2>Eight schools, in two commands.</h2>
+			<p>
+				The classic hierarchical model. Write it in Turing, then read the pooled
+				effects as a forest plot right in your terminal.
+			</p>
+		</div>
+		<div class="example-grid">
+			<div class="example-code">
+				<div class="example-block">
+					<span class="example-label">eight_schools.jl</span>
+					<pre><code>{eightSchoolsModel}</code></pre>
+				</div>
+				<div class="example-block">
+					<span class="example-label">run it</span>
+					<pre><code>{eightSchoolsCommands}</code></pre>
+				</div>
+			</div>
+			<figure class="plot-figure">
+				<div class="plot-svg" set:html={densitySvg}></div>
+				<figcaption>The posterior of <code>mu</code>, one curve per chain. The same plot renders to the terminal, to SVG, or to a self-contained interactive HTML page.</figcaption>
+			</figure>
+		</div>
 	</section>
 
 	<section class="section">

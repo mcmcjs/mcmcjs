@@ -50,8 +50,8 @@ const isCurrent = (href: string) => {
 			<a class="docs-home" href={withBase('/docs/')}>Documentation</a>
 			{
 				navGroups.map((group) => (
-					<section>
-						<h2>{group.title}</h2>
+					<details class="docs-group" open={group.items.some((item) => isCurrent(item.href))}>
+						<summary>{group.title}</summary>
 						<ul>
 							{group.items.map((item) => (
 								<li>
@@ -61,7 +61,7 @@ const isCurrent = (href: string) => {
 								</li>
 							))}
 						</ul>
-					</section>
+					</details>
 				))
 			}
 		</aside>

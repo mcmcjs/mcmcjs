@@ -6,16 +6,26 @@ interface Props {
 const className = Astro.props.class ?? "logo-mark";
 ---
 
-<svg class={className} viewBox="0 0 128 128" role="img" aria-label="MCMC.js">
-	<rect x="14" y="14" width="100" height="100" rx="22" fill="none" stroke="currentColor" stroke-width="9" />
-	<path
-		d="M36 86V46l14 26 14-26v40"
+<svg class={className} viewBox="0 0 100 100" role="img" aria-label="MCMC.js">
+	<polyline
+		points="14,82 38,60 50,28 62,60 86,82"
 		fill="none"
-		stroke="currentColor"
-		stroke-width="9"
-		stroke-linecap="round"
+		stroke="var(--logo-navy)"
+		stroke-width="3.6"
 		stroke-linejoin="round"
+		stroke-linecap="round"
 	/>
-	<circle cx="90" cy="50" r="6.5" fill="var(--logo-warn)" />
-	<circle cx="90" cy="86" r="6.5" fill="var(--logo-accent)" />
+	<polyline
+		points="38,60 50,28 62,60"
+		fill="none"
+		stroke="var(--logo-purple)"
+		stroke-width="3.6"
+		stroke-linejoin="round"
+		stroke-linecap="round"
+	/>
+	<circle cx="14" cy="82" r="6" fill="var(--logo-navy)" />
+	<circle cx="38" cy="60" r="6" fill="var(--logo-navy)" />
+	<circle cx="50" cy="28" r="7" fill="var(--logo-purple)" />
+	<circle cx="62" cy="60" r="6" fill="var(--logo-purple)" />
+	<circle cx="86" cy="82" r="6" fill="var(--logo-navy)" />
 </svg>
