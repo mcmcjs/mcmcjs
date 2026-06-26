@@ -1,0 +1,106 @@
+---
+import BaseLayout from "./BaseLayout.astro";
+import TableOfContents from "../components/TableOfContents.astro";
+import { navGroups } from "../data/navigation";
+import { withBase } from "../lib/paths";
+
+const { frontmatter, headings } = Astro.props;
+const title = frontmatter.title ?? "Docs";
+const description = frontmatter.description ?? "MCMC.js documentation.";
+const basePath =
+	import.meta.env.BASE_URL === "/"
+		? ""
+		: import.meta.env.BASE_URL.replace(/\/$/, "");
+const currentPath =
+	Astro.url.pathname.replace(basePath, "").replace(/\/$/, "") || "/";
+const docsRootUrl = new URL(withBase("/docs/"), Astro.site ?? Astro.url).href;
+const breadcrumbItems = [
+	{
+		"@type": "ListItem",
+		position: 1,
+		name: "Documentation",
+		item: docsRootUrl,
+	},
+];
+
+if (currentPath !== "/docs") {
+	breadcrumbItems.push({
+		"@type": "ListItem",
+		position: 2,
+		name: title,
+		item: new URL(Astro.url.pathname, Astro.site ?? Astro.url).href,
+	});
+}
+
+const structuredData = {
+	"@context": "https://schema.org",
+	"@type": "BreadcrumbList",
+	itemListElement: breadcrumbItems,
+};
+
+const isCurrent = (href: string) => {
+	const normalized = href.replace(/\/$/, "") || "/";
+	return normalized === currentPath;
+};
+---
+
+<BaseLayout title={title} description={description} bodyClass="docs-page" structuredData={structuredData}>
+	<div class="docs-shell">
+		<aside class="docs-sidebar" aria-label="Documentation navigation" data-pagefind-ignore>
+			<a class="docs-home" href={withBase('/docs/')}>Documentation</a>
+			{
+				navGroups.map((group) => (
+					<section>
+						<h2>{group.title}</h2>
+						<ul>
+							{group.items.map((item) => (
+								<li>
+									<a class:list={{ active: isCurrent(item.href) }} href={withBase(item.href)}>
+										{item.title}
+									</a>
+								</li>
+							))}
+						</ul>
+					</section>
+				))
+			}
+		</aside>
+		<div class="docs-mobile-panels" data-pagefind-ignore>
+			<details class="docs-panel">
+				<summary>Documentation</summary>
+				<nav aria-label="Documentation navigation">
+					{
+						navGroups.map((group) => (
+							<section>
+								<h2>{group.title}</h2>
+								<ul>
+									{group.items.map((item) => (
+										<li>
+											<a class:list={{ active: isCurrent(item.href) }} href={withBase(item.href)}>
+												{item.title}
+											</a>
+										</li>
+									))}
+								</ul>
+							</section>
+						))
+					}
+				</nav>
+			</details>
+			<details class="docs-panel">
+				<summary>On this page</summary>
+				<TableOfContents headings={headings} />
+			</details>
+		</div>
+		<article class="docs-content" data-pagefind-body>
+			<header class="docs-title">
+				<h1>{title}</h1>
+				{description && <span>{description}</span>}
+			</header>
+			<div class="prose">
+				<slot />
+			</div>
+		</article>
+		<TableOfContents headings={headings} />
+	</div>
+</BaseLayout>

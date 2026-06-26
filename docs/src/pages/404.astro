@@ -1,0 +1,190 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { withBase } from "../lib/paths";
+---
+
+<BaseLayout title="404" description="Page not found." noindex={true}>
+	<div class="not-found">
+		<div class="not-found-inner">
+			<p class="not-found-eyebrow">error</p>
+			<h1 class="not-found-code">404</h1>
+			<p class="not-found-msg">This page does not exist.</p>
+
+			<div class="not-found-terminal" aria-label="Terminal error output">
+				<div class="not-found-terminal-bar">
+					<span class="dot dot-1"></span>
+					<span class="dot dot-2"></span>
+					<span class="dot dot-3"></span>
+				</div>
+				<div class="not-found-terminal-body">
+					<span class="t-prompt">$</span>
+					<span class="t-cmd"> mcmc open <span class="t-arg" id="path-display">/???</span></span>
+					<br />
+					<span class="t-error">error:</span>
+					<span class="t-txt"> page not found</span>
+					<br />
+					<span class="t-error">fatal:</span>
+					<span class="t-txt"> not a valid path</span>
+					<br />
+					<span class="t-prompt">$</span>
+					<span class="t-cursor" aria-hidden="true"></span>
+				</div>
+			</div>
+
+			<div class="not-found-actions">
+				<a href={withBase('/docs/')} class="btn btn-primary">back to docs</a>
+				<a href={withBase('/')} class="btn btn-ghost">go home</a>
+			</div>
+		</div>
+	</div>
+</BaseLayout>
+
+<script>
+	const el = document.getElementById('path-display');
+	if (el) el.textContent = window.location.pathname;
+</script>
+
+<style>
+	.not-found {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-height: calc(100dvh - 4.5rem);
+		padding: 4rem 1.25rem;
+	}
+
+	.not-found-inner {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		text-align: center;
+		max-width: 680px;
+		width: 100%;
+	}
+
+	.not-found-eyebrow {
+		margin: 0 0 0.5rem;
+		color: var(--muted);
+		font-size: 0.75rem;
+		font-weight: 750;
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		font-family: ui-monospace, monospace;
+	}
+
+	.not-found-code {
+		margin: 0 0 0.6rem;
+		font-size: clamp(6rem, 20vw, 10rem);
+		font-weight: 800;
+		letter-spacing: -0.04em;
+		line-height: 1;
+		color: var(--text);
+	}
+
+	.not-found-msg {
+		margin: 0 0 2.5rem;
+		color: var(--muted);
+		font-size: 1.15rem;
+		line-height: 1.6;
+	}
+
+	.not-found-terminal {
+		width: 100%;
+		border-radius: 10px;
+		overflow: hidden;
+		background: var(--code-bg);
+		border: 1px solid var(--line);
+		margin-bottom: 2.5rem;
+		text-align: left;
+		box-shadow: var(--shadow);
+	}
+
+	.not-found-terminal-bar {
+		display: flex;
+		align-items: center;
+		gap: 0.42rem;
+		padding: 0.65rem 1rem;
+		background: var(--surface-muted);
+		border-bottom: 1px solid var(--line);
+	}
+
+	.dot {
+		width: 11px;
+		height: 11px;
+		border-radius: 50%;
+	}
+
+	.dot-1 { background: #c8c8c6; }
+	.dot-2 { background: #b0b0ae; }
+	.dot-3 { background: #989896; }
+
+	:root[data-theme='dark'] .dot-1 { background: #4a4a4a; }
+	:root[data-theme='dark'] .dot-2 { background: #5a5a5a; }
+	:root[data-theme='dark'] .dot-3 { background: #6a6a6a; }
+
+	.not-found-terminal-body {
+		padding: 1.1rem 1.25rem 1.25rem;
+		font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+		font-size: 0.85rem;
+		line-height: 1.85;
+		color: var(--code-text);
+	}
+
+	.t-prompt { color: var(--muted); font-weight: 700; }
+	.t-cmd { color: var(--code-text); }
+	.t-arg { color: var(--muted); }
+	.t-error { color: var(--text); font-weight: 600; }
+	.t-txt { color: var(--muted); }
+
+	.t-cursor {
+		display: inline-block;
+		width: 8px;
+		height: 1em;
+		background: var(--muted);
+		vertical-align: text-bottom;
+		animation: blink 1.1s step-end infinite;
+		margin-left: 2px;
+	}
+
+	@keyframes blink {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0; }
+	}
+
+	.not-found-actions {
+		display: flex;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+		justify-content: center;
+	}
+
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.6rem 1.4rem;
+		border-radius: 8px;
+		font-size: 0.9rem;
+		font-weight: 600;
+		text-decoration: none;
+		transition: opacity 0.15s;
+	}
+
+	.btn:hover { opacity: 0.82; }
+
+	.btn-primary {
+		background: var(--accent);
+		color: var(--bg);
+	}
+
+	.btn-ghost {
+		background: transparent;
+		color: var(--muted);
+		border: 1px solid var(--line);
+	}
+
+	.btn-ghost:hover {
+		color: var(--text);
+		opacity: 1;
+		border-color: var(--muted);
+	}
+</style>

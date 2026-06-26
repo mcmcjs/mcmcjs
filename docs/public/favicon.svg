@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="MCMC.js">
+	<style>
+		.stroke { stroke: #1a1a1a; }
+		.warn { fill: #6b6b6b; }
+		.accent { fill: #1a1a1a; }
+		@media (prefers-color-scheme: dark) {
+			.stroke { stroke: #ededed; }
+			.warn { fill: #a0a0a0; }
+			.accent { fill: #ededed; }
+		}
+	</style>
+	<rect class="stroke" x="14" y="14" width="100" height="100" rx="22" fill="none" stroke-width="9" />
+	<path class="stroke" d="M36 86V46l14 26 14-26v40" fill="none" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" />
+	<circle class="warn" cx="90" cy="50" r="6.5" />
+	<circle class="accent" cx="90" cy="86" r="6.5" />
+</svg>

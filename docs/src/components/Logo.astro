@@ -1,0 +1,21 @@
+---
+interface Props {
+	class?: string;
+}
+
+const className = Astro.props.class ?? "logo-mark";
+---
+
+<svg class={className} viewBox="0 0 128 128" role="img" aria-label="MCMC.js">
+	<rect x="14" y="14" width="100" height="100" rx="22" fill="none" stroke="currentColor" stroke-width="9" />
+	<path
+		d="M36 86V46l14 26 14-26v40"
+		fill="none"
+		stroke="currentColor"
+		stroke-width="9"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+	/>
+	<circle cx="90" cy="50" r="6.5" fill="var(--logo-warn)" />
+	<circle cx="90" cy="86" r="6.5" fill="var(--logo-accent)" />
+</svg>

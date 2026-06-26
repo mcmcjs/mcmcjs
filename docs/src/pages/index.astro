@@ -1,0 +1,181 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { withBase } from "../lib/paths";
+
+const siteOrigin = Astro.site ?? Astro.url;
+const appUrl = new URL(withBase("/"), siteOrigin).href;
+const installUrl = new URL(withBase("/docs/install/"), siteOrigin).href;
+const diagnoseUrl = new URL(withBase("/docs/guides/diagnose/"), siteOrigin)
+	.href;
+
+const structuredData = [
+	{
+		"@context": "https://schema.org",
+		"@type": "SoftwareApplication",
+		name: "MCMC.js",
+		applicationCategory: "DeveloperApplication",
+		operatingSystem: "Linux, macOS, Windows",
+		description:
+			"Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics across probabilistic programming languages.",
+		url: appUrl,
+		downloadUrl: "https://github.com/mcmcjs/mcmcjs/releases",
+		author: {
+			"@type": "Person",
+			name: "Shravan Goswami",
+			url: "https://shravangoswami.com",
+		},
+	},
+	{
+		"@context": "https://schema.org",
+		"@type": "FAQPage",
+		mainEntity: [
+			{
+				"@type": "Question",
+				name: "What is MCMC.js?",
+				acceptedAnswer: {
+					"@type": "Answer",
+					text: "MCMC.js is a set of command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics across probabilistic programming languages.",
+				},
+			},
+			{
+				"@type": "Question",
+				name: "How do I install MCMC.js?",
+				acceptedAnswer: {
+					"@type": "Answer",
+					text: `Install the mcmc CLI globally with npm, then run mcmc setup. See ${installUrl}.`,
+				},
+			},
+			{
+				"@type": "Question",
+				name: "Does it run the inference itself?",
+				acceptedAnswer: {
+					"@type": "Answer",
+					text: "The CLI is a thin orchestrator. Inference steps run a Julia subprocess, while diagnostics and the rest of the workflow are pure TypeScript.",
+				},
+			},
+			{
+				"@type": "Question",
+				name: "How do I check convergence?",
+				acceptedAnswer: {
+					"@type": "Answer",
+					text: `Run mcmc diagnose to compute R-hat, ESS, MCSE, and HDI over your samples. See ${diagnoseUrl}.`,
+				},
+			},
+		],
+	},
+];
+---
+
+<BaseLayout
+	title="MCMC.js"
+	description="Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics."
+	structuredData={structuredData}
+>
+	<section class="hero">
+		<h1>Bayesian inference, from one command line.</h1>
+		<div class="actions">
+			<a class="button" href={withBase('/docs/install/')}>Install MCMC.js</a>
+			<a class="button secondary" href={withBase('/docs/')}>Read the docs</a>
+		</div>
+		<div class="hero-demo">
+			<div class="terminal-chrome">
+				<span class="chrome-dots">
+					<span></span><span></span><span></span>
+				</span>
+				<span class="chrome-title">mcmc — zsh</span>
+			</div>
+			<div class="hero-terminal-body" aria-label="Example mcmc session">
+				<span class="t-line"><span class="t-prompt">$</span><span class="t-cmd"> mcmc setup</span></span>
+				<span class="t-line"><span class="t-prompt">$</span><span class="t-cmd"> mcmc init demo</span></span>
+				<span class="t-line"><span class="t-prompt">$</span><span class="t-cmd"> mcmc run demo/model.jl</span></span>
+				<span class="t-line"><span class="t-out">-> fit + diagnose; verdict: </span><span class="t-ok">converged (R-hat &lt; 1.01)</span></span>
+			</div>
+		</div>
+		<p class="hero-copy">
+			<code>mcmc</code> drives Bayesian modelling end to end: provision a runtime, fit a
+			model, and run post-inference diagnostics. Stages compose through one declarative
+			spec file in and one samples file out, so each step stays small and predictable.
+		</p>
+	</section>
+
+	<section class="section">
+		<div class="section-header">
+			<h2>A thin, composable workflow.</h2>
+			<p>
+				<code>mcmc</code> orchestrates probabilistic programming languages without
+				becoming a framework. One spec in, one samples file out.
+			</p>
+		</div>
+		<div class="feature-grid">
+			<div class="feature">
+				<h3>Fit anywhere</h3>
+				<p>Run inference through a managed Julia runtime, with the CLI as a thin TypeScript orchestrator.</p>
+			</div>
+			<div class="feature">
+				<h3>Diagnostics built in</h3>
+				<p>Compute R-hat, ESS, MCSE, and HDI over your samples to judge convergence with confidence.</p>
+			</div>
+			<div class="feature">
+				<h3>Reproducible runs</h3>
+				<p>A declarative spec file in and a samples file out keep every run inspectable and repeatable.</p>
+			</div>
+		</div>
+	</section>
+
+	<section class="section">
+		<div class="section-header">
+			<h2>Start in one line.</h2>
+			<p>Install the CLI from npm, then provision the runtime with <code>mcmc setup</code>.</p>
+		</div>
+		<div class="install-strip">
+			<div>
+				<strong>npm global install</strong>
+				<span>Installs the <code>mcmc</code> binary. Run <code>mcmc setup</code> once to provision Julia via juliaup.</span>
+			</div>
+			<pre><code>npm i -g mcmcjs</code></pre>
+			<a class="button secondary" href={withBase('/docs/quickstart/')}>Quickstart</a>
+		</div>
+	</section>
+
+	<section class="section">
+		<div class="section-header">
+			<h2>Documentation.</h2>
+			<p>Focused pages for installation, running inference, diagnostics, the CLI reference, and internals.</p>
+		</div>
+		<div class="docs-grid">
+			<a class="doc-link" href={withBase('/docs/install/')}>
+				<h3>Installation</h3>
+				<p>Install the CLI and provision the Julia runtime with a single setup command.</p>
+			</a>
+			<a class="doc-link" href={withBase('/docs/guides/run/')}>
+				<h3>Run inference</h3>
+				<p>Fit a model from a spec file and produce a samples file you can diagnose and plot.</p>
+			</a>
+			<a class="doc-link" href={withBase('/docs/guides/diagnose/')}>
+				<h3>Diagnose convergence</h3>
+				<p>Read R-hat, ESS, MCSE, and HDI to judge whether your chains have converged.</p>
+			</a>
+		</div>
+	</section>
+
+	<section class="section">
+		<div class="section-header">
+			<h2>FAQ</h2>
+			<p>Quick answers for search engines and humans.</p>
+		</div>
+		<div class="feature-grid">
+			<div class="feature">
+				<h3>What is MCMC.js?</h3>
+				<p>Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics across PPLs.</p>
+			</div>
+			<div class="feature">
+				<h3>Does it run the inference?</h3>
+				<p>The CLI is a thin orchestrator. Inference runs in a Julia subprocess; diagnostics are pure TypeScript.</p>
+			</div>
+			<div class="feature">
+				<h3>How do I check convergence?</h3>
+				<p>Run <code>mcmc diagnose</code> to compute R-hat, ESS, MCSE, and HDI over your samples.</p>
+			</div>
+		</div>
+	</section>
+</BaseLayout>

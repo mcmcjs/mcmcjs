@@ -1,0 +1,106 @@
+---
+---
+
+<div class="site-search" data-pagefind-ignore>
+	<button class="search-trigger" type="button" data-search-open aria-haspopup="dialog">
+		<svg aria-hidden="true" viewBox="0 0 24 24">
+			<path
+				d="m20 20-4.35-4.35m2.35-5.15a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"
+				fill="none"
+				stroke="currentColor"
+				stroke-linecap="round"
+				stroke-width="2"
+			/>
+		</svg>
+		<span>Search docs</span>
+	</button>
+</div>
+<dialog class="search-modal" data-search-modal aria-label="Search documentation" data-pagefind-ignore>
+	<div class="search-panel">
+		<div id="mcmcjs-search"></div>
+	</div>
+</dialog>
+
+<style>
+	#mcmcjs-search {
+		--pagefind-ui-primary: var(--accent);
+		--pagefind-ui-text: var(--text);
+		--pagefind-ui-background: var(--surface-muted);
+		--pagefind-ui-border: var(--line);
+		--pagefind-ui-border-width: 1px;
+		--pagefind-ui-border-radius: 8px;
+		--pagefind-ui-font: inherit;
+	}
+
+	#mcmcjs-search :global(.pagefind-ui__results) {
+		max-height: 60vh;
+		overflow-y: auto;
+	}
+</style>
+
+<script>
+	const openButton = document.querySelector('[data-search-open]');
+	const modal = document.querySelector('[data-search-modal]') as HTMLDialogElement | null;
+
+	const base = import.meta.env.BASE_URL || '/';
+	const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base;
+
+	let initialized = false;
+
+	const initPagefindUI = () =>
+		new Promise<void>((resolve) => {
+			if (initialized) { resolve(); return; }
+			if (import.meta.env.DEV) { resolve(); return; }
+
+			const link = document.createElement('link');
+			link.rel = 'stylesheet';
+			link.href = `${normalizedBase}/pagefind/pagefind-ui.css`;
+			document.head.appendChild(link);
+
+			const script = document.createElement('script');
+			script.src = `${normalizedBase}/pagefind/pagefind-ui.js`;
+			script.onload = () => {
+				new (window as unknown as { PagefindUI: new (opts: Record<string, unknown>) => unknown }).PagefindUI({
+					element: '#mcmcjs-search',
+					baseUrl: base,
+					showImages: false,
+					showSubResults: true,
+					placeholder: 'Search docs…',
+					excerptLength: 15,
+				});
+				initialized = true;
+				resolve();
+			};
+			script.onerror = () => resolve();
+			document.head.appendChild(script);
+		});
+
+	const openSearch = async () => {
+		if (!modal) return;
+		await initPagefindUI();
+		modal.showModal();
+		requestAnimationFrame(() => {
+			modal.querySelector<HTMLInputElement>('.pagefind-ui__search-input')?.focus();
+		});
+	};
+
+	const closeSearch = () => {
+		if (modal?.open) modal.close();
+		if (openButton instanceof HTMLElement) openButton.focus();
+	};
+
+	openButton?.addEventListener('click', openSearch);
+	document.addEventListener('mcmcjs:open-search', openSearch);
+	modal?.addEventListener('click', (event) => {
+		if (event.target === modal) closeSearch();
+	});
+	document.addEventListener('keydown', (event) => {
+		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+			event.preventDefault();
+			openSearch();
+		}
+		if (event.key === 'Escape' && modal?.open) {
+			closeSearch();
+		}
+	});
+</script>
