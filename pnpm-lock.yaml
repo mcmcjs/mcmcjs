@@ -110,6 +110,22 @@ importers:
         specifier: ^1.6.32
         version: 1.6.32
 
+  packages/plots-gl:
+    dependencies:
+      '@mcmcjs/core':
+        specifier: workspace:*
+        version: link:../core
+      '@mcmcjs/diagnostics':
+        specifier: workspace:*
+        version: link:../diagnostics
+      '@mcmcjs/plots':
+        specifier: workspace:*
+        version: link:../plots
+    devDependencies:
+      regl:
+        specifier: ^2.1.1
+        version: 2.1.1
+
 packages:
 
   '@babel/helper-string-parser@7.29.7':
@@ -1251,6 +1267,9 @@ packages:
   readdirp@4.1.2:
     resolution: {integrity: sha512-GDhwkLfywWL2s6vEjyhri+eXmfH6j1L7JE27WhqLeYzoh/A3DBaYGEj2H/HFZCn/kMfim73FXxEJTw06WtxQwg==}
     engines: {node: '>= 14.18.0'}
+
+  regl@2.1.1:
+    resolution: {integrity: sha512-+IOGrxl3FZ8ZM9ixCWQZzFRiRn7Rzn9bu3iFHwg/yz4tlOUQgbO4PHLgG+1ZT60zcIV8tief6Qrmyl8qcoJP0g==}
 
   resolve-from@5.0.0:
     resolution: {integrity: sha512-qYg9KP24dD5qka9J47d0aVky0N+b4fTU89LN9iDnjB5waksiC49rvMB0PrUJQGoTmH50XPiqOvAjDfaijGxYZw==}
@@ -2487,6 +2506,8 @@ snapshots:
       strip-bom: 3.0.0
 
   readdirp@4.1.2: {}
+
+  regl@2.1.1: {}
 
   resolve-from@5.0.0: {}
 
