@@ -2,11 +2,28 @@ import { Resvg } from "@resvg/resvg-js";
 import satori, { type Font } from "satori";
 
 // Grayscale "MCMC.js" mark for the OG card (paper theme: no green/amber accents).
-const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <rect x="14" y="14" width="100" height="100" rx="22" fill="none" stroke="#1a1a1a" stroke-width="9"/>
-  <path d="M36 86V46l14 26 14-26v40" fill="none" stroke="#1a1a1a" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="90" cy="50" r="6.5" fill="#6b6b6b"/>
-  <circle cx="90" cy="86" r="6.5" fill="#1a1a1a"/>
+const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+	<polyline
+		points="14,82 38,60 50,28 62,60 86,82"
+		fill="none"
+		stroke="#1e2749"
+		stroke-width="3.6"
+		stroke-linejoin="round"
+		stroke-linecap="round"
+	/>
+	<polyline
+		points="38,60 50,28 62,60"
+		fill="none"
+		stroke="#5b3fd6"
+		stroke-width="3.6"
+		stroke-linejoin="round"
+		stroke-linecap="round"
+	/>
+	<circle cx="14" cy="82" r="6" fill="#1e2749" />
+	<circle cx="38" cy="60" r="6" fill="#1e2749" />
+	<circle cx="50" cy="28" r="7" fill="#5b3fd6" />
+	<circle cx="62" cy="60" r="6" fill="#5b3fd6" />
+	<circle cx="86" cy="82" r="6" fill="#1e2749" />
 </svg>`;
 
 const LOGO_DATA_URI = `data:image/svg+xml;base64,${Buffer.from(LOGO_SVG).toString("base64")}`;
