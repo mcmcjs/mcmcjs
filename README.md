@@ -38,7 +38,7 @@ mcmc runs                             # list recorded runs and their verdicts
 mcmc show                             # one run's settings and artifacts
 mcmc diagnose                         # R-hat / ESS / MCSE / HDI + a verdict
 mcmc summary                          # a posterior summary table
-mcmc plot --kind trace --format svg   # 16 plot kinds; terminal, svg, or html
+mcmc plot --kind trace --format svg   # 19 plot kinds; terminal, svg, or html
 mcmc samples --to mcmcchains-json     # export raw draws in a portable format
 
 # Start a project

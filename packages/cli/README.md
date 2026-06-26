@@ -24,7 +24,7 @@ mcmc predict model.toml samples.json  # posterior-predictive draws
 # Inspect runs
 mcmc runs / show / diagnose           # list runs; show one; convergence verdict
 mcmc summary                          # posterior summary table
-mcmc plot --kind trace                # 16 plot kinds; terminal, svg, or html
+mcmc plot --kind trace                # 19 plot kinds; terminal, svg, or html
 mcmc samples                          # export raw draws as portable JSON
 
 # Project + toolchain
