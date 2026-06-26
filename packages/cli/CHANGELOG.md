@@ -1,5 +1,41 @@
 # mcmcjs
 
+## 0.15.0
+
+### Minor Changes
+
+- 14156c3: `mcmc plot --kind` gains `violin`, `chain-intervals`, and `chain-intervals-all`.
+- e14778c: `mcmc plot` gains a `parallel-coords` kind that renders a parallel-coordinates plot over all (or selected) variables in terminal, SVG, and HTML.
+- 196793d: Add a `samples` command to export raw draws in a portable format: chain-major `{ chain_1: { variable: [...] } }` JSON (`--to json`, default) or MCMCChains JSON (`--to mcmcchains-json`), with `--stdin`, `--warmup`, `--store`, and `-o/--out`.
+- c017f6b: `mcmc plot --kind` gains `ecdf`, `cumulative-mean`, and `running-rhat`.
+- 5e84c07: `mcmc plot` gains a `scatter` kind and a `--color-by <var>` option that shades a two-variable scatter by a third variable via viridis (svg/html).
+- 521ee6c: `mcmc plot` gains a `splom` kind that renders a scatter-plot matrix over all (or selected) variables in terminal, SVG, and HTML.
+- 5695135: Add `--stdin` (read samples from standard input) and `--warmup <n>` (discard the first n draws of each chain before computing) to `diagnose` and `plot`.
+- 464d21f: Add a `summary` command: a focused posterior stats table (mean, std, mcse, ess_bulk, ess_tail, r_hat, hdi) with `--json`, `--stdin`, `--warmup`, `--store`, and `--var` filtering.
+- 0af8047: `mcmc plot --kind` gains `summary-table` and `diagnostics-heatmap`.
+
+### Patch Changes
+
+- Updated dependencies [e2a349c]
+- Updated dependencies [e2a349c]
+- Updated dependencies [e2a349c]
+- Updated dependencies [d76de33]
+- Updated dependencies [25f73ff]
+- Updated dependencies [af59faf]
+- Updated dependencies [41b85d6]
+- Updated dependencies [0af8047]
+- Updated dependencies [14156c3]
+- Updated dependencies [e14778c]
+- Updated dependencies [c017f6b]
+- Updated dependencies [5e84c07]
+- Updated dependencies [d62059c]
+- Updated dependencies [521ee6c]
+- Updated dependencies [0af8047]
+  - @mcmcjs/core@0.6.0
+  - @mcmcjs/diagnostics@0.4.0
+  - @mcmcjs/plots@0.3.0
+  - @mcmcjs/julia@0.7.1
+
 ## 0.14.0
 
 ### Minor Changes

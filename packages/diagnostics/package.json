@@ -1,6 +1,6 @@
 {
   "name": "@mcmcjs/diagnostics",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "MCMC convergence diagnostics (R-hat, ESS, MCSE, HDI) for MCMC.js.",
   "keywords": [
     "mcmc",

@@ -1,5 +1,32 @@
 # @mcmcjs/plots
 
+## 0.3.0
+
+### Minor Changes
+
+- 14156c3: Add violin, chain-intervals, and chain-intervals-all plots (terminal, SVG, and HTML). `violinData` reuses the density bandwidth for a peak-normalized KDE band per chain; `chainIntervalsData` and `chainIntervalsAllData` build per-chain and pooled q5/q25/q50/q75/q95 interval rows.
+- e14778c: Add the parallel-coordinates plot: `parallelCoordsData` builds per-variable axis bounds and one capped, subsampled polyline per draw; `renderParallelCoordsSVG` draws the axes and chain-colored polylines and `renderParallelCoordsTerminal` prints a per-variable min/mean/max summary.
+- c017f6b: Add the ecdf, cumulative-mean, and running-rhat plots (terminal, SVG, and interactive HTML). `ecdfData`, `cumulativeMeanData`, and `runningRhatData` build the data; running-rhat reuses the basic split-R-hat from `@mcmcjs/diagnostics` over an increasing prefix of draws.
+- 5e84c07: Pair plots support an optional color-by-variable: `pairData(samples, x, y, { colorVar })` attaches a per-point color channel and `renderPairSVG` shades points through the viridis colormap with a gradient legend (color-by-chain remains the default).
+- d62059c: Add the 3D scatter data builder: `scatter3dData(samples, varX, varY, varZ, opts?)` computes the global bounding box over all chains and subsamples each chain (even-stride, endpoints kept) to a per-chain cap, storing both raw draws (for tooltips) and NDC [-1, 1] draws (for WebGL projection and hit-testing) as plain serializable arrays.
+- 521ee6c: Add the SPLOM (scatter-plot matrix): `splomData` builds an N x N grid with per-variable 1-D KDE diagonals, upper-triangle Pearson/Spearman correlations, and lower-triangle joint draws; `renderSplomSVG` draws the grid (KDE, correlation-tinted cells, chain-colored scatter) and `renderSplomTerminal` prints a compact correlation matrix.
+- 0af8047: Add summary-table and diagnostics-heatmap views (terminal, SVG, and HTML). `summaryTableData` builds a full per-variable diagnostic row (mean, std, MCSE, quantiles, summed IMSE ESS, bulk/tail ESS, R-hat, classic split-R-hat, Geweke z, HDI); `diagnosticsHeatmapData` scores each variable across seven metrics and pre-colors the cells on a green/amber/red ramp.
+
+### Patch Changes
+
+- Updated dependencies [5e84c07]
+- Updated dependencies [e2a349c]
+- Updated dependencies [e2a349c]
+- Updated dependencies [e2a349c]
+- Updated dependencies [d76de33]
+- Updated dependencies [25f73ff]
+- Updated dependencies [af59faf]
+- Updated dependencies [41b85d6]
+- Updated dependencies [0af8047]
+  - @mcmcjs/charts@0.3.0
+  - @mcmcjs/core@0.6.0
+  - @mcmcjs/diagnostics@0.4.0
+
 ## 0.2.0
 
 ### Minor Changes

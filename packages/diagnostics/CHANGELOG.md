@@ -1,5 +1,17 @@
 # @mcmcjs/diagnostics
 
+## 0.4.0
+
+### Minor Changes
+
+- 25f73ff: Add `pearson` and `spearman` correlation: `pearson(xs, ys)` is the product-moment coefficient (0 when fewer than two pairs or the denominator vanishes) and `spearman(xs, ys)` applies it to 1-based ranks (no tie-averaging).
+- af59faf: Add the Geweke (1992) convergence z-diagnostic: `geweke(chain, firstFrac?, lastFrac?)` compares the mean of the first `firstFrac` of a chain to the last `lastFrac`, standardized by a Bartlett-windowed spectral-density-at-0 standard error, returning `{ z, pValue }`.
+- 0af8047: Add classic (non-rank) `splitRhat(chains)` and expose the single-chain IMSE estimator as `essIMSE(chain)`.
+
+### Patch Changes
+
+- 41b85d6: Export `computeSkewness` and `computeExcessKurtosis` from the package index (the estimators already existed internally).
+
 ## 0.3.0
 
 ### Minor Changes

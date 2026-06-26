@@ -1,5 +1,11 @@
 # @mcmcjs/charts
 
+## 0.3.0
+
+### Minor Changes
+
+- 5e84c07: Add a generic viridis colormap helper: `viridisRgb`, `viridisHex`, `viridisCss`, and the `VIRIDIS_STOPS` anchors.
+
 ## 0.2.0
 
 ### Minor Changes
