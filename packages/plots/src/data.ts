@@ -36,6 +36,9 @@ import {
   type ParallelCoordsLine,
   type RankData,
   type RunningRhatData,
+  type Scatter3dBbox,
+  type Scatter3dChain,
+  type Scatter3dData,
   type SplomCell,
   type SplomCorr,
   type SplomData,
@@ -735,4 +738,107 @@ export function parallelCoordsData(
   }
 
   return { kind: "parallel-coords", vars: used, nChains, bounds, lines };
+}
+
+/**
+ * Even-stride decimation of `[0, len)` down to at most `max` indices, keeping the
+ * first and last. Returns all indices when `len <= max`.
+ */
+function subsampleIndices(len: number, max: number): number[] {
+  if (len <= max) return Array.from({ length: len }, (_, i) => i);
+  const step = (len - 1) / (max - 1);
+  return Array.from({ length: max }, (_, i) => Math.round(i * step));
+}
+
+/** NDC normalizer: maps `v` (with low `lo`, span `sp`) into [-1, 1]. */
+function ndc(v: number, lo: number, sp: number): number {
+  return ((v - lo) / sp) * 2 - 1;
+}
+
+/**
+ * 3D scatter data over three variables. Computes the global bounding box over all chains,
+ * then subsamples each chain (even-stride, endpoints kept) to a per-chain cap derived from
+ * `opts.maxPoints` (default 3000) and the chain count, storing both raw draws (for tooltips)
+ * and NDC [-1, 1] draws (for the WebGL renderer's projection and hit-testing).
+ */
+export function scatter3dData(
+  samples: Samples,
+  varX: string,
+  varY: string,
+  varZ: string,
+  opts: { maxPoints?: number } = {},
+): Scatter3dData {
+  const { nChains } = samples;
+  const xViews = Array.from({ length: nChains }, (_, c) => chainView(samples, varX, c));
+  const yViews = Array.from({ length: nChains }, (_, c) => chainView(samples, varY, c));
+  const zViews = Array.from({ length: nChains }, (_, c) => chainView(samples, varZ, c));
+
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
+  for (let c = 0; c < nChains; c++) {
+    const xs = xViews[c] ?? new Float64Array(0);
+    const ys = yViews[c] ?? new Float64Array(0);
+    const zs = zViews[c] ?? new Float64Array(0);
+    const n = Math.min(xs.length, ys.length, zs.length);
+    for (let k = 0; k < n; k++) {
+      const xv = xs[k] as number;
+      const yv = ys[k] as number;
+      const zv = zs[k] as number;
+      if (xv < minX) minX = xv;
+      if (xv > maxX) maxX = xv;
+      if (yv < minY) minY = yv;
+      if (yv > maxY) maxY = yv;
+      if (zv < minZ) minZ = zv;
+      if (zv > maxZ) maxZ = zv;
+    }
+  }
+  if (!Number.isFinite(minX)) {
+    minX = 0;
+    maxX = 1;
+    minY = 0;
+    maxY = 1;
+    minZ = 0;
+    maxZ = 1;
+  }
+
+  const bbox: Scatter3dBbox = { minX, maxX, minY, maxY, minZ, maxZ };
+  const spanX = Math.max(maxX - minX, 1e-9);
+  const spanY = Math.max(maxY - minY, 1e-9);
+  const spanZ = Math.max(maxZ - minZ, 1e-9);
+
+  const maxPoints = opts.maxPoints ?? 3000;
+  const perChainMax = Math.max(50, Math.floor(maxPoints / Math.max(1, nChains)));
+
+  const chains: Scatter3dChain[] = [];
+  for (let c = 0; c < nChains; c++) {
+    const xs = xViews[c] ?? new Float64Array(0);
+    const ys = yViews[c] ?? new Float64Array(0);
+    const zs = zViews[c] ?? new Float64Array(0);
+    const n = Math.min(xs.length, ys.length, zs.length);
+    const idx = subsampleIndices(n, perChainMax);
+    const rawX: number[] = [];
+    const rawY: number[] = [];
+    const rawZ: number[] = [];
+    const normX: number[] = [];
+    const normY: number[] = [];
+    const normZ: number[] = [];
+    for (const i of idx) {
+      const xv = xs[i] ?? 0;
+      const yv = ys[i] ?? 0;
+      const zv = zs[i] ?? 0;
+      rawX.push(xv);
+      rawY.push(yv);
+      rawZ.push(zv);
+      normX.push(ndc(xv, minX, spanX));
+      normY.push(ndc(yv, minY, spanY));
+      normZ.push(ndc(zv, minZ, spanZ));
+    }
+    chains.push({ chain: c, rawX, rawY, rawZ, normX, normY, normZ });
+  }
+
+  return { kind: "scatter3d", varX, varY, varZ, nChains, bbox, chains };
 }

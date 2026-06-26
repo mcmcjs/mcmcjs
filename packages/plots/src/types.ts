@@ -28,7 +28,8 @@ export type PlotKind =
   | "summary-table"
   | "diagnostics-heatmap"
   | "splom"
-  | "parallel-coords";
+  | "parallel-coords"
+  | "scatter3d";
 
 /** Per-variable trace: the raw draw sequence of each chain, plus its key diagnostics. */
 export interface TraceData {
@@ -358,6 +359,46 @@ export interface ParallelCoordsData {
   nChains: number;
   bounds: ParallelCoordsBound[];
   lines: ParallelCoordsLine[];
+}
+
+/** One chain of a 3D scatter: subsampled raw draws (for tooltips) and their NDC twins (for render/hit-test). */
+export interface Scatter3dChain {
+  /** 0-based chain index. */
+  chain: number;
+  /** Raw (data-space) coordinates, kept for tooltip display. */
+  rawX: number[];
+  rawY: number[];
+  rawZ: number[];
+  /** Coordinates normalized to NDC [-1, 1] over the global bbox, for projection and hit-testing. */
+  normX: number[];
+  normY: number[];
+  normZ: number[];
+}
+
+/** Global axis-aligned bounding box of a 3D scatter, over all chains. */
+export interface Scatter3dBbox {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  minZ: number;
+  maxZ: number;
+}
+
+/**
+ * 3D scatter (point cloud) over three variables. Each chain is subsampled and stored
+ * twice: raw draws for tooltips and NDC [-1, 1] draws (normalized over the global `bbox`)
+ * for the WebGL renderer's projection and hit-testing. All arrays are plain `number[]`
+ * so the object stays JSON-serializable; the renderer converts to `Float32Array` at mount.
+ */
+export interface Scatter3dData {
+  kind: "scatter3d";
+  varX: string;
+  varY: string;
+  varZ: string;
+  nChains: number;
+  bbox: Scatter3dBbox;
+  chains: Scatter3dChain[];
 }
 
 /** Options shared by the terminal renderers. */
