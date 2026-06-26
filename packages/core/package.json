@@ -1,6 +1,6 @@
 {
   "name": "@mcmcjs/core",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Core data model and samples-file parsers for MCMC.js.",
   "keywords": [
     "mcmc",

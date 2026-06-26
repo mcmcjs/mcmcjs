@@ -1,5 +1,14 @@
 # @mcmcjs/core
 
+## 0.6.0
+
+### Minor Changes
+
+- e2a349c: ArviZ parser now honors an arbitrary chain/draw dimension order (e.g. transposed `draw,chain`) and skips variables lacking those dims. Add a `fromChainArrays` helper that builds `Samples` from `{ chain: { variable: number[] } }`.
+- e2a349c: Add Stan (CmdStan) CSV ingestion: `fromStanCSV` and `fromStanCSVFiles` parse single or per-chain files, scalarize `a.1.2` to `a[1,2]`, and route the sampler diagnostics into `sampleStats` under canonical keys (energy, diverging, lp, ...).
+- e2a349c: Add Turing.jl CSV ingestion: `parseTuringCsv` (and `parseSamples` auto-detect) reads the wide `iteration,chain`, wide `chain_,draw_`, and headerless long `chain,variable,iteration,value` layouts. Non-numeric cells become NaN in place so the result stays rectangular.
+- d76de33: Add `dropWarmup(samples, n)` to discard the first n draws of every chain (rebuilding the chain-major layout) and `toChainArrays(samples)` to export model variables as a chain-major `{ chain_1: { variable: number[] } }` object (the inverse of `fromChainArrays`).
+
 ## 0.5.0
 
 ### Minor Changes

@@ -1,5 +1,15 @@
 # @mcmcjs/julia
 
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [e2a349c]
+- Updated dependencies [e2a349c]
+- Updated dependencies [e2a349c]
+- Updated dependencies [d76de33]
+  - @mcmcjs/core@0.6.0
+
 ## 0.7.0
 
 ### Minor Changes
