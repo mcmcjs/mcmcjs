@@ -618,7 +618,9 @@ pre {
 
 /* Custom player theme that follows the site's light/dark toggle (GitHub palette,
    so the recording matches the syntax-highlighted code blocks). */
-.asciinema-player-theme-mcmc {
+.asciinema-player-theme-mcmc,
+.asciinema-player-theme-mcmc .ap-player,
+.ap-player.asciinema-player-theme-mcmc {
 	--term-color-foreground: var(--code-text);
 	--term-color-background: var(--code-bg);
 	--term-color-0: #24292e;
@@ -639,7 +641,9 @@ pre {
 	--term-color-15: #d1d5da;
 }
 
-:root[data-theme="dark"] .asciinema-player-theme-mcmc {
+:root[data-theme="dark"] .asciinema-player-theme-mcmc,
+:root[data-theme="dark"] .asciinema-player-theme-mcmc .ap-player,
+:root[data-theme="dark"] .ap-player.asciinema-player-theme-mcmc {
 	--term-color-0: #484f58;
 	--term-color-1: #ff7b72;
 	--term-color-2: #3fb950;
