@@ -591,23 +591,29 @@ pre {
 	pointer-events: none;
 }
 
-.hero-terminal-body {
-	padding: 1.1rem 1.25rem 1.25rem;
-	text-align: left;
-	font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-	font-size: 0.86rem;
-	line-height: 1.85;
-	color: var(--code-text);
-	overflow-x: auto;
+/* asciinema player: an autoplaying mcmc run recording in the hero terminal. */
+.prompt-player {
+	width: 100%;
+	min-width: 0;
+	background: #11151a;
+	color: #e6e6e6;
+	overflow: hidden;
 }
 
-.hero-transcript {
-	margin: 0;
-	font-family: inherit;
-	font-size: 0.82rem;
-	line-height: 1.65;
-	color: var(--code-text);
-	white-space: pre;
+.hero-demo .prompt-player {
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+}
+
+.prompt-player div.ap-wrapper {
+	justify-content: center;
+	width: 100%;
+	min-width: 0;
+}
+
+.prompt-player div.ap-player {
+	max-width: 100%;
 }
 
 /* Eight-schools demo: tabbed source on the left, interactive plots on the right. */
@@ -615,11 +621,23 @@ pre {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 	gap: 1.5rem;
-	align-items: start;
+	align-items: stretch;
 }
 
 .demo-left,
-.demo-right,
+.demo-right {
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.demo-right > .tabs {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	height: 100%;
+}
+
 .tabs {
 	min-width: 0;
 }
@@ -715,6 +733,10 @@ pre {
 	border-radius: 12px;
 	background: var(--surface);
 	box-shadow: var(--shadow);
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
 }
 
 .plot-panel {
@@ -1247,9 +1269,13 @@ pre {
  * single grayscale theme (or override --shiki-light / --shiki-dark below) so
  * code blocks render with no syntax color.
  */
-.astro-code,
+.astro-code {
+	background-color: var(--code-bg) !important;
+	color: var(--shiki-light) !important;
+}
+
 .astro-code span {
-	background-color: var(--shiki-light-bg) !important;
+	background-color: transparent !important;
 	color: var(--shiki-light) !important;
 }
 
@@ -1258,9 +1284,13 @@ pre {
 	white-space: pre;
 }
 
-:root[data-theme="dark"] .astro-code,
+:root[data-theme="dark"] .astro-code {
+	background-color: var(--code-bg) !important;
+	color: var(--shiki-dark) !important;
+}
+
 :root[data-theme="dark"] .astro-code span {
-	background-color: var(--shiki-dark-bg) !important;
+	background-color: transparent !important;
 	color: var(--shiki-dark) !important;
 }
 
@@ -1273,8 +1303,11 @@ pre {
 }
 
 .code-frame pre {
+	margin: 0;
+	padding: 1rem 1.1rem;
 	border: 0;
 	border-radius: 8px;
+	overflow-x: auto;
 }
 
 .copy-code-button {

@@ -19,6 +19,7 @@
 	},
 	"dependencies": {
 		"@astrojs/sitemap": "^3.7.2",
+		"asciinema-player": "^3.16.0",
 		"astro": "^6.3.1",
 		"uplot": "^1.6.32"
 	},

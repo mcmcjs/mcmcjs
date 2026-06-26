@@ -1,0 +1,38 @@
+---
+import "asciinema-player/dist/bundle/asciinema-player.css";
+---
+
+<div class="prompt-player" data-prompt-player aria-label="mcmc run asciinema recording"></div>
+
+<script>
+	import { create } from "asciinema-player";
+
+	const target = document.querySelector("[data-prompt-player]");
+	if (target) {
+		const base = import.meta.env.BASE_URL || "/";
+		const normalizedBase = base.endsWith("/") ? base.slice(0, -1) : base;
+		const castPath = `${normalizedBase}/casts/mcmc-run.cast`;
+
+		const player = create(castPath, target, {
+			autoplay: true,
+			preload: true,
+			loop: false,
+			speed: 1.0,
+			idleTimeLimit: 1.2,
+			cols: 96,
+			rows: 20,
+			fit: "width",
+			theme: "asciinema",
+		}) as unknown as {
+			addEventListener: (event: string, cb: () => void) => void;
+			seek: (pos: number) => Promise<void>;
+			play: () => Promise<void>;
+		};
+
+		player.addEventListener("ended", () => {
+			setTimeout(() => {
+				player.seek(0).then(() => player.play());
+			}, 2200);
+		});
+	}
+</script>

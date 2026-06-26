@@ -1,6 +1,7 @@
 ---
 import { Code } from "astro:components";
 import BaseLayout from "../layouts/BaseLayout.astro";
+import PromptCast from "../components/PromptCast.astro";
 import { withBase } from "../lib/paths";
 import plotSpecs from "../plots/eight-schools.json";
 
@@ -118,25 +119,6 @@ theta[8]  5.309  5.205  1.089  338       1464      0.180  [-4.724, 15.047]
 
 divergences: 503
 not converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
-
-// Real terminal output of `mcmc run` on the scaffolded demo model.
-const runTranscript = `$ mcmc run demo/model.jl
-using data from demo/data.csv (pass --data to override)
-Fitting model.jl with Turing.jl (NUTS, 4 chains x 1000 draws + 1000 warmup) on Julia 1.12.6...
-sampling chain 1 of 4: 100%
-sampling chain 2 of 4: 100%
-sampling chain 3 of 4: 100%
-sampling chain 4 of 4: 100%
-ok: run 20260626-060443-61ae20 (22.5 s, Julia 1.12.6) saved to demo/.mcmc
-
-variable  mean   std    r_hat  ess_bulk  ess_tail  mcse   hdi
---------  -----  -----  -----  --------  --------  -----  --------------
-alpha     2.047  0.251  1.002  1414      1376      0.007  [1.580, 2.498]
-beta      2.991  0.041  1.003  1420      1320      0.001  [2.917, 3.068]
-sigma     0.346  0.111  1.002  1385      1499      0.003  [0.189, 0.547]
-
-divergences: 0
-converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
 ---
 
 <BaseLayout
@@ -157,9 +139,7 @@ converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
 				</span>
 				<span class="chrome-title">mcmc — zsh</span>
 			</div>
-			<div class="hero-terminal-body" aria-label="Example mcmc run session">
-				<pre class="hero-transcript">{runTranscript}</pre>
-			</div>
+			<PromptCast />
 		</div>
 		<p class="hero-copy">
 			<code>mcmc</code> drives Bayesian modelling end to end: provision a runtime, fit a
