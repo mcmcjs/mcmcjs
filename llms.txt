@@ -1,0 +1,129 @@
+# MCMC.js
+
+> Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics across probabilistic programming languages.
+> MCMC.js is a thin TypeScript CLI (`mcmc`) that bootstraps Julia, runs Turing.jl / JuliaBUGS inference as a subprocess, and turns the result into convergence diagnostics and plots.
+> It is built to be driven by AI agents: every command takes one declarative spec and emits a structured result, supports `--json`, runs non-interactively (no prompts), and returns clear exit codes.
+
+This file is a self-contained runbook for an AI agent that wants to run a Bayesian model with MCMC.js end to end.
+Full human documentation lives at https://mcmcjs.github.io/mcmcjs/docs/.
+
+## The contract you can rely on
+
+Every command supports `--json` (except the interactive `sandbox`).
+Exit codes are stable: `0` ok, `1` tool error, `2` ran but a domain check failed (for example, non-convergence in `diagnose` or `run`).
+Commands never prompt; pass everything as flags or in a spec file.
+The data contract is "one declarative spec in, one samples file out": inference writes a samples file (MCMCChains JSON), and every downstream command reads it.
+
+## Install (once per machine)
+
+```bash
+npm i -g mcmcjs            # needs Node >= 22; installs the `mcmc` binary
+mcmc setup                 # provisions Julia via juliaup (slow the first time)
+mcmc doctor --json         # confirm the toolchain is ready
+```
+
+`mcmc setup` and `mcmc fit`/`predict`/`run` need Julia; `diagnose`, `summary`, `plot`, `samples`, and `convert` are pure TypeScript and need no Julia.
+
+## Run a Bayesian model end to end
+
+The fastest path is `mcmc run` on a model file, which scaffolds a spec, fits, and diagnoses in one step.
+
+```bash
+mcmc init demo                              # writes an example Turing model + data
+mcmc run demo/model.jl --json              # fit + diagnose; artifacts recorded under .mcmc/
+```
+
+Inspect the result with the exit code and `--json`:
+
+```bash
+mcmc diagnose --json                        # latest run: R-hat, ESS, MCSE, HDI, divergences, verdict
+echo $?                                      # 0 converged, 2 ran-but-not-converged
+mcmc summary --json                          # a posterior summary table (mean, sd, quantiles, ess, rhat, hdi)
+mcmc plot --kind trace --format svg -o trace.svg
+mcmc predict demo/model.toml .mcmc/<run>/samples.json   # posterior-predictive draws (Turing)
+```
+
+### Authoring a model
+
+A model file defines the model at top level plus a thin `build_model(data)` adapter (never nest the model macro):
+
+```julia
+# Turing
+using Turing
+@model function eight_schools(y, sigma)
+    mu ~ Normal(0, 5)
+    tau ~ truncated(Cauchy(0, 5); lower = 0)
+    theta ~ filldist(Normal(mu, tau), length(y))
+    y .~ Normal.(theta, sigma)
+end
+build_model(data) = eight_schools(Float64.(data.y), Float64.(data.sigma))
+```
+
+JuliaBUGS models use `JuliaBUGS.@bugs` plus the same `build_model(data)` adapter.
+
+### Authoring a spec (for `mcmc fit`)
+
+The spec is TOML (JSON also accepted). Minimal shape:
+
+```toml
+schema_version = "0"
+seed = 42
+
+[backend]
+id = "turing"            # or "juliabugs"
+
+[model]
+kind = "file"
+path = "model.jl"
+entry = "build_model"
+
+[sampler]
+algorithm = "NUTS"
+draws = 1000
+warmup = 1000
+chains = 4
+adapt_delta = 0.8
+
+[data]                  # inline data passed to build_model
+y = [28, 8, -3, 7, -1, 1, 18, 12]
+sigma = [15, 10, 16, 11, 9, 11, 10, 18]
+```
+
+```bash
+mcmc fit spec.toml -o samples.json --json   # spec in, samples file out (+ samples.json.run.json record)
+```
+
+## Commands
+
+Run inference: `run` (zero-config: model/spec/graph in, fit + diagnose), `fit` (spec in, samples out; `--versions a,b,c` for a Julia-version matrix), `predict` (posterior-predictive draws).
+Inspect runs: `runs` (list), `show` (one run), `diagnose` (verdict), `summary` (stats table), `samples` (export raw draws as portable JSON), `plot` (19 kinds, `--format terminal|svg|html`), `export` (copy a run artifact to a visible file).
+Start a project: `init` (scaffold an example), `sandbox` (throwaway shell), `convert` (DoodleBUGS graph -> model file + spec).
+Toolchain: `setup`, `doctor`, `engines`, `julia version <list|status|add|remove|default|update|gc>`, `daemon` (persistent Julia workers).
+
+Always run `mcmc <command> --help` to confirm the exact current flags before relying on them.
+
+## Diagnostics you get
+
+Rank-normalized split-R-hat, bulk and tail ESS, MCSE, HDI, divergence counts, plus a pass/fail convergence verdict.
+A run is flagged non-converged (exit 2) when R-hat or ESS breaches the thresholds or divergences exceed `--max-divergences` (default 0).
+
+## Samples formats
+
+`mcmc fit` writes MCMCChains JSON (draws plus sampler statistics like divergences and energy).
+`parseSamples` also reads ArviZ InferenceData JSON and Turing CSV; Stan CSV is read via the library's `fromStanCSV`.
+Pipe between commands without a file: `mcmc samples --to mcmcchains-json | mcmc diagnose --stdin`.
+
+## Tips for agents
+
+Prefer `--json` and branch on the exit code rather than parsing human text.
+`mcmc run` records every run under a project-local `.mcmc/` store and reuses the previous result when the model, data, and settings are unchanged (pass `--refit` to force a re-run).
+Reference past runs by `latest`, `@N`, or an id prefix.
+
+## Docs
+
+- Introduction: https://mcmcjs.github.io/mcmcjs/docs/
+- Quickstart: https://mcmcjs.github.io/mcmcjs/docs/quickstart/
+- CLI commands: https://mcmcjs.github.io/mcmcjs/docs/reference/commands/
+- Spec file: https://mcmcjs.github.io/mcmcjs/docs/reference/spec/
+- Samples file: https://mcmcjs.github.io/mcmcjs/docs/reference/samples/
+- Exit codes: https://mcmcjs.github.io/mcmcjs/docs/reference/exit-codes/

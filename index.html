@@ -1,0 +1,140 @@
+<!DOCTYPE html><html lang="en"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="description" content="Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics."><meta name="robots" content="index, follow"><meta name="googlebot" content="index, follow"><meta name="generator" content="Astro v6.4.8"><link rel="canonical" href="https://mcmcjs.github.io/mcmcjs/"><meta property="og:type" content="website"><meta property="og:site_name" content="MCMC.js"><meta property="og:url" content="https://mcmcjs.github.io/mcmcjs/"><meta property="og:title" content="MCMC.js"><meta property="og:description" content="Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics."><meta property="og:image" content="https://mcmcjs.github.io/mcmcjs/og.png"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="MCMC.js"><meta name="twitter:description" content="Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics."><meta name="twitter:image" content="https://mcmcjs.github.io/mcmcjs/og.png"><meta name="theme-color" content="#fbfbfa" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#121212" media="(prefers-color-scheme: dark)"><link rel="icon" type="image/svg+xml" href="/mcmcjs/favicon.svg"><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"MCMC.js","description":"Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics.","url":"https://mcmcjs.github.io/mcmcjs/"}</script><script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"MCMC.js","applicationCategory":"DeveloperApplication","operatingSystem":"Linux, macOS, Windows","description":"Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics across probabilistic programming languages.","url":"https://mcmcjs.github.io/mcmcjs/","downloadUrl":"https://github.com/mcmcjs/mcmcjs/releases","author":{"@type":"Person","name":"Shravan Goswami","url":"https://shravangoswami.com"}}</script><script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is MCMC.js?","acceptedAnswer":{"@type":"Answer","text":"MCMC.js is a set of command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics across probabilistic programming languages."}},{"@type":"Question","name":"How do I install MCMC.js?","acceptedAnswer":{"@type":"Answer","text":"Install the mcmc CLI globally with npm, then run mcmc setup. See https://mcmcjs.github.io/mcmcjs/docs/install/."}},{"@type":"Question","name":"Does it run the inference itself?","acceptedAnswer":{"@type":"Answer","text":"The CLI is a thin orchestrator. Inference steps run a Julia subprocess, while diagnostics and the rest of the workflow are pure TypeScript."}},{"@type":"Question","name":"How do I check convergence?","acceptedAnswer":{"@type":"Answer","text":"Run mcmc diagnose to compute R-hat, ESS, MCSE, and HDI over your samples. See https://mcmcjs.github.io/mcmcjs/docs/guides/diagnose/."}}]}</script><title>MCMC.js</title><script>
+			(() => {
+				const key = 'mcmcjs-theme';
+				const preferred = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+				const stored = localStorage.getItem(key);
+				document.documentElement.dataset.theme = stored || preferred;
+			})();
+		</script><link rel="stylesheet" href="/mcmcjs/_astro/BaseLayout.DqhPDDlY.css"></head> <body class> <header class="site-header" data-pagefind-ignore> <a class="brand" href="/mcmcjs/" aria-label="MCMC.js home"> <svg class="logo-mark" viewBox="0 0 128 128" role="img" aria-label="MCMC.js"> <rect x="14" y="14" width="100" height="100" rx="22" fill="none" stroke="currentColor" stroke-width="9"></rect> <path d="M36 86V46l14 26 14-26v40" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"></path> <circle cx="90" cy="50" r="6.5" fill="var(--logo-warn)"></circle> <circle cx="90" cy="86" r="6.5" fill="var(--logo-accent)"></circle> </svg> <span>MCMC.js</span> </a> <div class="site-search" data-pagefind-ignore data-astro-cid-otpdt6jm> <button class="search-trigger" type="button" data-search-open aria-haspopup="dialog" data-astro-cid-otpdt6jm> <svg aria-hidden="true" viewBox="0 0 24 24" data-astro-cid-otpdt6jm> <path d="m20 20-4.35-4.35m2.35-5.15a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" data-astro-cid-otpdt6jm></path> </svg> <span data-astro-cid-otpdt6jm>Search docs</span> </button> </div> <dialog class="search-modal" data-search-modal aria-label="Search documentation" data-pagefind-ignore data-astro-cid-otpdt6jm> <div class="search-panel" data-astro-cid-otpdt6jm> <div id="mcmcjs-search" data-astro-cid-otpdt6jm></div> </div> </dialog>  <script type="module">const s=document.querySelector("[data-search-open]"),n=document.querySelector("[data-search-modal]"),c="/mcmcjs/",i=c.endsWith("/")?c.slice(0,-1):c;let r=!1;const l=()=>new Promise(e=>{if(r){e();return}const a=document.createElement("link");a.rel="stylesheet",a.href=`${i}/pagefind/pagefind-ui.css`,document.head.appendChild(a);const t=document.createElement("script");t.src=`${i}/pagefind/pagefind-ui.js`,t.onload=()=>{new window.PagefindUI({element:"#mcmcjs-search",baseUrl:c,showImages:!1,showSubResults:!0,placeholder:"Search docs…",excerptLength:15}),r=!0,e()},t.onerror=()=>e(),document.head.appendChild(t)}),o=async()=>{n&&(await l(),n.showModal(),requestAnimationFrame(()=>{n.querySelector(".pagefind-ui__search-input")?.focus()}))},d=()=>{n?.open&&n.close(),s instanceof HTMLElement&&s.focus()};s?.addEventListener("click",o);document.addEventListener("mcmcjs:open-search",o);n?.addEventListener("click",e=>{e.target===n&&d()});document.addEventListener("keydown",e=>{(e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="k"&&(e.preventDefault(),o()),e.key==="Escape"&&n?.open&&d()});</script> <nav class="top-nav" aria-label="Main navigation"> <a href="/mcmcjs/docs/">Docs</a> <a href="/mcmcjs/docs/install/">Install</a> <a class="nav-heart" href="https://github.com/mcmcjs/mcmcjs" target="_blank" rel="noopener noreferrer"> <svg viewBox="0 0 1024 1024" class="icon heart-icon" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"> <path d="M927.4 273.5v-95.4h-87.9V82.8h-201v95.3h-87.9v95.4h-78.5v-95.4h-88V82.8H183.2v95.3H95.3v95.4H16.7v190.6h78.6v95.4h75.3v95.3H246v95.3h87.9v95.4h100.5v95.3h153.9v-95.3h100.4v-95.4h88v-95.3H852.1v-95.3h75.3v-95.4h78.5V273.5z" fill="currentColor"></path> </svg>
+Support
+</a> <a class="icon-link" href="https://github.com/mcmcjs/mcmcjs" aria-label="GitHub repository" target="_blank" rel="noopener noreferrer"> <svg viewBox="0 0 20 20" class="icon github-icon" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"> <g fill="none" fill-rule="evenodd"> <g transform="translate(-140 -7559)" fill="currentColor"> <g transform="translate(56 160)"> <path d="M94,7399 C99.523,7399 104,7403.59 104,7409.253 C104,7413.782 101.138,7417.624 97.167,7418.981 C96.66,7419.082 96.48,7418.762 96.48,7418.489 C96.48,7418.151 96.492,7417.047 96.492,7415.675 C96.492,7414.719 96.172,7414.095 95.813,7413.777 C98.04,7413.523 100.38,7412.656 100.38,7408.718 C100.38,7407.598 99.992,7406.684 99.35,7405.966 C99.454,7405.707 99.797,7404.664 99.252,7403.252 C99.252,7403.252 98.414,7402.977 96.505,7404.303 C95.706,7404.076 94.85,7403.962 94,7403.958 C93.15,7403.962 92.295,7404.076 91.497,7404.303 C89.586,7402.977 88.746,7403.252 88.746,7403.252 C88.203,7404.664 88.546,7405.707 88.649,7405.966 C88.01,7406.684 87.619,7407.598 87.619,7408.718 C87.619,7412.646 89.954,7413.526 92.175,7413.785 C91.889,7414.041 91.63,7414.493 91.54,7415.156 C90.97,7415.418 89.522,7415.871 88.63,7414.304 C88.63,7414.304 88.101,7413.319 87.097,7413.247 C87.097,7413.247 86.122,7413.234 87.029,7413.87 C87.029,7413.87 87.684,7414.185 88.139,7415.37 C88.139,7415.37 88.726,7417.2 91.508,7416.58 C91.513,7417.437 91.522,7418.245 91.522,7418.489 C91.522,7418.76 91.338,7419.077 90.839,7418.982 C86.865,7417.627 84,7413.783 84,7409.253 C84,7403.59 88.478,7399 94,7399"></path> </g> </g> </g> </svg> <span>GitHub</span> </a> </nav> <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle dark mode"> <svg class="sun-icon" aria-hidden="true" viewBox="0 0 24 24"> <path d="M12 17.2a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4Zm0-14.7a1 1 0 0 1 1 1v1.2a1 1 0 1 1-2 0V3.5a1 1 0 0 1 1-1Zm0 16.8a1 1 0 0 1 1 1v1.2a1 1 0 1 1-2 0v-1.2a1 1 0 0 1 1-1Zm9.5-8.3a1 1 0 1 1 0 2h-1.2a1 1 0 1 1 0-2h1.2ZM4.7 11a1 1 0 1 1 0 2H3.5a1 1 0 1 1 0-2h1.2Zm13.74-6.44a1 1 0 0 1 0 1.42l-.85.85a1 1 0 0 1-1.42-1.42l.85-.85a1 1 0 0 1 1.42 0ZM7.83 16.17a1 1 0 0 1 0 1.42l-.85.85a1 1 0 0 1-1.42-1.42l.85-.85a1 1 0 0 1 1.42 0Zm9.76 0 .85.85a1 1 0 1 1-1.42 1.42l-.85-.85a1 1 0 0 1 1.42-1.42ZM6.98 4.56l.85.85a1 1 0 0 1-1.42 1.42l-.85-.85a1 1 0 1 1 1.42-1.42Z"></path> </svg> <svg class="moon-icon" aria-hidden="true" viewBox="0 0 24 24"> <path d="M21 14.58A8.2 8.2 0 0 1 9.42 3a9.25 9.25 0 1 0 11.59 11.59Z"></path> </svg> </button> <button class="mobile-menu-toggle" type="button" data-mobile-menu-toggle aria-label="Open menu" aria-expanded="false"> <svg class="mobile-menu-icon" aria-hidden="true" viewBox="0 0 24 24"> <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path> </svg> <svg class="mobile-close-icon" aria-hidden="true" viewBox="0 0 24 24"> <path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path> </svg> </button> <div class="mobile-menu" data-mobile-menu> <div class="mobile-menu-card"> <div class="mobile-menu-head"> <span>Menu</span> <button type="button" data-mobile-search-open aria-label="Search documentation"> <svg aria-hidden="true" viewBox="0 0 24 24"> <path d="m20 20-4.35-4.35m2.35-5.15a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path> </svg> </button> </div> <a href="/mcmcjs/docs/">Docs</a> <a href="/mcmcjs/docs/install/">Install</a> <a href="/mcmcjs/docs/quickstart/">Quickstart</a> <a href="https://github.com/mcmcjs/mcmcjs" target="_blank" rel="noopener noreferrer"> <svg viewBox="0 0 20 20" class="icon github-icon" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"> <g fill="none" fill-rule="evenodd"> <g transform="translate(-140 -7559)" fill="currentColor"> <g transform="translate(56 160)"> <path d="M94,7399 C99.523,7399 104,7403.59 104,7409.253 C104,7413.782 101.138,7417.624 97.167,7418.981 C96.66,7419.082 96.48,7418.762 96.48,7418.489 C96.48,7418.151 96.492,7417.047 96.492,7415.675 C96.492,7414.719 96.172,7414.095 95.813,7413.777 C98.04,7413.523 100.38,7412.656 100.38,7408.718 C100.38,7407.598 99.992,7406.684 99.35,7405.966 C99.454,7405.707 99.797,7404.664 99.252,7403.252 C99.252,7403.252 98.414,7402.977 96.505,7404.303 C95.706,7404.076 94.85,7403.962 94,7403.958 C93.15,7403.962 92.295,7404.076 91.497,7404.303 C89.586,7402.977 88.746,7403.252 88.746,7403.252 C88.203,7404.664 88.546,7405.707 88.649,7405.966 C88.01,7406.684 87.619,7407.598 87.619,7408.718 C87.619,7412.646 89.954,7413.526 92.175,7413.785 C91.889,7414.041 91.63,7414.493 91.54,7415.156 C90.97,7415.418 89.522,7415.871 88.63,7414.304 C88.63,7414.304 88.101,7413.319 87.097,7413.247 C87.097,7413.247 86.122,7413.234 87.029,7413.87 C87.029,7413.87 87.684,7414.185 88.139,7415.37 C88.139,7415.37 88.726,7417.2 91.508,7416.58 C91.513,7417.437 91.522,7418.245 91.522,7418.489 C91.522,7418.76 91.338,7419.077 90.839,7418.982 C86.865,7417.627 84,7413.783 84,7409.253 C84,7403.59 88.478,7399 94,7399"></path> </g> </g> </g> </svg>
+GitHub
+</a> <a class="nav-heart" href="https://github.com/mcmcjs/mcmcjs" target="_blank" rel="noopener noreferrer"> <svg viewBox="0 0 1024 1024" class="icon heart-icon" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"> <path d="M927.4 273.5v-95.4h-87.9V82.8h-201v95.3h-87.9v95.4h-78.5v-95.4h-88V82.8H183.2v95.3H95.3v95.4H16.7v190.6h78.6v95.4h75.3v95.3H246v95.3h87.9v95.4h100.5v95.3h153.9v-95.3h100.4v-95.4h88v-95.3H852.1v-95.3h75.3v-95.4h78.5V273.5z" fill="currentColor"></path> </svg>
+Support
+</a> </div> </div> </header> <div class="mobile-backdrop" data-mobile-backdrop data-pagefind-ignore></div> <main data-pagefind-body>  <section class="hero"> <h1>Bayesian inference, from one command line.</h1> <div class="actions"> <a class="button" href="/mcmcjs/docs/install/">Install MCMC.js</a> <a class="button secondary" href="/mcmcjs/docs/">Read the docs</a> </div> <div class="hero-demo"> <div class="terminal-chrome"> <span class="chrome-dots"> <span></span><span></span><span></span> </span> <span class="chrome-title">mcmc — zsh</span> </div> <div class="hero-terminal-body" aria-label="Example mcmc session"> <span class="t-line"><span class="t-prompt">$</span><span class="t-cmd"> mcmc setup</span></span> <span class="t-line"><span class="t-prompt">$</span><span class="t-cmd"> mcmc init demo</span></span> <span class="t-line"><span class="t-prompt">$</span><span class="t-cmd"> mcmc run demo/model.jl</span></span> <span class="t-line"><span class="t-out">-> fit + diagnose; verdict: </span><span class="t-ok">converged (R-hat &lt; 1.01)</span></span> </div> </div> <p class="hero-copy"> <code>mcmc</code> drives Bayesian modelling end to end: provision a runtime, fit a
+			model, and run post-inference diagnostics. Stages compose through one declarative
+			spec file in and one samples file out, so each step stays small and predictable.
+</p> </section> <section class="section"> <div class="section-header"> <h2>A thin, composable workflow.</h2> <p> <code>mcmc</code> orchestrates probabilistic programming languages without
+				becoming a framework. One spec in, one samples file out.
+</p> </div> <div class="feature-grid"> <div class="feature"> <h3>Fit anywhere</h3> <p>Run inference through a managed Julia runtime, with the CLI as a thin TypeScript orchestrator.</p> </div> <div class="feature"> <h3>Diagnostics built in</h3> <p>Compute R-hat, ESS, MCSE, and HDI over your samples to judge convergence with confidence.</p> </div> <div class="feature"> <h3>Reproducible runs</h3> <p>A declarative spec file in and a samples file out keep every run inspectable and repeatable.</p> </div> </div> </section> <section class="section"> <div class="section-header"> <h2>Start in one line.</h2> <p>Install the CLI from npm, then provision the runtime with <code>mcmc setup</code>.</p> </div> <div class="install-strip"> <div> <strong>npm global install</strong> <span>Installs the <code>mcmc</code> binary. Run <code>mcmc setup</code> once to provision Julia via juliaup.</span> </div> <pre><code>npm i -g mcmcjs</code></pre> <a class="button secondary" href="/mcmcjs/docs/quickstart/">Quickstart</a> </div> </section> <section class="section"> <div class="section-header"> <h2>Documentation.</h2> <p>Focused pages for installation, running inference, diagnostics, the CLI reference, and internals.</p> </div> <div class="docs-grid"> <a class="doc-link" href="/mcmcjs/docs/install/"> <h3>Installation</h3> <p>Install the CLI and provision the Julia runtime with a single setup command.</p> </a> <a class="doc-link" href="/mcmcjs/docs/guides/run/"> <h3>Run inference</h3> <p>Fit a model from a spec file and produce a samples file you can diagnose and plot.</p> </a> <a class="doc-link" href="/mcmcjs/docs/guides/diagnose/"> <h3>Diagnose convergence</h3> <p>Read R-hat, ESS, MCSE, and HDI to judge whether your chains have converged.</p> </a> </div> </section> <section class="section"> <div class="section-header"> <h2>FAQ</h2> <p>Quick answers for search engines and humans.</p> </div> <div class="feature-grid"> <div class="feature"> <h3>What is MCMC.js?</h3> <p>Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics across PPLs.</p> </div> <div class="feature"> <h3>Does it run the inference?</h3> <p>The CLI is a thin orchestrator. Inference runs in a Julia subprocess; diagnostics are pure TypeScript.</p> </div> <div class="feature"> <h3>How do I check convergence?</h3> <p>Run <code>mcmc diagnose</code> to compute R-hat, ESS, MCSE, and HDI over your samples.</p> </div> </div> </section>  </main> <footer class="site-footer" data-pagefind-ignore> <div class="footer-divider"></div> <div class="footer-inner"> <div class="footer-brand"> <svg class="footer-logo" viewBox="0 0 128 128" role="img" aria-label="MCMC.js"> <rect x="14" y="14" width="100" height="100" rx="22" fill="none" stroke="currentColor" stroke-width="9"></rect> <path d="M36 86V46l14 26 14-26v40" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"></path> <circle cx="90" cy="50" r="6.5" fill="var(--logo-warn)"></circle> <circle cx="90" cy="86" r="6.5" fill="var(--logo-accent)"></circle> </svg> <strong>MCMC.js</strong> <span>Command-line tools for Bayesian modelling and MCMC.</span> </div> <nav class="footer-nav" aria-label="Footer navigation"> <a href="/mcmcjs/docs/">Introduction</a><a href="/mcmcjs/docs/install/">Installation</a><a href="/mcmcjs/docs/quickstart/">Quickstart</a><a href="/mcmcjs/docs/guides/run/">Run inference</a> </nav> <div class="footer-actions"> <a class="nav-heart" href="https://github.com/mcmcjs/mcmcjs" target="_blank" rel="noopener noreferrer"> <svg viewBox="0 0 1024 1024" class="icon heart-icon" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"> <path d="M927.4 273.5v-95.4h-87.9V82.8h-201v95.3h-87.9v95.4h-78.5v-95.4h-88V82.8H183.2v95.3H95.3v95.4H16.7v190.6h78.6v95.4h75.3v95.3H246v95.3h87.9v95.4h100.5v95.3h153.9v-95.3h100.4v-95.4h88v-95.3H852.1v-95.3h75.3v-95.4h78.5V273.5z" fill="currentColor"></path> </svg>
+Support
+</a> <a class="icon-link" href="https://github.com/mcmcjs/mcmcjs" target="_blank" rel="noopener noreferrer"> <svg viewBox="0 0 20 20" class="icon github-icon" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"> <g fill="none" fill-rule="evenodd"> <g transform="translate(-140 -7559)" fill="currentColor"> <g transform="translate(56 160)"> <path d="M94,7399 C99.523,7399 104,7403.59 104,7409.253 C104,7413.782 101.138,7417.624 97.167,7418.981 C96.66,7419.082 96.48,7418.762 96.48,7418.489 C96.48,7418.151 96.492,7417.047 96.492,7415.675 C96.492,7414.719 96.172,7414.095 95.813,7413.777 C98.04,7413.523 100.38,7412.656 100.38,7408.718 C100.38,7407.598 99.992,7406.684 99.35,7405.966 C99.454,7405.707 99.797,7404.664 99.252,7403.252 C99.252,7403.252 98.414,7402.977 96.505,7404.303 C95.706,7404.076 94.85,7403.962 94,7403.958 C93.15,7403.962 92.295,7404.076 91.497,7404.303 C89.586,7402.977 88.746,7403.252 88.746,7403.252 C88.203,7404.664 88.546,7405.707 88.649,7405.966 C88.01,7406.684 87.619,7407.598 87.619,7408.718 C87.619,7412.646 89.954,7413.526 92.175,7413.785 C91.889,7414.041 91.63,7414.493 91.54,7415.156 C90.97,7415.418 89.522,7415.871 88.63,7414.304 C88.63,7414.304 88.101,7413.319 87.097,7413.247 C87.097,7413.247 86.122,7413.234 87.029,7413.87 C87.029,7413.87 87.684,7414.185 88.139,7415.37 C88.139,7415.37 88.726,7417.2 91.508,7416.58 C91.513,7417.437 91.522,7418.245 91.522,7418.489 C91.522,7418.76 91.338,7419.077 90.839,7418.982 C86.865,7417.627 84,7413.783 84,7409.253 C84,7403.59 88.478,7399 94,7399"></path> </g> </g> </g> </svg>
+GitHub
+</a> </div> <p class="footer-meta">
+&copy; 2026 MCMC.js
+</p> </div> </footer> <script>
+			(() => {
+				const key = 'mcmcjs-theme';
+				const root = document.documentElement;
+				const button = document.querySelector('[data-theme-toggle]');
+				const apply = (theme) => {
+					root.dataset.theme = theme;
+					button?.setAttribute('aria-pressed', String(theme === 'dark'));
+				};
+
+				button?.addEventListener('click', () => {
+					const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+					localStorage.setItem(key, next);
+					apply(next);
+				});
+
+				apply(root.dataset.theme || 'light');
+			})();
+
+			(() => {
+				const blocks = document.querySelectorAll('main pre');
+				for (const pre of blocks) {
+					if (pre.parentElement?.classList.contains('code-frame')) {
+						continue;
+					}
+
+					const frame = document.createElement('div');
+					frame.className = 'code-frame';
+					const button = document.createElement('button');
+					button.className = 'copy-code-button';
+					button.type = 'button';
+					button.textContent = 'Copy';
+					button.setAttribute('aria-label', 'Copy code block');
+
+					pre.parentNode?.insertBefore(frame, pre);
+					frame.append(pre, button);
+
+					button.addEventListener('click', async () => {
+						const text = pre.textContent || '';
+						try {
+							await navigator.clipboard.writeText(text);
+							button.textContent = 'Copied';
+							window.setTimeout(() => {
+								button.textContent = 'Copy';
+							}, 1300);
+						} catch {
+							button.textContent = 'Failed';
+							window.setTimeout(() => {
+								button.textContent = 'Copy';
+							}, 1300);
+						}
+					});
+				}
+			})();
+
+			(() => {
+				const header = document.querySelector('.site-header');
+				if (!header) return;
+				let lastY = window.scrollY;
+				let ticking = false;
+
+				const update = () => {
+					const y = window.scrollY;
+					if (header.classList.contains('menu-open')) {
+						lastY = y;
+						ticking = false;
+						return;
+					}
+					if (y <= 60) {
+						header.classList.remove('header-hidden');
+					} else if (y > lastY) {
+						header.classList.add('header-hidden');
+					} else {
+						header.classList.remove('header-hidden');
+					}
+					lastY = y;
+					ticking = false;
+				};
+
+				window.addEventListener('scroll', () => {
+					if (!ticking) {
+						requestAnimationFrame(update);
+						ticking = true;
+					}
+				}, { passive: true });
+			})();
+
+			(() => {
+				const header = document.querySelector('.site-header');
+				const toggle = document.querySelector('[data-mobile-menu-toggle]');
+				const backdrop = document.querySelector('[data-mobile-backdrop]');
+				const menu = document.querySelector('[data-mobile-menu]');
+				const search = document.querySelector('[data-mobile-search-open]');
+				const closeMenu = () => {
+					header?.classList.remove('menu-open');
+					toggle?.setAttribute('aria-expanded', 'false');
+				};
+				const openMenu = () => {
+					header?.classList.add('menu-open');
+					toggle?.setAttribute('aria-expanded', 'true');
+				};
+
+				toggle?.addEventListener('click', () => {
+					header?.classList.contains('menu-open') ? closeMenu() : openMenu();
+				});
+				backdrop?.addEventListener('click', closeMenu);
+				menu?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMenu));
+				search?.addEventListener('click', () => {
+					closeMenu();
+					document.dispatchEvent(new CustomEvent('mcmcjs:open-search'));
+				});
+				document.addEventListener('keydown', (event) => {
+					if (event.key === 'Escape') closeMenu();
+				});
+			})();
+		</script> </body> </html>
