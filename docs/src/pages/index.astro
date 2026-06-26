@@ -1,4 +1,5 @@
 ---
+import { Code } from "astro:components";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { withBase } from "../lib/paths";
 import plotSpecs from "../plots/eight-schools.json";
@@ -76,7 +77,8 @@ const structuredData = [
 
 const eightSchoolsModel = `using Turing
 
-@model function eight_schools(J, y, sigma)
+@model function eight_schools(y, sigma)
+    J = length(y)
     mu ~ Normal(0, 5)
     tau ~ truncated(Cauchy(0, 5); lower = 0)
     theta ~ filldist(Normal(mu, tau), J)
@@ -85,32 +87,20 @@ const eightSchoolsModel = `using Turing
     end
 end
 
-build_model(data) = eight_schools(data.J, data.y, data.sigma)`;
+build_model(data) = eight_schools(data.y, data.sigma)`;
 
-const eightSchoolsSpec = `schema_version = "0"
-seed = 20260608
+const eightSchoolsData = `y,sigma
+28,15
+8,10
+-3,16
+7,11
+-1,9
+1,11
+18,10
+12,18`;
 
-[backend]
-id = "turing"
-
-[sampler]
-algorithm = "NUTS"
-draws = 1000
-warmup = 1000
-chains = 4
-
-[model]
-kind = "file"
-path = "./eight_schools.jl"
-
-[data]
-J = 8
-y = [28, 8, -3, 7, -1, 1, 18, 12]
-sigma = [15, 10, 16, 11, 9, 11, 10, 18]`;
-
-const eightSchoolsRun = `$ mcmc run eight_schools.jl
-using settings from eight_schools.toml; flags override
-Fitting eight_schools.jl with Turing.jl (NUTS, 4 chains x 1000 draws + 1000 warmup, seed 20260608) on Julia 1.12.6...
+const eightSchoolsRun = `$ mcmc run eight_schools.jl --data data.csv
+Fitting eight_schools.jl with Turing.jl (NUTS, 4 chains x 1000 draws + 1000 warmup) on Julia 1.12.6...
 ok: run 20260626-062103-35158c (19.8 s, Julia 1.12.6) saved to .mcmc
 
 variable  mean   std    r_hat  ess_bulk  ess_tail  mcse   hdi
@@ -192,10 +182,14 @@ converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
 				<div class="tabs" data-tabs>
 					<div class="tablist" role="tablist" aria-label="Model source">
 						<button class="tab is-active" type="button" role="tab" data-tab="model">eight_schools.jl</button>
-						<button class="tab" type="button" role="tab" data-tab="spec">eight_schools.toml</button>
+						<button class="tab" type="button" role="tab" data-tab="data">data.csv</button>
 					</div>
-					<div class="tabpanel is-active" data-panel="model"><pre><code>{eightSchoolsModel}</code></pre></div>
-					<div class="tabpanel" data-panel="spec"><pre><code>{eightSchoolsSpec}</code></pre></div>
+					<div class="tabpanel is-active" data-panel="model">
+						<Code code={eightSchoolsModel} lang="julia" themes={{ light: "github-light", dark: "github-dark" }} defaultColor={false} />
+					</div>
+					<div class="tabpanel" data-panel="data">
+						<Code code={eightSchoolsData} lang="csv" themes={{ light: "github-light", dark: "github-dark" }} defaultColor={false} />
+					</div>
 				</div>
 				<div class="run-it">
 					<span class="run-it-label">Run it</span>

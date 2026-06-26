@@ -187,56 +187,51 @@ pre {
 	box-shadow: 0 12px 32px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
-/* Hover/focus tooltip nudging visitors to star the repo. */
+/* Hover/focus tooltip nudging visitors to star the repo: an inverted pill. */
 .github-cta .star-hint {
 	position: absolute;
-	top: calc(100% + 0.6rem);
+	top: calc(100% + 0.55rem);
 	right: 0;
 	display: inline-flex;
 	align-items: center;
-	gap: 0.36rem;
-	padding: 0.42rem 0.66rem;
-	border: 1px solid var(--line);
-	border-radius: 9px;
-	background: var(--surface);
-	box-shadow: 0 8px 22px rgba(0, 0, 0, 0.16);
-	color: var(--text);
-	font-size: 0.76rem;
-	font-weight: 650;
+	gap: 0.34rem;
+	padding: 0.42rem 0.64rem;
+	border-radius: 8px;
+	background: var(--text);
+	color: var(--bg);
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+	font-size: 0.75rem;
+	font-weight: 600;
 	line-height: 1;
 	white-space: nowrap;
 	opacity: 0;
-	transform: translateY(-6px) scale(0.96);
+	transform: translateY(-5px);
 	transform-origin: top right;
 	pointer-events: none;
 	transition:
-		opacity 0.16s ease,
-		transform 0.16s ease;
+		opacity 0.15s ease,
+		transform 0.15s ease;
 }
 
-/* Caret connecting the tooltip to the button. */
+/* Solid caret pointing up at the button. */
 .github-cta .star-hint::before {
 	content: "";
 	position: absolute;
 	bottom: 100%;
-	right: 1.15rem;
-	width: 9px;
-	height: 9px;
-	background: var(--surface);
-	border-top: 1px solid var(--line);
-	border-left: 1px solid var(--line);
-	transform: translateY(50%) rotate(45deg);
+	right: 1.4rem;
+	border: 5px solid transparent;
+	border-bottom-color: var(--text);
 }
 
 .github-cta .star-hint-icon {
-	color: var(--logo-purple);
-	font-size: 0.85rem;
+	color: #f5b301;
+	font-size: 0.82rem;
 }
 
 .github-cta:hover .star-hint,
 .github-cta:focus-visible .star-hint {
 	opacity: 1;
-	transform: translateY(0) scale(1);
+	transform: translateY(0);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -634,9 +629,16 @@ pre {
 	gap: 0.1rem;
 	border-bottom: 1px solid var(--line);
 	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
+}
+
+.tablist::-webkit-scrollbar {
+	display: none;
 }
 
 .tab {
+	flex: 0 0 auto;
 	margin-bottom: -1px;
 	padding: 0.5rem 0.8rem;
 	border: 0;
