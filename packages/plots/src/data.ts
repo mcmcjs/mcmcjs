@@ -82,16 +82,31 @@ export function chainsOf(samples: Samples, variable: string): Float64Array[] {
   return Array.from({ length: samples.nChains }, (_, c) => chainView(samples, variable, c));
 }
 
+/**
+ * Validate caller-supplied chain identities against the chain count. Returns the ids when
+ * they are well-formed, else `undefined` so the spec layer falls back to positional identity
+ * (`0..nChains-1`). Lets a caller subset chains and keep stable per-chain colors and labels.
+ */
+function resolveChainIds(nChains: number, chainIds?: number[]): number[] | undefined {
+  return chainIds && chainIds.length === nChains ? chainIds : undefined;
+}
+
 /** Trace data for one variable: each chain's draw sequence plus R-hat and bulk ESS. */
-export function traceData(samples: Samples, variable: string): TraceData {
+export function traceData(
+  samples: Samples,
+  variable: string,
+  opts: { chainIds?: number[] } = {},
+): TraceData {
   const chains = chainsOf(samples, variable);
   const d = diagnoseChains(chains);
+  const chainIds = resolveChainIds(samples.nChains, opts.chainIds);
   return {
     kind: "trace",
     variable,
     nChains: samples.nChains,
     nDraws: samples.nDraws,
     chains: chains.map((c) => Array.from(c)),
+    ...(chainIds ? { chainIds } : {}),
     rhat: d.rhat,
     essBulk: d.essBulk,
   };
@@ -101,7 +116,7 @@ export function traceData(samples: Samples, variable: string): TraceData {
 export function densityData(
   samples: Samples,
   variable: string,
-  opts: { gridSize?: number } = {},
+  opts: { gridSize?: number; chainIds?: number[] } = {},
 ): DensityData {
   const gridSize = Math.max(2, opts.gridSize ?? 256);
   const chains = chainsOf(samples, variable);
@@ -111,8 +126,16 @@ export function densityData(
   const x = Array.from({ length: gridSize }, (_, k) => lo + k * step);
 
   const curves = chains.map((chain) => gaussianKde(chain, x, bandwidth(chain)));
+  const chainIds = resolveChainIds(samples.nChains, opts.chainIds);
 
-  return { kind: "density", variable, nChains: samples.nChains, x, chains: curves };
+  return {
+    kind: "density",
+    variable,
+    nChains: samples.nChains,
+    x,
+    chains: curves,
+    ...(chainIds ? { chainIds } : {}),
+  };
 }
 
 /** Pooled histogram for one variable; bin count via Freedman-Diaconis unless `bins` is given. */
@@ -149,7 +172,7 @@ export function histogramData(
 export function rankData(
   samples: Samples,
   variable: string,
-  opts: { bins?: number } = {},
+  opts: { bins?: number; chainIds?: number[] } = {},
 ): RankData {
   const bins = Math.max(1, opts.bins ?? 20);
   const { nChains, nDraws } = samples;
@@ -177,20 +200,38 @@ export function rankData(
     const row = counts[chain] as number[];
     row[b] = (row[b] ?? 0) + 1;
   }
-  return { kind: "rank", variable, nChains, bins, counts, expected: nDraws / bins };
+  const chainIds = resolveChainIds(nChains, opts.chainIds);
+  return {
+    kind: "rank",
+    variable,
+    nChains,
+    bins,
+    counts,
+    ...(chainIds ? { chainIds } : {}),
+    expected: nDraws / bins,
+  };
 }
 
 /** Autocorrelation data: the ACF (lag 0..maxLag) of each chain. */
 export function autocorrData(
   samples: Samples,
   variable: string,
-  opts: { maxLag?: number } = {},
+  opts: { maxLag?: number; chainIds?: number[] } = {},
 ): AutocorrData {
   const maxLag = Math.max(1, opts.maxLag ?? 40);
   const chains = chainsOf(samples, variable).map((c) => autocorr(c, maxLag));
   const longest = Math.max(0, ...chains.map((a) => a.length));
   const lags = Array.from({ length: longest }, (_, k) => k);
-  return { kind: "autocorr", variable, nChains: samples.nChains, maxLag, lags, chains };
+  const chainIds = resolveChainIds(samples.nChains, opts.chainIds);
+  return {
+    kind: "autocorr",
+    variable,
+    nChains: samples.nChains,
+    maxLag,
+    lags,
+    chains,
+    ...(chainIds ? { chainIds } : {}),
+  };
 }
 
 /** Per-draw divergence flags (chain-major), from the sampler stats; all false when absent. */
@@ -343,18 +384,27 @@ export function forestData(
 }
 
 /** Empirical CDF per chain: sorted draws with cumulative probability `(i+1)/n`. */
-export function ecdfData(samples: Samples, variable: string): EcdfData {
-  const series = chainsOf(samples, variable).map((c, chain) => {
+export function ecdfData(
+  samples: Samples,
+  variable: string,
+  opts: { chainIds?: number[] } = {},
+): EcdfData {
+  const ids = resolveChainIds(samples.nChains, opts.chainIds);
+  const series = chainsOf(samples, variable).map((c, i) => {
     const sorted = Array.from(c).sort((a, b) => a - b);
     const n = sorted.length;
-    const y = sorted.map((_, i) => (i + 1) / n);
-    return { chain, x: sorted, y };
+    const y = sorted.map((_, k) => (k + 1) / n);
+    return { chain: ids?.[i] ?? i, x: sorted, y };
   });
   return { kind: "ecdf", variable, nChains: samples.nChains, series };
 }
 
 /** Running mean per chain over shared 1-based iterations. */
-export function cumulativeMeanData(samples: Samples, variable: string): CumulativeMeanData {
+export function cumulativeMeanData(
+  samples: Samples,
+  variable: string,
+  opts: { chainIds?: number[] } = {},
+): CumulativeMeanData {
   const chains = chainsOf(samples, variable);
   const maxLen = Math.max(0, ...chains.map((c) => c.length));
   const iterations = Array.from({ length: maxLen }, (_, i) => i + 1);
@@ -367,7 +417,15 @@ export function cumulativeMeanData(samples: Samples, variable: string): Cumulati
     }
     return v;
   });
-  return { kind: "cumulative-mean", variable, nChains: samples.nChains, iterations, chains: out };
+  const chainIds = resolveChainIds(samples.nChains, opts.chainIds);
+  return {
+    kind: "cumulative-mean",
+    variable,
+    nChains: samples.nChains,
+    iterations,
+    chains: out,
+    ...(chainIds ? { chainIds } : {}),
+  };
 }
 
 /** Basic split-R-hat over an increasing prefix of draws (needs >= 2 chains, >= 6 draws). */

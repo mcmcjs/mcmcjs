@@ -70,8 +70,37 @@ describe("htmlItemFor", () => {
     if (hist.mode !== "uplot" || rnk.mode !== "uplot") throw new Error("expected uplot");
     expect(hist.spec.series[0]?.paths).toBe("bars");
     expect(rnk.spec.series[0]?.paths).toBe("stepped");
-    // rank carries an extra dashed reference series for the uniform expectation.
-    expect(rnk.spec.series.at(-1)?.dash).toEqual([4, 4]);
+  });
+
+  it("keeps reference guides in a tagged refLines channel, not in the data series", () => {
+    const rnk = htmlItemFor(rank);
+    if (rnk.mode !== "uplot") throw new Error("expected uplot");
+    // Every data series is a real chain; the uniform expectation is a refLine.
+    expect(rnk.spec.series).toHaveLength(2);
+    expect(rnk.spec.series.every((s) => s.role === "chain")).toBe(true);
+    expect(rnk.spec.refLines?.[0]).toMatchObject({ value: 2, label: "uniform" });
+
+    const rr = htmlItemFor({
+      kind: "running-rhat",
+      variable: "mu",
+      nChains: 2,
+      iterations: [10, 20, 30],
+      rhat: [1.2, 1.05, 1.0],
+    });
+    if (rr.mode !== "uplot") throw new Error("expected uplot");
+    // Only the R-hat line is a data series; 1.00 and 1.05 are guide lines.
+    expect(rr.spec.series).toHaveLength(1);
+    expect(rr.spec.refLines?.map((r) => r.value)).toEqual([1, 1.05]);
+  });
+
+  it("keys chain color and label to chain identity when chainIds are present", () => {
+    const subset = htmlItemFor({ ...trace, chainIds: [0, 3] } as PlotData);
+    if (subset.mode !== "uplot") throw new Error("expected uplot");
+    expect(subset.spec.series.map((s) => s.label)).toEqual(["chain 1", "chain 4"]);
+    // The second series inherits chain 3's palette slot, not position 1's.
+    const positional = htmlItemFor(trace);
+    if (positional.mode !== "uplot") throw new Error("expected uplot");
+    expect(subset.spec.series[1]?.stroke).not.toBe(positional.spec.series[1]?.stroke);
   });
 
   it("renders forest and pair as embedded SVG", () => {

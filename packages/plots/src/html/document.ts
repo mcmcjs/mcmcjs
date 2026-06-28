@@ -100,6 +100,26 @@ const BOOTSTRAP = `
     return null;
   }
 
+  function refLinePlugin(refLines) {
+    return { hooks: { draw: function (u) {
+      var ctx = u.ctx;
+      ctx.save();
+      ctx.lineWidth = 1;
+      for (var i = 0; i < refLines.length; i++) {
+        var r = refLines[i];
+        ctx.strokeStyle = r.stroke || "#9ca3af";
+        ctx.setLineDash(r.dash || [4, 4]);
+        var y = Math.round(u.valToPos(r.value, "y", true)) + 0.5;
+        ctx.beginPath();
+        ctx.moveTo(u.bbox.left, y);
+        ctx.lineTo(u.bbox.left + u.bbox.width, y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.restore();
+    } } };
+  }
+
   function mountUplot(host, spec) {
     var series = [{}];
     for (var i = 0; i < spec.series.length; i++) {
@@ -111,6 +131,8 @@ const BOOTSTRAP = `
       if (p) { o.paths = p; o.points = { show: false }; }
       series.push(o);
     }
+    var plugins = [];
+    if (spec.refLines && spec.refLines.length) plugins.push(refLinePlugin(spec.refLines));
     function width() { return Math.max(320, host.clientWidth - 24); }
     var opts = {
       width: width(), height: 280,
@@ -118,7 +140,8 @@ const BOOTSTRAP = `
       axes: [{ label: spec.xLabel || "" }, { label: spec.yLabel || "" }],
       series: series,
       legend: { live: true },
-      cursor: { drag: { x: true, y: true, uni: 12 } }
+      cursor: { drag: { x: true, y: true, uni: 12 } },
+      plugins: plugins
     };
     var u = new uPlot(opts, spec.data, host);
     window.addEventListener("resize", function () { u.setSize({ width: width(), height: 280 }); });

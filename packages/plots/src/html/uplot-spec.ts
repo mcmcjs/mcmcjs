@@ -70,6 +70,16 @@ export interface UplotSeriesSpec {
   /** Dash pattern in px (e.g. reference lines). */
   dash?: number[];
   width?: number;
+  /** Tags a real chain so a consumer can subset chains without per-kind special-casing. */
+  role?: "chain";
+}
+
+/** A horizontal guide line drawn over the plot rather than carried as a data series. */
+export interface UplotRefLine {
+  value: number;
+  label?: string;
+  stroke?: string;
+  dash?: number[];
 }
 
 /** A function-free uPlot chart description: aligned data plus series styling. */
@@ -80,6 +90,8 @@ export interface UplotSpec {
   /** `data[0]` is the shared x; `data[1..]` align to `series` (null = gap). */
   data: (number | null)[][];
   series: UplotSeriesSpec[];
+  /** Reference guide lines (e.g. an R-hat threshold), kept out of `data`/`series`. */
+  refLines?: UplotRefLine[];
 }
 
 /** A single renderable unit of an HTML document: an interactive chart or static SVG. */
@@ -91,12 +103,19 @@ function fade(hex: string): string {
   return `${hex}55`;
 }
 
-/** A constant horizontal series used as a dashed reference line. */
-function refLine(value: number, length: number, label: string): [number[], UplotSeriesSpec] {
-  return [
-    new Array<number>(length).fill(value),
-    { label, stroke: "#9ca3af", dash: [4, 4], width: 1 },
-  ];
+/** Identity of chain at array position `c`: the caller-supplied id, else its position. */
+function chainIdAt(chainIds: number[] | undefined, c: number): number {
+  return chainIds?.[c] ?? c;
+}
+
+/** A chain series colored and labeled by chain identity (stable across chain subsets). */
+function chainSeries(
+  chainIds: number[] | undefined,
+  c: number,
+  extra: Partial<UplotSeriesSpec> = {},
+): UplotSeriesSpec {
+  const id = chainIdAt(chainIds, c);
+  return { label: `chain ${id + 1}`, stroke: seriesColor(id), role: "chain", ...extra };
 }
 
 function traceSpec(d: TraceData): UplotSpec {
@@ -108,7 +127,7 @@ function traceSpec(d: TraceData): UplotSpec {
     xLabel: "iteration",
     yLabel: d.variable,
     data: [x, ...d.chains],
-    series: d.chains.map((_, c) => ({ label: `chain ${c + 1}`, stroke: seriesColor(c) })),
+    series: d.chains.map((_, c) => chainSeries(d.chainIds, c)),
   };
 }
 
@@ -118,7 +137,7 @@ function densitySpec(d: DensityData): UplotSpec {
     xLabel: d.variable,
     yLabel: "density",
     data: [d.x, ...d.chains],
-    series: d.chains.map((_, c) => ({ label: `chain ${c + 1}`, stroke: seriesColor(c) })),
+    series: d.chains.map((_, c) => chainSeries(d.chainIds, c)),
   };
 }
 
@@ -136,34 +155,24 @@ function histogramSpec(d: HistogramData): UplotSpec {
 
 function rankSpec(d: RankData): UplotSpec {
   const x = Array.from({ length: d.bins }, (_, b) => b);
-  const [refData, refSeries] = refLine(d.expected, d.bins, "uniform");
   return {
     title: `${d.variable}  rank (${d.bins} bins, ${d.nChains} chains)`,
     xLabel: "rank bin",
     yLabel: "count",
-    data: [x, ...d.counts, refData],
-    series: [
-      ...d.counts.map((_, c) => ({
-        label: `chain ${c + 1}`,
-        stroke: seriesColor(c),
-        paths: "stepped" as const,
-      })),
-      refSeries,
-    ],
+    data: [x, ...d.counts],
+    series: d.counts.map((_, c) => chainSeries(d.chainIds, c, { paths: "stepped" })),
+    refLines: [{ value: d.expected, label: "uniform" }],
   };
 }
 
 function autocorrSpec(d: AutocorrData): UplotSpec {
-  const [refData, refSeries] = refLine(0, d.lags.length, "zero");
   return {
     title: `${d.variable}  autocorrelation`,
     xLabel: "lag",
     yLabel: "acf",
-    data: [d.lags, ...d.chains, refData],
-    series: [
-      ...d.chains.map((_, c) => ({ label: `chain ${c + 1}`, stroke: seriesColor(c) })),
-      refSeries,
-    ],
+    data: [d.lags, ...d.chains],
+    series: d.chains.map((_, c) => chainSeries(d.chainIds, c)),
+    refLines: [{ value: 0, label: "zero" }],
   };
 }
 
@@ -205,6 +214,7 @@ function ecdfSpec(d: EcdfData): UplotSpec {
       label: `chain ${s.chain + 1}`,
       stroke: seriesColor(s.chain),
       paths: "stepped" as const,
+      role: "chain" as const,
     })),
   };
 }
@@ -219,21 +229,20 @@ function cumulativeMeanSpec(d: CumulativeMeanData): UplotSpec {
     xLabel: "iteration",
     yLabel: `mean (${d.variable})`,
     data: [d.iterations, ...rows],
-    series: d.chains.map((_, c) => ({ label: `chain ${c + 1}`, stroke: seriesColor(c) })),
+    series: d.chains.map((_, c) => chainSeries(d.chainIds, c)),
   };
 }
 
 function runningRhatSpec(d: RunningRhatData): UplotSpec {
-  const n = d.iterations.length;
   return {
     title: `${d.variable}  running basic R-hat`,
     xLabel: "iteration",
     yLabel: "R-hat",
-    data: [d.iterations, d.rhat, new Array<number>(n).fill(1), new Array<number>(n).fill(1.05)],
-    series: [
-      { label: "R-hat", stroke: seriesColor(0) },
-      { label: "1.00", stroke: "#22c55e", dash: [4, 4], width: 1 },
-      { label: "1.05", stroke: "#ef4444", dash: [4, 4], width: 1 },
+    data: [d.iterations, d.rhat],
+    series: [{ label: "R-hat", stroke: seriesColor(0) }],
+    refLines: [
+      { value: 1, label: "1.00", stroke: "#22c55e" },
+      { value: 1.05, label: "1.05", stroke: "#ef4444" },
     ],
   };
 }

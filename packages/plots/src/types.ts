@@ -39,6 +39,8 @@ export interface TraceData {
   nDraws: number;
   /** One array of length nDraws per chain, in iteration order. */
   chains: number[][];
+  /** Identity of each chain (parallel to `chains`); defaults to `0..nChains-1` when absent. */
+  chainIds?: number[];
   /** Rank-normalized R-hat across chains (NaN when undefined). */
   rhat: number;
   /** Bulk effective sample size (NaN when undefined). */
@@ -54,6 +56,8 @@ export interface DensityData {
   x: number[];
   /** One density curve per chain, each aligned to `x`. */
   chains: number[][];
+  /** Identity of each chain (parallel to `chains`); defaults to `0..nChains-1` when absent. */
+  chainIds?: number[];
 }
 
 /** Per-variable pooled histogram: bin edges (length bins+1) and counts (length bins). */
@@ -74,6 +78,8 @@ export interface RankData {
   bins: number;
   /** One count array (length bins) per chain. */
   counts: number[][];
+  /** Identity of each chain (parallel to `counts`); defaults to `0..nChains-1` when absent. */
+  chainIds?: number[];
   /** Uniform-mixing expectation per bin per chain. */
   expected: number;
 }
@@ -88,6 +94,8 @@ export interface AutocorrData {
   lags: number[];
   /** One ACF array per chain, aligned to `lags`. */
   chains: number[][];
+  /** Identity of each chain (parallel to `chains`); defaults to `0..nChains-1` when absent. */
+  chainIds?: number[];
 }
 
 /** Energy plot (HMC/NUTS): overlaid marginal- and transition-energy histograms on shared bins. */
@@ -165,6 +173,8 @@ export interface CumulativeMeanData {
   iterations: number[];
   /** One running-mean array per chain (may be shorter than `iterations`). */
   chains: number[][];
+  /** Identity of each chain (parallel to `chains`); defaults to `0..nChains-1` when absent. */
+  chainIds?: number[];
 }
 
 /** Running split-R-hat over an increasing prefix of draws (empty when undefined). */
