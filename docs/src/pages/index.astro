@@ -305,6 +305,31 @@ not converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
 		return null;
 	}
 
+	type RefLine = { value: number; stroke?: string; dash?: number[] };
+
+	function refLinePlugin(refLines: RefLine[]): uPlot.Plugin {
+		return {
+			hooks: {
+				draw: (u) => {
+					const ctx = u.ctx;
+					ctx.save();
+					ctx.lineWidth = 1;
+					for (const r of refLines) {
+						ctx.strokeStyle = r.stroke ?? "#9ca3af";
+						ctx.setLineDash(r.dash ?? [4, 4]);
+						const y = Math.round(u.valToPos(r.value, "y", true)) + 0.5;
+						ctx.beginPath();
+						ctx.moveTo(u.bbox.left, y);
+						ctx.lineTo(u.bbox.left + u.bbox.width, y);
+						ctx.stroke();
+					}
+					ctx.setLineDash([]);
+					ctx.restore();
+				},
+			},
+		};
+	}
+
 	// biome-ignore lint/suspicious/noExplicitAny: spec mirrors @mcmcjs/plots UplotSpec
 	function mountPlot(panel: HTMLElement, spec: any) {
 		const series: Record<string, unknown>[] = [{}];
@@ -332,6 +357,7 @@ not converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
 			series,
 			legend: { show: true },
 			cursor: { drag: { x: true, y: true, uni: 12 } },
+			plugins: spec.refLines?.length ? [refLinePlugin(spec.refLines)] : [],
 		} as unknown as uPlot.Options;
 		const u = new uPlot(opts, spec.data as uPlot.AlignedData, panel);
 		window.addEventListener("resize", () => u.setSize({ width: width(), height: 300 }));
