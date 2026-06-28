@@ -46,6 +46,7 @@ const BLEND = {
 } as const;
 
 interface CellChainBuffer {
+  chain: number;
   buf: ReturnType<Regl["buffer"]>;
   count: number;
   color: [number, number, number, number];
@@ -65,6 +66,7 @@ export async function mountSplom(
 ): Promise<GlPlotHandle> {
   const createRegl = await resolveRegl(opts);
   const colors = opts.chainColors ?? DEFAULT_CHAIN_COLORS;
+  const hidden = new Set<number>(opts.hiddenChains ?? []);
   const dpr = globalThis.devicePixelRatio || 1;
   const N = data.vars.length;
   const cellSize = opts.cellSize ?? 220;
@@ -149,6 +151,7 @@ export async function mountSplom(
         const flat = byChain.get(ci) ?? [];
         const pos = Float32Array.from(flat);
         chains.push({
+          chain: ci,
           buf: regl.buffer({ data: pos, type: "float" }),
           count: flat.length / 2,
           color: hexToVec4(chainColor(colors, ci), pointOpacity),
@@ -248,6 +251,7 @@ export async function mountSplom(
       const ph = Math.round(cellSize * dpr);
       const box = { x: px, y: py, width: pw, height: ph };
       for (const ch of cell.chains) {
+        if (hidden.has(ch.chain)) continue;
         drawPoints({
           position: { buffer: ch.buf, size: 2 },
           count: ch.count,
@@ -269,6 +273,11 @@ export async function mountSplom(
     },
     setSize: () => {
       // The SPLOM uses a fixed cell grid; resizing is a no-op (re-mount to change cellSize).
+    },
+    setChainVisible: (chain, show) => {
+      if (show) hidden.delete(chain);
+      else hidden.add(chain);
+      render();
     },
     get canvas() {
       return canvas;

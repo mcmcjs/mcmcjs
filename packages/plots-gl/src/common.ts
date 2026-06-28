@@ -22,6 +22,8 @@ export interface GlMountOptions {
   height?: number;
   /** Per-chain colors as `#rrggbb` hex strings; cycles when there are more chains than colors. */
   chainColors?: readonly string[];
+  /** Chain ids hidden on first render; toggle later via `setChainVisible`. */
+  hiddenChains?: readonly number[];
 }
 
 /** Imperative handle over a mounted WebGL plot. */
@@ -30,6 +32,8 @@ export interface GlPlotHandle {
   update(): void;
   /** Resize the backing canvas to new CSS pixel dimensions. */
   setSize(width: number, height: number): void;
+  /** Show or hide every series belonging to a chain id (drives click-to-toggle legends). */
+  setChainVisible(chain: number, show: boolean): void;
   /** The backing canvas (for PNG export via `toDataURL`/`toBlob`). */
   readonly canvas: HTMLCanvasElement;
   /** Cancel the render loop, detach listeners, and release GPU resources. */

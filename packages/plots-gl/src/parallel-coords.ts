@@ -47,6 +47,7 @@ const BLEND = {
 } as const;
 
 interface ChainGpu {
+  chain: number;
   vertBuf: ReturnType<Regl["buffer"]>;
   drawCount: number;
   color: [number, number, number, number];
@@ -61,6 +62,7 @@ export async function mountParallelCoords(
 ): Promise<GlPlotHandle> {
   const createRegl = await resolveRegl(opts);
   const colors = opts.chainColors ?? DEFAULT_CHAIN_COLORS;
+  const hidden = new Set<number>(opts.hiddenChains ?? []);
   const lineOpacity = opts.lineOpacity ?? 0.15;
   const dpr = globalThis.devicePixelRatio || 1;
   const N = data.vars.length;
@@ -147,10 +149,11 @@ export async function mountParallelCoords(
         }
       }
       chainGpu.push({
+        chain: ci,
         vertBuf: regl.buffer({ data: verts, type: "float" }),
         drawCount: numSegments * 2,
         color: hexToVec4(chainColor(colors, ci), lineOpacity),
-        visible: true,
+        visible: !hidden.has(ci),
       });
     }
   };
@@ -285,6 +288,11 @@ export async function mountParallelCoords(
       canvas.style.height = `${h}px`;
       regl.poll();
       buildLabels();
+    },
+    setChainVisible: (chain, show) => {
+      if (show) hidden.delete(chain);
+      else hidden.add(chain);
+      for (const d of chainGpu) if (d.chain === chain) d.visible = show;
     },
     get canvas() {
       return canvas;

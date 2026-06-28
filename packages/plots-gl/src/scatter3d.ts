@@ -82,6 +82,7 @@ export async function mountScatter3d(
 ): Promise<GlPlotHandle> {
   const createRegl = await resolveRegl(opts);
   const colors = opts.chainColors ?? DEFAULT_CHAIN_COLORS;
+  const hidden = new Set<number>(opts.hiddenChains ?? []);
   const dpr = globalThis.devicePixelRatio || 1;
   const width = opts.width ?? Math.max(320, target.clientWidth || 560);
   const height = opts.height ?? 360;
@@ -171,7 +172,7 @@ export async function mountScatter3d(
         count: len,
         chain: c.chain ?? i,
         color: hexToVec4(chainColor(colors, c.chain ?? i), pointOpacity),
-        visible: true,
+        visible: !hidden.has(c.chain ?? i),
         normX: nx,
         normY: ny,
         normZ: nz,
@@ -309,6 +310,11 @@ export async function mountScatter3d(
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
       regl.poll();
+    },
+    setChainVisible: (chain, show) => {
+      if (show) hidden.delete(chain);
+      else hidden.add(chain);
+      for (const e of entries) if (e.chain === chain) e.visible = show;
     },
     get canvas() {
       return canvas;
