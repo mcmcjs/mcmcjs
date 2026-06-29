@@ -1,5 +1,11 @@
 # @mcmcjs/plots-gl
 
+## 0.2.1
+
+### Patch Changes
+
+- @mcmcjs/plots@0.4.1
+
 ## 0.2.0
 
 ### Minor Changes

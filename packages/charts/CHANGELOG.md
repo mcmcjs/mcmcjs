@@ -1,5 +1,11 @@
 # @mcmcjs/charts
 
+## 0.5.0
+
+### Minor Changes
+
+- 95f5e5a: Theme mountPlot axes (labels, gridlines, ticks, border) from the theme preset, with axisColor, gridColor, and font overrides for exact palettes
+
 ## 0.4.0
 
 ### Minor Changes
