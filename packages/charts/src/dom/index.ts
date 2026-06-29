@@ -56,6 +56,14 @@ export interface MountOptions extends InteractionOptions {
   background?: string;
   /** Device-pixel ratio for crisp lines under zoom (default `max(2, devicePixelRatio)`). */
   pxRatio?: number;
+  /** Axis label and tick-value text color. Defaults to a light/dark value from `theme`. */
+  axisColor?: string;
+  /** Gridline, tick, and axis-border color. Defaults to a light/dark value from `theme`. */
+  gridColor?: string;
+  /** Axis tick-value font, e.g. `"12px Inter, sans-serif"`. Defaults to uPlot's. */
+  font?: string;
+  /** Axis label font. Defaults to `font`, then uPlot's. */
+  labelFont?: string;
 }
 
 /** Imperative handle over a mounted chart. */
@@ -129,6 +137,34 @@ export function refLinePlugin(refLines: RefLine[]): { hooks: { draw: (u: uPlot) 
   };
 }
 
+/** Default axis colors per theme: text follows the chrome theme, gridlines a soft neutral. */
+const AXIS_PRESET = {
+  light: { stroke: "#1a1a1a", grid: "#e5e7eb" },
+  dark: { stroke: "#e8eaf0", grid: "#262a3a" },
+} as const;
+
+/**
+ * Build a themed `uPlot.Axis` config for one axis. Strokes are plain strings, applied at
+ * construction so uPlot wraps them into draw-time functions itself; mutating them afterwards
+ * is what breaks (a raw string where uPlot expects its wrapped function).
+ */
+function axisStyle(opts: MountOptions, label: string): Record<string, unknown> {
+  const preset = AXIS_PRESET[opts.theme === "dark" ? "dark" : "light"];
+  const stroke = opts.axisColor ?? preset.stroke;
+  const grid = opts.gridColor ?? preset.grid;
+  const o: Record<string, unknown> = {
+    label,
+    stroke,
+    grid: { stroke: grid, width: 1 },
+    ticks: { stroke: grid, width: 1, size: 5 },
+    border: { show: true, stroke: grid, width: 1 },
+  };
+  if (opts.font) o.font = opts.font;
+  const labelFont = opts.labelFont ?? opts.font;
+  if (labelFont) o.labelFont = labelFont;
+  return o;
+}
+
 /** Mount a chart described by `spec` into `target`, returning an imperative handle. */
 export function mountPlot(
   target: HTMLElement,
@@ -178,7 +214,7 @@ export function mountPlot(
     // `pxRatio` is a runtime uPlot option not yet in its .d.ts; it is carried on the loose config.
     pxRatio: opts.pxRatio ?? Math.max(2, dpr),
     scales: { x: { time: false } },
-    axes: [{ label: spec.xLabel ?? "" }, { label: spec.yLabel ?? "" }],
+    axes: [axisStyle(opts, spec.xLabel ?? ""), axisStyle(opts, spec.yLabel ?? "")],
     series,
     legend: { live: true },
     cursor: { drag: { x: true, y: true, uni: 12 } },

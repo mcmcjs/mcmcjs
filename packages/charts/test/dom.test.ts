@@ -161,6 +161,42 @@ describe("mountPlot", () => {
     expect(data[0]?.[0]).toBe(0);
     expect(data[0]?.[9]).toBe(99);
   });
+
+  type Axis = { label: string; stroke: string; grid: { stroke: string }; font?: string };
+  const axesOf = (calls: { config: unknown }): Axis[] => (calls.config as { axes: Axis[] }).axes;
+
+  it("themes both axes with light colors by default", () => {
+    const { Fake, calls } = fakeUplot();
+    mountPlot(target, spec, { uPlot: Fake });
+    const [x, y] = axesOf(calls);
+    expect(x?.label).toBe("iteration");
+    expect(x?.stroke).toBe("#1a1a1a");
+    expect(x?.grid.stroke).toBe("#e5e7eb");
+    expect(y?.stroke).toBe("#1a1a1a");
+  });
+
+  it("themes axes with dark colors under the dark preset", () => {
+    const { Fake, calls } = fakeUplot();
+    mountPlot(target, spec, { uPlot: Fake, theme: "dark" });
+    const [x] = axesOf(calls);
+    expect(x?.stroke).toBe("#e8eaf0");
+    expect(x?.grid.stroke).toBe("#262a3a");
+  });
+
+  it("lets axisColor, gridColor, and font override the preset", () => {
+    const { Fake, calls } = fakeUplot();
+    mountPlot(target, spec, {
+      uPlot: Fake,
+      theme: "dark",
+      axisColor: "rgb(10, 20, 30)",
+      gridColor: "rgb(40, 50, 60)",
+      font: "12px Inter, sans-serif",
+    });
+    const [x] = axesOf(calls);
+    expect(x?.stroke).toBe("rgb(10, 20, 30)");
+    expect(x?.grid.stroke).toBe("rgb(40, 50, 60)");
+    expect(x?.font).toBe("12px Inter, sans-serif");
+  });
 });
 
 describe("refLinePlugin", () => {
