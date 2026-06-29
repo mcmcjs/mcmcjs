@@ -1,5 +1,16 @@
 # @mcmcjs/plots-gl
 
+## 0.2.0
+
+### Minor Changes
+
+- eba4666: Add per-chain visibility to the WebGL renderers. `GlPlotHandle` gains `setChainVisible(chain, show)` and `GlMountOptions` gains `hiddenChains`, so a host can drive click-to-toggle chain legends over the 3D scatter, SPLOM, and parallel-coordinates plots and set the initial hidden set. Toggling a chain hides every series that belongs to it across all SPLOM cells.
+
+### Patch Changes
+
+- Updated dependencies [d136f5e]
+  - @mcmcjs/plots@0.4.0
+
 ## 0.1.0
 
 ### Minor Changes
