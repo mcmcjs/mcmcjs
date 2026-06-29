@@ -136,6 +136,16 @@ describe("mountPlot", () => {
     expect((calls.config as { plugins: unknown[] }).plugins).toHaveLength(1);
   });
 
+  it("renders at a high-DPI pxRatio (>= 2 by default, overridable)", () => {
+    const def = fakeUplot();
+    mountPlot(target, spec, { uPlot: def.Fake });
+    expect((def.calls.config as { pxRatio: number }).pxRatio).toBeGreaterThanOrEqual(2);
+
+    const over = fakeUplot();
+    mountPlot(target, spec, { uPlot: over.Fake, pxRatio: 1 });
+    expect((over.calls.config as { pxRatio: number }).pxRatio).toBe(1);
+  });
+
   it("downsamples aligned data on mount when a budget is set", () => {
     const { Fake, calls } = fakeUplot();
     const wide: MountSpec = {

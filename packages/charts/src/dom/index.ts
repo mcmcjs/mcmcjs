@@ -54,6 +54,8 @@ export interface MountOptions extends InteractionOptions {
   uPlot?: UplotCtor;
   /** Background painted behind the plot and into exported PNGs (default transparent / white). */
   background?: string;
+  /** Device-pixel ratio for crisp lines under zoom (default `max(2, devicePixelRatio)`). */
+  pxRatio?: number;
 }
 
 /** Imperative handle over a mounted chart. */
@@ -167,10 +169,14 @@ export function mountPlot(
   const prep = (data: (number | null)[][]): (number | null)[][] =>
     opts.downsample && opts.downsample > 0 ? downsampleAligned(data, opts.downsample) : data;
 
+  // Render at >= 2x the device pixel ratio so canvas lines stay crisp under browser zoom.
+  const dpr = (globalThis as { devicePixelRatio?: number }).devicePixelRatio || 1;
   const config = {
     title: spec.title,
     width: widthOf(),
     height,
+    // `pxRatio` is a runtime uPlot option not yet in its .d.ts; it is carried on the loose config.
+    pxRatio: opts.pxRatio ?? Math.max(2, dpr),
     scales: { x: { time: false } },
     axes: [{ label: spec.xLabel ?? "" }, { label: spec.yLabel ?? "" }],
     series,
@@ -185,8 +191,29 @@ export function mountPlot(
     prep(spec.data) as uPlot.AlignedData,
     target,
   );
-  const onResize = (): void => u.setSize({ width: widthOf(), height });
-  if (opts.width === undefined) globalThis.addEventListener?.("resize", onResize);
+
+  // Keep the chart sized to its container. Prefer a ResizeObserver (catches container
+  // resizes, not just window resizes), debounced with rAF; fall back to window resize.
+  const resizeTo = (): void => u.setSize({ width: widthOf(), height });
+  let stopObserving: () => void = () => undefined;
+  if (opts.width === undefined) {
+    const RO = (globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver;
+    if (RO) {
+      let raf = 0;
+      const ro = new RO(() => {
+        if (raf) cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(resizeTo);
+      });
+      ro.observe(target);
+      stopObserving = () => {
+        if (raf) cancelAnimationFrame(raf);
+        ro.disconnect();
+      };
+    } else {
+      globalThis.addEventListener?.("resize", resizeTo);
+      stopObserving = () => globalThis.removeEventListener?.("resize", resizeTo);
+    }
+  }
 
   return {
     update: (data) => u.setData(prep(data) as uPlot.AlignedData),
@@ -205,7 +232,7 @@ export function mountPlot(
       return u;
     },
     destroy: () => {
-      globalThis.removeEventListener?.("resize", onResize);
+      stopObserving();
       interactions.dispose();
       u.destroy();
     },
