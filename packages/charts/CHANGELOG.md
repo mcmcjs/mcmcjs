@@ -1,5 +1,15 @@
 # @mcmcjs/charts
 
+## 0.4.0
+
+### Minor Changes
+
+- 27d8e76: Make the `@mcmcjs/charts/dom` interactive layer first-class. `MountSeries` gains `show` (initial visibility) and `role` ("chain" | "reference"); `MountSpec` gains a `refLines` channel so guide lines (e.g. an R-hat threshold) are drawn by a plugin instead of masquerading as trailing data series; `PlotHandle` gains `setSeriesVisible`, `toPng`, and an `uplot` escape hatch. `MountOptions` adds opt-in `interactive`/`modebar`/`tooltip`/`wheelZoom`/`pan`/`downsample`/`theme` flags that wire tree-shakeable plugins (hover modebar with pan, axis-zoom, zoom, reset, PNG export; cursor wheel-zoom and drag-pan; a colored-swatch tooltip), plus `downsampleAligned` and `lttb` downsamplers. The default chart stays bare uPlot; window listeners are removed on `destroy`.
+
+### Patch Changes
+
+- 8981a57: Mount uPlot charts at a high-DPI `pxRatio` (default `max(2, devicePixelRatio)`, overridable via `MountOptions.pxRatio`) so lines stay crisp under browser zoom, and drive responsive resize with a rAF-debounced `ResizeObserver` (catching container resizes, not just window resizes) with a clean `resize`-listener fallback.
+
 ## 0.3.0
 
 ### Minor Changes
