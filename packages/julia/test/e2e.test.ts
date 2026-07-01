@@ -59,6 +59,24 @@ const DATA = {
   sigma: [15, 10, 16, 11, 9, 11, 10, 18],
 };
 
+// A model that reads its outcome from the data table inside the body rather than
+// taking it as an argument. Turing only observes arguments, so without
+// conditioning on the data columns this would SAMPLE `y` and `mu` would return the
+// prior (mean 0); with conditioning `y` is observed and `mu` sits at the data mean.
+const TABLE_MODEL = `using Turing
+
+@model function build_model(data)
+    y = data["y"]
+    mu ~ Normal(0, 5)
+    sigma ~ truncated(Normal(0, 2); lower = 0)
+    for i in eachindex(y)
+        y[i] ~ Normal(mu, sigma)
+    end
+end
+`;
+
+const TABLE_DATA = { y: [4.9, 5.1, 5.0, 4.7, 5.3, 5.2, 4.8, 5.05] }; // mean ~5.006
+
 let dir: string;
 let modelPath: string;
 
@@ -175,5 +193,37 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
     // actually started and streamed before we aborted.
     expect(sawBatch, "the run ended before any draw batch streamed").toBe(true);
     expect(result.status).toBe("cancelled");
+  }, 300_000);
+});
+
+d("julia e2e: an outcome read from the data table is observed, not sampled", () => {
+  it("recovers the data mean, proving the outcome is conditioned", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const tableModelPath = join(dir, "table_model.jl");
+    writeFileSync(tableModelPath, TABLE_MODEL);
+    const outPath = join(dir, "table.samples.json");
+    const result = await runFit(
+      {
+        ...spec(400, 2),
+        model: { kind: "file", path: tableModelPath, entry: "build_model" },
+        modelPath: tableModelPath,
+        data: TABLE_DATA,
+      },
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        recordPath: join(dir, "table.run.json"),
+      },
+    );
+
+    expect(result.status).toBe("ok");
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    const mu = [0, 1].flatMap((chain) => Array.from(chainView(samples, "mu", chain)));
+    const mean = mu.reduce((a, b) => a + b, 0) / mu.length;
+    // Data mean is ~5.006; the prior mean is 0, so this only passes if `y` was
+    // conditioned (observed) rather than sampled.
+    expect(mean).toBeCloseTo(5.006, 0);
   }, 300_000);
 });
