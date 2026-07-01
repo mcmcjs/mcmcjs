@@ -1,4 +1,7 @@
-using JuliaBUGS, AbstractMCMC, AdvancedHMC, LogDensityProblems, LogDensityProblemsAD, MCMCChains, ReverseDiff, Random
+using JuliaBUGS
+using ADTypes, Mooncake
+using AbstractMCMC, AdvancedHMC, FlexiChains
+using Random
 
 data = (
   r1 = [3, 5, 2, 7, 7, 2, 5, 3, 5, 11, 6, 6, 11, 4, 4, 2, 8, 8, 6, 5, 15, 4, 9, 9, 4, 12, 8, 8, 6, 8, 12, 4, 7, 16, 12, 9, 4, 7, 8, 11, 5, 12, 8, 17, 9, 3, 2, 7, 6, 5, 11, 14, 13, 8, 6, 4, 8, 4, 8, 7, 15, 15, 9, 9, 5, 6, 3, 9, 12, 14, 16, 17, 8, 8, 9, 5, 9, 11, 6, 14, 21, 16, 6, 9, 8, 9, 8, 4, 11, 11, 6, 9, 4, 4, 9, 9, 10, 14, 6, 3, 4, 6, 10, 4, 3, 3, 10, 4, 10, 5, 4, 3, 13, 1, 7, 5, 7, 6, 3, 7],
@@ -35,12 +38,8 @@ model {
 }
 """, true, false)
 
-# Compile the model
-model = JuliaBUGS.compile(model_def, data, inits)
-ad_model = ADgradient(:ReverseDiff, model)
-ld_model = AbstractMCMC.LogDensityModel(ad_model)
-
-# Sampling parameters
+model = model_def(data; adtype = AutoMooncake(; config = nothing))
+initialize!(model, inits)
 n_samples, n_adapts = 1000, 1000
 n_chains = 4
 seed = 42
@@ -48,27 +47,24 @@ seed = 42
 seed_val = tryparse(Int, string(seed))
 rng = seed === nothing ? Random.default_rng() : (seed_val === nothing ? Random.default_rng() : Random.MersenneTwister(seed_val))
 
-initial_θ = try; JuliaBUGS.getparams(model); catch; zeros(LogDensityProblems.dimension(ad_model)); end
-
-# Sample
 if n_chains > 1 && Threads.nthreads() > 1
     chain = AbstractMCMC.sample(
-        rng, ld_model, NUTS(0.65), MCMCThreads(), n_samples, n_chains;
-        chain_type = Chains, n_adapts = n_adapts, init_params = initial_θ,
+        rng, model, NUTS(0.65), MCMCThreads(), n_samples, n_chains;
+        chain_type = FlexiChains.VNChain, n_adapts = n_adapts,
         discard_initial = n_adapts, progress = false,
     )
 elseif n_chains > 1
     chain = AbstractMCMC.sample(
-        rng, ld_model, NUTS(0.65), MCMCSerial(), n_samples, n_chains;
-        chain_type = Chains, n_adapts = n_adapts, init_params = initial_θ,
+        rng, model, NUTS(0.65), MCMCSerial(), n_samples, n_chains;
+        chain_type = FlexiChains.VNChain, n_adapts = n_adapts,
         discard_initial = n_adapts, progress = false,
     )
 else
     chain = AbstractMCMC.sample(
-        rng, ld_model, NUTS(0.65), n_samples;
-        chain_type = Chains, n_adapts = n_adapts, init_params = initial_θ,
+        rng, model, NUTS(0.65), n_samples;
+        chain_type = FlexiChains.VNChain, n_adapts = n_adapts,
         discard_initial = n_adapts, progress = false,
     )
 end
 
-describe(chain)
+println(summarystats(chain))

@@ -9,6 +9,10 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   outExtension: ({ format }) => ({ js: format === "cjs" ? ".cjs" : ".js" }),
+  // Inline `.tpl` templates as strings so the build stays self-contained (browser-safe).
+  esbuildOptions: (options) => {
+    options.loader = { ...options.loader, ".tpl": "text" };
+  },
   // The graph format's JSON Schema ships as a plain artifact so non-TypeScript
   // consumers (and agents) can validate graphs without importing the package.
   onSuccess: async () => {

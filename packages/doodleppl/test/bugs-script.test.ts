@@ -13,10 +13,9 @@ const SETTINGS = { n_samples: 1000, n_adapts: 1000, n_chains: 4, seed: 42 };
 
 const examples = readdirSync(join(FIXTURES, "bugs")).sort();
 
-// Byte-for-byte equivalence with the editor's BUGS codegen and standalone-script
-// generator, captured from the original implementation over the example graphs.
-// kidney and mice carry censoring, exercising the @bugs_primitive branch.
-describe("bugs codegen and script match the editor reference output", () => {
+// model.bugs matches the editor byte-for-byte; run_model.jl is the JuliaBUGS v0.15
+// run-script snapshot. kidney and mice carry censoring.
+describe("bugs codegen and run-script snapshots", () => {
   for (const name of examples) {
     it(name, () => {
       const model = parseUnifiedModel(
@@ -52,7 +51,7 @@ describe("generateStandaloneScript", () => {
     });
     expect(script).toContain("y = [1, missing, 3]");
     expect(script).toContain("tau_c = 1");
-    expect(script).toContain("inits = ()");
+    expect(script).toContain("inits = (;)");
     expect(script).toContain("seed = nothing");
   });
 

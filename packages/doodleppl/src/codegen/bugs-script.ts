@@ -1,6 +1,7 @@
-// Standalone JuliaBUGS run-script generation, ported from the editor's
-// useBugsCodeGenerator. Formats the model data and inits as Julia NamedTuple
-// literals and wraps the generated BUGS model code in a runnable script.
+// Standalone JuliaBUGS run-script generation: formats data and inits as Julia
+// NamedTuple literals and fills the run-script template.
+import runTemplate from "../templates/juliabugs-run.jl.tpl";
+import { renderTemplate } from "../templates/render";
 
 // Render a Julia NamedTuple field name.
 // With replace_period=true (string-mode @bugs), the parser converts dots to underscores,
@@ -68,7 +69,7 @@ function buildNamedTupleLiteral(obj: Record<string, unknown>): string {
   const entries = Object.entries(obj).map(
     ([k, val]) => `  ${juliaFieldLiteral(k)} = ${formatValue(val)}`,
   );
-  if (!entries.length) return "()";
+  if (!entries.length) return "(;)"; // empty NamedTuple; `()` is an empty Tuple and fails the API
   const body = entries.join(",\n");
   const trailingComma = entries.length === 1 ? "," : "";
   return `(\n${body}${trailingComma}\n)`;
@@ -107,53 +108,18 @@ export function generateStandaloneScript(input: StandaloneScriptInput): string {
   const censoredPrimitive = hasCensoring
     ? "\n# Register censored() as a valid BUGS primitive\nJuliaBUGS.@bugs_primitive censored\n"
     : "";
+  const initializeCall = Object.keys(inits).length > 0 ? "initialize!(model, inits)" : "";
 
-  return `using JuliaBUGS, AbstractMCMC, AdvancedHMC, LogDensityProblems, LogDensityProblemsAD, MCMCChains, ReverseDiff, Random${censoredImport}
-
-data = ${dataLiteral}
-
-inits = ${initsLiteral}
-${censoredPrimitive}
-model_def = JuliaBUGS.@bugs("""
-${modelCode}
-""", true, false)
-
-# Compile the model
-model = JuliaBUGS.compile(model_def, data, inits)
-ad_model = ADgradient(:ReverseDiff, model)
-ld_model = AbstractMCMC.LogDensityModel(ad_model)
-
-# Sampling parameters
-n_samples, n_adapts = ${nSamples}, ${nAdapts}
-n_chains = ${nChains}
-seed = ${seedLiteral}
-
-seed_val = tryparse(Int, string(seed))
-rng = seed === nothing ? Random.default_rng() : (seed_val === nothing ? Random.default_rng() : Random.MersenneTwister(seed_val))
-
-initial_θ = try; JuliaBUGS.getparams(model); catch; zeros(LogDensityProblems.dimension(ad_model)); end
-
-# Sample
-if n_chains > 1 && Threads.nthreads() > 1
-    chain = AbstractMCMC.sample(
-        rng, ld_model, NUTS(0.65), MCMCThreads(), n_samples, n_chains;
-        chain_type = Chains, n_adapts = n_adapts, init_params = initial_θ,
-        discard_initial = n_adapts, progress = false,
-    )
-elseif n_chains > 1
-    chain = AbstractMCMC.sample(
-        rng, ld_model, NUTS(0.65), MCMCSerial(), n_samples, n_chains;
-        chain_type = Chains, n_adapts = n_adapts, init_params = initial_θ,
-        discard_initial = n_adapts, progress = false,
-    )
-else
-    chain = AbstractMCMC.sample(
-        rng, ld_model, NUTS(0.65), n_samples;
-        chain_type = Chains, n_adapts = n_adapts, init_params = initial_θ,
-        discard_initial = n_adapts, progress = false,
-    )
-end
-
-describe(chain)
-`;
+  return renderTemplate(runTemplate, {
+    censoredImport,
+    dataLiteral,
+    initsLiteral,
+    censoredPrimitive,
+    modelCode,
+    initializeCall,
+    nSamples,
+    nAdapts,
+    nChains,
+    seedLiteral,
+  });
 }
