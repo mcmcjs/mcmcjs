@@ -1,11 +1,11 @@
 # mcmcjs
 
-## 0.15.3
+## 0.15.4
 
 ### Patch Changes
 
-- Updated dependencies [d567516]
-  - @mcmcjs/doodleppl@0.2.0
+- Point at the renamed codegen package.
+  - @mcmcjs/doodleppl@0.1.0
 
 ## 0.15.2
 

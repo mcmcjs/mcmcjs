@@ -1,6 +1,6 @@
 {
   "name": "mcmcjs",
-  "version": "0.15.3",
+  "version": "0.15.4",
   "description": "Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics across probabilistic programming languages.",
   "keywords": [
     "mcmc",

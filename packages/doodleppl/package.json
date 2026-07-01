@@ -1,6 +1,6 @@
 {
   "name": "@mcmcjs/doodleppl",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "description": "Turn a DoodlePPL graph into probabilistic model code (BUGS/JuliaBUGS, Stan); the shared codegen for the DoodlePPL editor and the MCMC.js CLI.",
   "keywords": [
     "doodleppl",

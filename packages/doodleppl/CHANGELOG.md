@@ -1,15 +1,10 @@
-# @mcmcjs/doodlebugs
-
-## 0.2.0
-
-### Minor Changes
-
-- d567516: Rename the package to `@mcmcjs/doodleppl` (from `@mcmcjs/doodlebugs`), since it generates code for multiple probabilistic programming languages, and reorganize the source into tiers: a `core/` layer (graph types, schema, catalog, validation, topological sort) and a `codegen/` layer (per-target generators: BUGS, Stan, and the JuliaBUGS run-script). Adds a `@mcmcjs/doodleppl/core` subpath for the graph domain layer without any code generation; the root entry and the `@mcmcjs/doodleppl/stan` subpath export the same symbols as before.
+# @mcmcjs/doodleppl
 
 ## 0.1.0
 
 ### Minor Changes
 
+- Debut as `@mcmcjs/doodleppl`. The package was previously published as `@mcmcjs/doodlebugs`; it is renamed because it generates code for multiple probabilistic programming languages, and its source is organized into tiers: a `core/` layer (graph types, schema, catalog, validation, topological sort) and a `codegen/` layer (per-target generators: BUGS, Stan, and the JuliaBUGS run-script). It exposes a `@mcmcjs/doodleppl/core` subpath for the graph domain layer and a `@mcmcjs/doodleppl/stan` subpath for the Stan target.
 - 9f8c973: Add the JuliaBUGS standalone-script generator (`generateStandaloneScript`), ported from the editor and verified byte-for-byte against its output on the bundled example graphs, alongside reference fixtures that also pin `generateBugsModel` to the editor's exact output.
 - 25eb23b: Port the BUGS distribution catalog (26 distributions with parameter metadata), the built-in function set, and the graph validator (`validateGraph`) from the editor, so validation and authoring metadata live in the shared core.
 - 9fc2bf3: Initial release: parse DoodleBUGS graphs and generate BUGS model code (graph data model, topological sort, and the graph-to-`model { ... }` codegen ported from the editor), so the codegen has one shared home.
