@@ -17,6 +17,8 @@ using Pkg
 import JuliaBUGS
 import AdvancedHMC
 import ForwardDiff
+# Loading Mooncake activates AbstractPPL's native extension for AutoMooncake.
+import Mooncake
 import FlexiChains
 import DimensionalData
 
@@ -289,13 +291,14 @@ function vnchain_to_wire(chn)
 end
 
 # JuliaBUGS compiles the model at runtime, so building and sampling must run in
-# separate latest-world frames; merging them reintroduces a world-age error. The
-# result is already an MCMCChains.Chains, so it is not re-wrapped.
+# separate latest-world frames; merging them reintroduces a world-age error.
+# Returns a FlexiChain like the Turing path; gen_chains recovers generated
+# quantities (unobserved nodes with no observed descendants) after sampling.
 function sample_bugs(model, sampler, warmup, draws, chains, rng)
     return Logging.with_logger(JSONProgressLogger()) do
         JuliaBUGS.AbstractMCMC.sample(
             rng, model, sampler, JuliaBUGS.AbstractMCMC.MCMCSerial(), draws, chains;
-            chain_type = MCMCChains.Chains, n_adapts = warmup, discard_initial = warmup, progress = true,
+            chain_type = FlexiChains.VNChain, n_adapts = warmup, discard_initial = warmup, progress = true,
         )
     end
 end
@@ -325,7 +328,7 @@ function provenance()
     packages = Dict{String,String}()
     for (_, info) in Pkg.dependencies()
         if info.name in
-           ("Turing", "FlexiChains", "MCMCChains", "DynamicPPL", "AbstractMCMC", "JuliaBUGS", "AdvancedHMC", "ForwardDiff", "ADTypes") &&
+           ("Turing", "FlexiChains", "MCMCChains", "DynamicPPL", "AbstractMCMC", "JuliaBUGS", "AdvancedHMC", "ForwardDiff", "Mooncake", "ADTypes") &&
            info.version !== nothing
             packages[info.name] = string(info.version)
         end
@@ -382,7 +385,7 @@ function handle_request(request)
             if backend == "juliabugs"
                 model = Base.invokelatest(entry, data)
                 chn = Base.invokelatest(sample_bugs, model, sampler, warmup, draws, chains, rng)
-                chains_to_wire(chn)
+                vnchain_to_wire(chn)
             else
                 cb = get(request, "stream_draws", false) ?
                     draw_streamer(draws, Int(get(request, "draw_batch_size", 25))) : nothing
