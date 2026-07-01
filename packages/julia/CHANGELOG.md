@@ -1,5 +1,11 @@
 # @mcmcjs/julia
 
+## 0.8.0
+
+### Minor Changes
+
+- 8c57520: Condition Turing models on their data columns so a model that reads its outcome from the data table (`y = data["y"]; y[i] ~ dist`) observes it instead of sampling it, and fall back to `build_model` when the requested entry function is absent from the model file.
+
 ## 0.7.1
 
 ### Patch Changes
