@@ -1,11 +1,14 @@
 {
-  "name": "@mcmcjs/doodlebugs",
+  "name": "@mcmcjs/doodleppl",
   "version": "0.1.0",
-  "description": "Turn DoodleBUGS graphs into BUGS/JuliaBUGS model code; the shared codegen for the DoodleBUGS editor and the MCMC.js CLI.",
+  "description": "Turn a DoodlePPL graph into probabilistic model code (BUGS/JuliaBUGS, Stan); the shared codegen for the DoodlePPL editor and the MCMC.js CLI.",
   "keywords": [
+    "doodleppl",
     "doodlebugs",
+    "ppl",
     "bugs",
     "juliabugs",
+    "stan",
     "bayesian",
     "graphical-models",
     "codegen"
@@ -16,11 +19,11 @@
     "email": "contact@shravangoswami.com",
     "url": "https://shravangoswami.com"
   },
-  "homepage": "https://github.com/mcmcjs/mcmcjs/tree/main/packages/doodlebugs#readme",
+  "homepage": "https://github.com/mcmcjs/mcmcjs/tree/main/packages/doodleppl#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mcmcjs/mcmcjs.git",
-    "directory": "packages/doodlebugs"
+    "directory": "packages/doodleppl"
   },
   "bugs": {
     "url": "https://github.com/mcmcjs/mcmcjs/issues"
@@ -35,10 +38,15 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js",
+      "require": "./dist/core/index.cjs"
+    },
     "./stan": {
-      "types": "./dist/stan.d.ts",
-      "import": "./dist/stan.js",
-      "require": "./dist/stan.cjs"
+      "types": "./dist/codegen/stan.d.ts",
+      "import": "./dist/codegen/stan.js",
+      "require": "./dist/codegen/stan.cjs"
     },
     "./graph.schema.json": "./dist/graph.schema.json"
   },

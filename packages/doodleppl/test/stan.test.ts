@@ -2,15 +2,15 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { getElements, parseModelData, parseUnifiedModel } from "../src/model";
 import {
   extractCensoredFields,
   generateStanDataJson,
   generateStanInitsJson,
   generateStanModel,
   generateStanStandaloneScript,
-} from "../src/stan";
-import type { GraphElement } from "../src/types";
+} from "../src/codegen/stan";
+import { getElements, parseModelData, parseUnifiedModel } from "../src/core/model";
+import type { GraphElement } from "../src/core/types";
 
 const FIXTURES = fileURLToPath(new URL("./fixtures", import.meta.url));
 

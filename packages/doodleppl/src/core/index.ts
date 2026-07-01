@@ -1,10 +1,10 @@
-export {
-  generateStandaloneScript,
-  type StandaloneGeneratorSettings,
-  type StandaloneScriptInput,
-} from "./bugs-script";
+/**
+ * `@mcmcjs/doodleppl/core`: the graph domain layer, free of any code generation.
+ * The distribution catalog, graph schema/types, validation, and topological ordering
+ * that every codegen target builds on. Import this when you only need to parse,
+ * validate, or reason about a DoodlePPL graph.
+ */
 export { BUGS_FUNCTIONS, DISTRIBUTIONS, type Distribution, getDistribution } from "./catalog";
-export { generateBugsModel } from "./codegen";
 export { getElements, parseModelData, parseUnifiedModel } from "./model";
 export {
   GraphEdgeSchema,

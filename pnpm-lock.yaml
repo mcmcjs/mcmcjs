@@ -44,9 +44,9 @@ importers:
       '@mcmcjs/diagnostics':
         specifier: workspace:*
         version: link:../diagnostics
-      '@mcmcjs/doodlebugs':
+      '@mcmcjs/doodleppl':
         specifier: workspace:*
-        version: link:../doodlebugs
+        version: link:../doodleppl
       '@mcmcjs/engine':
         specifier: workspace:*
         version: link:../engine
@@ -77,7 +77,7 @@ importers:
 
   packages/diagnostics: {}
 
-  packages/doodlebugs:
+  packages/doodleppl:
     dependencies:
       zod:
         specifier: ^4.4.3

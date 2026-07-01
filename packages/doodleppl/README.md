@@ -1,8 +1,8 @@
-# @mcmcjs/doodlebugs
+# @mcmcjs/doodleppl
 
-Turn [DoodleBUGS](https://github.com/TuringLang/DoodleBUGS) graphs into BUGS / JuliaBUGS model code.
+Turn a DoodlePPL graph into probabilistic model code: BUGS / JuliaBUGS and Stan.
 
-It is framework-free and meant to be the single source of truth for the codegen, shared by the DoodleBUGS editor and the [MCMC.js](https://github.com/mcmcjs/mcmcjs) CLI (`mcmc convert`), so the graph-to-model logic is not duplicated.
+It is framework-free and meant to be the single source of truth for the codegen, shared by the DoodlePPL graph editor and the [MCMC.js](https://github.com/mcmcjs/mcmcjs) CLI (`mcmc convert`), so the graph-to-model logic is not duplicated.
 
 ## What it provides
 

@@ -9,7 +9,7 @@ import {
   getElements,
   parseModelData,
   parseUnifiedModel,
-} from "@mcmcjs/doodlebugs";
+} from "@mcmcjs/doodleppl";
 import type { Command } from "commander";
 
 const DEFAULT_SEED = 1;

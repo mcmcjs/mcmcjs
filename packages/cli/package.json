@@ -1,6 +1,6 @@
 {
   "name": "mcmcjs",
-  "version": "0.15.2",
+  "version": "0.15.4",
   "description": "Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics across probabilistic programming languages.",
   "keywords": [
     "mcmc",
@@ -51,7 +51,7 @@
   "dependencies": {
     "@mcmcjs/core": "workspace:*",
     "@mcmcjs/diagnostics": "workspace:*",
-    "@mcmcjs/doodlebugs": "workspace:*",
+    "@mcmcjs/doodleppl": "workspace:*",
     "@mcmcjs/engine": "workspace:*",
     "@mcmcjs/julia": "workspace:*",
     "@mcmcjs/plots": "workspace:*",

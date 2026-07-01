@@ -1,5 +1,12 @@
 # mcmcjs
 
+## 0.15.4
+
+### Patch Changes
+
+- Point at the renamed codegen package.
+  - @mcmcjs/doodleppl@0.1.0
+
 ## 0.15.2
 
 ### Patch Changes

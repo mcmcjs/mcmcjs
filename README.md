@@ -67,7 +67,7 @@ Every command supports `--json` (except the interactive `sandbox`) and uses exit
 | [`@mcmcjs/charts`](./packages/charts) | Dependency-free plotting engine: terminal (braille/ASCII) and SVG, plus a live uPlot DOM layer. |
 | [`@mcmcjs/plots`](./packages/plots) | MCMC diagnostic plots (trace, forest, rank, ...) over `@mcmcjs/charts`; terminal, SVG, and self-contained HTML. |
 | [`@mcmcjs/plots-gl`](./packages/plots-gl) | Interactive WebGL renderers (3D scatter, SPLOM, parallel coordinates); `regl` optional peer. |
-| [`@mcmcjs/doodlebugs`](./packages/doodlebugs) | Turn DoodleBUGS graphs into BUGS / JuliaBUGS model code. |
+| [`@mcmcjs/doodleppl`](./packages/doodleppl) | Turn a DoodlePPL graph into BUGS / JuliaBUGS and Stan model code. |
 
 ## Development
 

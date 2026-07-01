@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUGS_FUNCTIONS, DISTRIBUTIONS, getDistribution } from "../src/catalog";
+import { BUGS_FUNCTIONS, DISTRIBUTIONS, getDistribution } from "../src/core/catalog";
 
 describe("DISTRIBUTIONS", () => {
   it("carries the 26 BUGS distributions with unique names", () => {

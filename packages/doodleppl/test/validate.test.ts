@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { GraphElement } from "../src/types";
-import { validateGraph } from "../src/validate";
+import type { GraphElement } from "../src/core/types";
+import { validateGraph } from "../src/core/validate";
 
 const node = (n: Partial<GraphElement> & { id: string }): GraphElement =>
   ({ type: "node", ...n }) as GraphElement;

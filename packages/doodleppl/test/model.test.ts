@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getElements, parseModelData, parseUnifiedModel } from "../src/model";
+import { getElements, parseModelData, parseUnifiedModel } from "../src/core/model";
 
 const GRAPH = JSON.stringify({
   name: "demo",

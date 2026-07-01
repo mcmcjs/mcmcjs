@@ -17,7 +17,7 @@ packages/
   charts/       -> @mcmcjs/charts
   plots/        -> @mcmcjs/plots
   plots-gl/     -> @mcmcjs/plots-gl
-  doodlebugs/   -> @mcmcjs/doodlebugs
+  doodleppl/    -> @mcmcjs/doodleppl
 ```
 
 ## The packages
@@ -53,9 +53,9 @@ Split into a data layer (each `*Data` builder turns `Samples` into a serializabl
 Interactive WebGL renderers (3D point cloud, scatter-plot matrix, parallel coordinates) backed by `regl`, an optional peer dependency.
 It consumes data built by `@mcmcjs/plots`, so the terminal, SVG, and HTML backends never pull in WebGL.
 
-**`@mcmcjs/doodlebugs`.**
-Framework-free code generation from DoodleBUGS graphs to BUGS / JuliaBUGS model code: parse a saved graph, topologically order it, emit `model { ... }` code, and validate for issues such as cycles.
-It is the single source of truth shared by the DoodleBUGS editor and the CLI's `convert`.
+**`@mcmcjs/doodleppl`.**
+Framework-free code generation from a DoodlePPL graph to BUGS / JuliaBUGS and Stan model code: parse a saved graph, topologically order it, emit the model code, and validate for issues such as cycles.
+It is the single source of truth shared by the DoodlePPL editor and the CLI's `convert`.
 
 ## Conventions
 

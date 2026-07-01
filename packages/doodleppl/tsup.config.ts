@@ -1,9 +1,9 @@
 import { writeFileSync } from "node:fs";
 import { defineConfig } from "tsup";
-import { graphJsonSchema } from "./src/schema";
+import { graphJsonSchema } from "./src/core/schema";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/stan.ts"],
+  entry: ["src/index.ts", "src/core/index.ts", "src/codegen/stan.ts"],
   format: ["esm", "cjs"],
   dts: true,
   clean: true,

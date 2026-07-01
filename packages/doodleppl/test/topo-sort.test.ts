@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildTopologicalOrder } from "../src/topo-sort";
-import type { GraphEdge, GraphNode } from "../src/types";
+import { buildTopologicalOrder } from "../src/core/topo-sort";
+import type { GraphEdge, GraphNode } from "../src/core/types";
 
 const n = (id: string): GraphNode => ({ id, name: id, type: "node", nodeType: "stochastic" });
 const e = (source: string, target: string): GraphEdge => ({
