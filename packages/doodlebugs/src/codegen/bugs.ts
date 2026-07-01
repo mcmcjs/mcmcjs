@@ -1,5 +1,5 @@
-import { buildTopologicalOrder } from "./topo-sort";
-import type { GraphEdge, GraphElement, GraphNode } from "./types";
+import { buildTopologicalOrder } from "../core/topo-sort";
+import type { GraphEdge, GraphElement, GraphNode } from "../core/types";
 
 interface TreeMember {
   id: string;

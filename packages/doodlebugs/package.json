@@ -35,10 +35,15 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js",
+      "require": "./dist/core/index.cjs"
+    },
     "./stan": {
-      "types": "./dist/stan.d.ts",
-      "import": "./dist/stan.js",
-      "require": "./dist/stan.cjs"
+      "types": "./dist/codegen/stan.d.ts",
+      "import": "./dist/codegen/stan.js",
+      "require": "./dist/codegen/stan.cjs"
     },
     "./graph.schema.json": "./dist/graph.schema.json"
   },

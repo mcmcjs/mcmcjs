@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { generateBugsModel } from "../src/codegen";
-import type { GraphElement } from "../src/types";
+import { generateBugsModel } from "../src/codegen/bugs";
+import type { GraphElement } from "../src/core/types";
 
 const node = (n: Partial<GraphElement> & { id: string }): GraphElement =>
   ({ type: "node", ...n }) as GraphElement;

@@ -1,25 +1,36 @@
+/**
+ * `@mcmcjs/doodlebugs`: turn a DoodleBUGS graph into probabilistic model code.
+ * The root entry re-exports the graph domain layer (`./core`) plus the default BUGS
+ * target (model + JuliaBUGS run-script) for backward compatibility. Other targets are
+ * on their own subpaths: `@mcmcjs/doodlebugs/stan`, `@mcmcjs/doodlebugs/numpyro`.
+ */
+
+export { generateBugsModel } from "./codegen/bugs";
 export {
   generateStandaloneScript,
   type StandaloneGeneratorSettings,
   type StandaloneScriptInput,
-} from "./bugs-script";
-export { BUGS_FUNCTIONS, DISTRIBUTIONS, type Distribution, getDistribution } from "./catalog";
-export { generateBugsModel } from "./codegen";
-export { getElements, parseModelData, parseUnifiedModel } from "./model";
+} from "./codegen/bugs-script";
 export {
+  BUGS_FUNCTIONS,
+  buildTopologicalOrder,
+  DISTRIBUTIONS,
+  type Distribution,
+  type GraphEdge,
   GraphEdgeSchema,
+  type GraphElement,
   GraphElementSchema,
+  type GraphNode,
   GraphNodeSchema,
+  getDistribution,
+  getElements,
   graphJsonSchema,
+  type ModelData,
+  type NodeType,
+  parseModelData,
+  parseUnifiedModel,
+  type UnifiedModelData,
   UnifiedModelDataSchema,
-} from "./schema";
-export { buildTopologicalOrder } from "./topo-sort";
-export type {
-  GraphEdge,
-  GraphElement,
-  GraphNode,
-  ModelData,
-  NodeType,
-  UnifiedModelData,
-} from "./types";
-export { type ValidationIssue, validateGraph } from "./validate";
+  type ValidationIssue,
+  validateGraph,
+} from "./core";

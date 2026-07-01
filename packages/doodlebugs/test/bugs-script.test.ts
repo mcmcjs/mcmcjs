@@ -2,9 +2,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { generateStandaloneScript } from "../src/bugs-script";
-import { generateBugsModel } from "../src/codegen";
-import { getElements, parseModelData, parseUnifiedModel } from "../src/model";
+import { generateBugsModel } from "../src/codegen/bugs";
+import { generateStandaloneScript } from "../src/codegen/bugs-script";
+import { getElements, parseModelData, parseUnifiedModel } from "../src/core/model";
 
 const FIXTURES = fileURLToPath(new URL("./fixtures", import.meta.url));
 

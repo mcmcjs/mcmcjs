@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { GraphElementSchema, graphJsonSchema, UnifiedModelDataSchema } from "../src/schema";
+import { GraphElementSchema, graphJsonSchema, UnifiedModelDataSchema } from "../src/core/schema";
 
 const FIXTURES = fileURLToPath(new URL("./fixtures", import.meta.url));
 

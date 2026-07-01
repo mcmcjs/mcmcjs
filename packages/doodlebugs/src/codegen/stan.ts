@@ -5,8 +5,8 @@
 // into transformed data / transformed parameters / generated quantities, and
 // constructs Stan cannot express (discrete latents, unmapped distributions)
 // are emitted as explanatory comments.
-import { buildTopologicalOrder } from "./topo-sort";
-import type { GraphEdge, GraphElement, GraphNode } from "./types";
+import { buildTopologicalOrder } from "../core/topo-sort";
+import type { GraphEdge, GraphElement, GraphNode } from "../core/types";
 
 interface DistributionMapping {
   stanName: string;
