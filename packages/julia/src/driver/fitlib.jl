@@ -223,12 +223,30 @@ function draw_streamer(draws_per_chain::Int, batch_size::Int)
     end
 end
 
+# Turing observes a variable only when its name is a model argument. A dict-reading
+# model (`y = data["y"]; y[i] ~ dist`) would otherwise SAMPLE its outcome instead of
+# observing it, so condition the built model on the data columns to turn each such
+# `~` into an observation. Columns that are already model arguments are skipped: they
+# are observed by construction, and conditioning one that is also an argument errors.
+# Do not probe the model to find latent columns (e.g. via VarInfo): evaluating a
+# dict-reading model assigns prior draws into the array the data is read from,
+# corrupting it before we condition. Predictor columns carry no `~`, so conditioning
+# on them is a harmless no-op.
+function condition_on_data(model, data)
+    nt = data isa ModelData ? getfield(data, :nt) : data
+    nt isa NamedTuple || return model
+    argnames = keys(model.args)
+    pairs = [k => getproperty(nt, k) for k in keys(nt) if Base.isidentifier(string(k)) && !(k in argnames)]
+    isempty(pairs) && return model
+    return Turing.DynamicPPL.condition(model, (; pairs...))
+end
+
 # Build the model and sample in one call so both run in the latest world age:
 # the model methods are defined by `include` at runtime, so a plain call from
 # this (older) world would fail with "method too new". invokelatest fixes that.
 # Returns Turing's default chain type, a FlexiChain. With a callback, draws stream.
 function build_and_sample(entry, data, sampler, draws, chains, rng; callback = nothing)
-    model = entry(data)
+    model = condition_on_data(entry(data), data)
     kw = callback === nothing ? NamedTuple() : (; callback)
     return Logging.with_logger(JSONProgressLogger()) do
         sample(rng, model, sampler, MCMCSerial(), draws, chains; progress = true, kw...)
@@ -320,6 +338,18 @@ function provenance()
     )
 end
 
+# Resolve the model entry function: use the requested name, falling back to the
+# conventional build_model. This lets a request leave the entry implicit, or name a
+# custom entry that a given model file does not define (then build_model is used).
+function resolve_entry(mod, requested)
+    for name in (requested, "build_model")
+        name === nothing && continue
+        sym = Symbol(name)
+        isdefined(mod, sym) && return getfield(mod, sym)
+    end
+    error("model file defines no entry function (looked for $(requested) and build_model)")
+end
+
 # Runs one request end to end. Returns {"ok": true, "provenance": ...} or
 # {"ok": false, "error": ..., "stage": ...}; never throws.
 function handle_request(request)
@@ -331,7 +361,7 @@ function handle_request(request)
         Random.seed!(Int(request["seed"]))
         rng = StableRNG(Int(request["seed"]))
         Base.include(Main, abspath(request["model"]["file"]))
-        entry = getfield(Main, Symbol(request["model"]["entry"]))
+        entry = resolve_entry(Main, get(request["model"], "entry", nothing))
 
         wire = if mode == "predict"
             backend == "turing" || error("predict is not yet supported for backend $backend")
