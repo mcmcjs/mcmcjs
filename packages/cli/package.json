@@ -51,7 +51,7 @@
   "dependencies": {
     "@mcmcjs/core": "workspace:*",
     "@mcmcjs/diagnostics": "workspace:*",
-    "@mcmcjs/doodlebugs": "workspace:*",
+    "@mcmcjs/doodleppl": "workspace:*",
     "@mcmcjs/engine": "workspace:*",
     "@mcmcjs/julia": "workspace:*",
     "@mcmcjs/plots": "workspace:*",

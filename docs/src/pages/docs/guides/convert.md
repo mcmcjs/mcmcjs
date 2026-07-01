@@ -44,5 +44,5 @@ mcmc fit model.toml -o samples.json
 mcmc diagnose samples.json
 ```
 
-The graph-to-model codegen lives in the `@mcmcjs/doodlebugs` package, the single source of truth shared by the DoodleBUGS editor and the CLI.
+The graph-to-model codegen lives in the `@mcmcjs/doodleppl` package, the single source of truth shared by the DoodlePPL editor and the CLI.
 You can also hand the graph directly to `mcmc run model.json`, which converts and fits in one step.

@@ -1,8 +1,8 @@
 /**
- * `@mcmcjs/doodlebugs`: turn a DoodleBUGS graph into probabilistic model code.
+ * `@mcmcjs/doodleppl`: turn a DoodlePPL graph into probabilistic model code.
  * The root entry re-exports the graph domain layer (`./core`) plus the default BUGS
- * target (model + JuliaBUGS run-script) for backward compatibility. Other targets are
- * on their own subpaths: `@mcmcjs/doodlebugs/stan`, `@mcmcjs/doodlebugs/numpyro`.
+ * target (model + JuliaBUGS run-script) for backward compatibility. The Stan target
+ * lives on its own subpath: `@mcmcjs/doodleppl/stan`.
  */
 
 export { generateBugsModel } from "./codegen/bugs";
