@@ -18,7 +18,7 @@ The CLI is the unscoped <code>mcmcjs</code> package; the libraries it is built f
 <span class="line"><span>  charts/       -> @mcmcjs/charts</span></span>
 <span class="line"><span>  plots/        -> @mcmcjs/plots</span></span>
 <span class="line"><span>  plots-gl/     -> @mcmcjs/plots-gl</span></span>
-<span class="line"><span>  doodlebugs/   -> @mcmcjs/doodlebugs</span></span></code></pre>
+<span class="line"><span>  doodleppl/    -> @mcmcjs/doodleppl</span></span></code></pre>
 <h2 id="the-packages">The packages</h2>
 <p><strong><code>mcmcjs</code> (CLI).</strong>
 A thin TypeScript orchestrator that bootstraps Julia, runs inference as a subprocess, and turns the result into diagnostics and plots.
@@ -43,9 +43,9 @@ Split into a data layer (each <code>*Data</code> builder turns <code>Samples</co
 <p><strong><code>@mcmcjs/plots-gl</code>.</strong>
 Interactive WebGL renderers (3D point cloud, scatter-plot matrix, parallel coordinates) backed by <code>regl</code>, an optional peer dependency.
 It consumes data built by <code>@mcmcjs/plots</code>, so the terminal, SVG, and HTML backends never pull in WebGL.</p>
-<p><strong><code>@mcmcjs/doodlebugs</code>.</strong>
-Framework-free code generation from DoodleBUGS graphs to BUGS / JuliaBUGS model code: parse a saved graph, topologically order it, emit <code>model { ... }</code> code, and validate for issues such as cycles.
-It is the single source of truth shared by the DoodleBUGS editor and the CLI’s <code>convert</code>.</p>
+<p><strong><code>@mcmcjs/doodleppl</code>.</strong>
+Framework-free code generation from a DoodlePPL graph to BUGS / JuliaBUGS and Stan model code: parse a saved graph, topologically order it, emit the model code, and validate for issues such as cycles.
+It is the single source of truth shared by the DoodlePPL editor and the CLI’s <code>convert</code>.</p>
 <h2 id="conventions">Conventions</h2>
 <p>Folder names are short (<code>cli</code>, <code>core</code>); published names are scoped, except the CLI.
 New packages mirror an existing package’s config.
