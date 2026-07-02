@@ -465,6 +465,7 @@ const handleNewGraph = () => {
 
 .db-project-name {
   flex-grow: 1;
+  min-width: 0;
   font-weight: 500;
   color: var(--theme-text-primary);
   white-space: nowrap;
@@ -566,6 +567,7 @@ const handleNewGraph = () => {
 
 .db-graph-item span {
   flex-grow: 1;
+  min-width: 0;
   font-size: 0.85em;
   white-space: nowrap;
   overflow: hidden;

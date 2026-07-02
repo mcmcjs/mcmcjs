@@ -379,6 +379,12 @@ const handleHeaderClick = () => {
   background: transparent;
 }
 
+/* The accordion animates via a grid row; the grid item defaults to min-width auto
+   and would grow to fit nowrap names instead of letting them truncate. */
+:deep(.db-sidebar-accordion .p-accordioncontent-wrapper) {
+  min-width: 0;
+}
+
 :deep(.db-sidebar-accordion .p-accordion-panel) {
   border: none;
 }
