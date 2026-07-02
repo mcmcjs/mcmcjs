@@ -9,11 +9,22 @@ import { defineCustomElement } from "vue";
 import { WIDGET_TAG } from "./tag";
 import DoodleWidget from "./widget/DoodleWidget.vue";
 
+// Head-delivered styles for everything the widget teleports into the page (sidebars,
+// panels, modals, PrimeVue overlays) plus the @font-face declarations, which browsers
+// only honor at document level.
 import "./widget/assets/styles/global.css";
 import "primeicons/primeicons.css";
 
-export const DoodlePPLElement = defineCustomElement(DoodleWidget, {
-  shadowRoot: false,
+// The canvas subtree renders inside the element's shadow root, where head styles
+// cannot reach: its SFC styles ride along via the customElement build (see
+// vite.config.ts) and the primeicons class rules are re-injected here.
+import primeiconsCss from "primeicons/primeicons.css?inline";
+
+const widget = DoodleWidget as typeof DoodleWidget & { styles?: string[] };
+widget.styles = [...(widget.styles ?? []), primeiconsCss];
+
+export const DoodlePPLElement = defineCustomElement(widget, {
+  shadowRoot: true,
   configureApp(app) {
     app.use(createPinia());
     app.use(PrimeVue, {

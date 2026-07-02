@@ -30,7 +30,8 @@ export interface DoodlePPLState {
 }
 
 export interface DoodlePPLOptions {
-  /** Mount point: a CSS selector or the element itself. */
+  /** Mount point: a CSS selector (matched against the document) or the element itself.
+   * Pass the element when the mount point lives inside a shadow root. */
   element: string | HTMLElement;
   /** Initial editor state: a prior `onStateChange`/`onReady` payload, object or JSON string. */
   state?: DoodlePPLState | string;

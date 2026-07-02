@@ -110,25 +110,6 @@ html.db-dark-mode {
   --shadow-floating: 0 10px 30px -4px rgba(0, 0, 0, 0.6);
 }
 
-body {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  background-color: var(--theme-bg-canvas);
-  color: var(--theme-text-primary);
-  font-family: var(--font-family-sans);
-  font-size: var(--font-size-sm);
-  -webkit-font-smoothing: antialiased;
-}
-
-#app {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  width: 100vw;
-  overflow: hidden;
-}
-
 /* Utility classes */
 .flex {
   display: flex;
@@ -202,8 +183,12 @@ body {
 }
 
 /* Input Placeholder and Styling */
-input::placeholder,
-textarea::placeholder {
+.db-ui-overlay input::placeholder,
+.db-ui-overlay textarea::placeholder,
+.p-dialog input::placeholder,
+.p-dialog textarea::placeholder,
+.p-popover input::placeholder,
+.p-popover textarea::placeholder {
   font-size: 12px !important;
   color: var(--theme-text-muted);
   opacity: 0.8;
@@ -215,69 +200,33 @@ textarea::placeholder {
   font-size: 12px !important;
 }
 
-/* Cytoscape Grid */
-.cytoscape-container.grid-background {
-  background-image:
-    linear-gradient(to right, var(--theme-grid-line) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--theme-grid-line) 1px, transparent 1px);
-}
-
-html.db-dark-mode .cytoscape-container.grid-background {
-  background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-}
-
-html.db-dark-mode .cytoscape-container {
-  background-color: var(--theme-bg-canvas) !important;
-}
-
 /* Scrollbar Styling */
-::-webkit-scrollbar {
+.db-ui-overlay ::-webkit-scrollbar,
+.p-dialog ::-webkit-scrollbar,
+.p-popover ::-webkit-scrollbar,
+.p-select-overlay ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-::-webkit-scrollbar-track {
+.db-ui-overlay ::-webkit-scrollbar-track,
+.p-dialog ::-webkit-scrollbar-track,
+.p-popover ::-webkit-scrollbar-track,
+.p-select-overlay ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-::-webkit-scrollbar-thumb {
+.db-ui-overlay ::-webkit-scrollbar-thumb,
+.p-dialog ::-webkit-scrollbar-thumb,
+.p-popover ::-webkit-scrollbar-thumb,
+.p-select-overlay ::-webkit-scrollbar-thumb {
   background: var(--theme-border);
   border-radius: 4px;
 }
 
-::-webkit-scrollbar-thumb:hover {
+.db-ui-overlay ::-webkit-scrollbar-thumb:hover,
+.p-dialog ::-webkit-scrollbar-thumb:hover,
+.p-popover ::-webkit-scrollbar-thumb:hover,
+.p-select-overlay ::-webkit-scrollbar-thumb:hover {
   background: var(--theme-text-secondary);
-}
-
-/* Glassmorphism Utility */
-.glass-panel {
-  background: var(--theme-bg-panel-transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--theme-border);
-  box-shadow: var(--shadow-floating);
-}
-
-/* Debug Panel - Green Theme */
-.debug-panel {
-  border-top-color: var(--theme-primary) !important;
-  color: #fff !important;
-}
-
-.debug-header {
-  background: rgba(16, 185, 129, 0.2) !important;
-  border-bottom-color: var(--theme-primary) !important;
-  color: #fff !important;
-}
-
-.debug-btn {
-  border-color: var(--theme-primary) !important;
-  color: var(--theme-primary) !important;
-  background: transparent !important;
-}
-
-.log-type.type-log {
-  color: var(--theme-primary) !important;
 }

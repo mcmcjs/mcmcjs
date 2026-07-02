@@ -170,13 +170,13 @@
 }
 
 /* ─── Fade Transition ─── */
-.fade-enter-active,
-.fade-leave-active {
+.db-fade-enter-active,
+.db-fade-leave-active {
   transition: opacity 0.2s ease;
 }
 
-.fade-enter-from,
-.fade-leave-to {
+.db-fade-enter-from,
+.db-fade-leave-to {
   opacity: 0;
 }
 

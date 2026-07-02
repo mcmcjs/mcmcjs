@@ -43,7 +43,8 @@ const currentProjectGraphs = computed(() => {
 })
 
 const handleClickOutside = (event: MouseEvent) => {
-  if (contextMenuRef.value && !contextMenuRef.value.contains(event.target as Node)) {
+  // composedPath keeps this working when the click originates inside a shadow root.
+  if (contextMenuRef.value && !event.composedPath().includes(contextMenuRef.value)) {
     contextMenu.value = null
   }
 }

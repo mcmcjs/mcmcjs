@@ -10,7 +10,14 @@ import cssInjectedByJsPlugin from "vite-plugin-css-injected-by-js";
 export default defineConfig(({ mode }) => {
   const cdn = mode === "cdn";
   return {
-    plugins: [vue(), cssInjectedByJsPlugin({ relativeCSSInjection: !cdn })],
+    plugins: [
+      // Only the canvas subtree renders inside the shadow root; compiling just those
+      // SFCs in custom-element mode attaches their styles to the component so
+      // defineCustomElement injects them there. Everything else teleports to the page
+      // body and keeps its styles head-injected by cssInjectedByJsPlugin.
+      vue({ features: { customElement: /(DoodleWidget|GraphEditor|GraphCanvas)\.vue$/ } }),
+      cssInjectedByJsPlugin({ relativeCSSInjection: !cdn }),
+    ],
     // The npm build keeps process.env.NODE_ENV for consumer bundlers to define
     // (the same convention as Vue's esm-bundler builds); a script tag has no
     // bundler, so the IIFE must bake it in.

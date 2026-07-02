@@ -458,18 +458,28 @@ const widgetTeleportCSS = `
 .p-dialog-mask { z-index: 1000009 !important; }
 `
 
+// The shared stylesheet is ref-counted on the element itself: instances cannot be
+// counted via the DOM (hosts may hold them inside shadow roots), and the count must
+// survive multiple bundle copies on one page.
 const injectWidgetStyles = () => {
-  if (document.getElementById(WIDGET_STYLES_ID)) return
+  const existing = document.getElementById(WIDGET_STYLES_ID)
+  if (existing) {
+    existing.dataset.users = String(Number(existing.dataset.users || '1') + 1)
+    return
+  }
   const styleElement = document.createElement('style')
   styleElement.id = WIDGET_STYLES_ID
+  styleElement.dataset.users = '1'
   styleElement.textContent = widgetTeleportCSS
   document.head.appendChild(styleElement)
 }
 
 const removeWidgetStyles = () => {
-  const otherWidgets = document.querySelectorAll('doodle-bugs')
-  if (otherWidgets.length > 0) return
-  document.getElementById(WIDGET_STYLES_ID)?.remove()
+  const styleElement = document.getElementById(WIDGET_STYLES_ID)
+  if (!styleElement) return
+  const users = Number(styleElement.dataset.users || '1') - 1
+  if (users <= 0) styleElement.remove()
+  else styleElement.dataset.users = String(users)
 }
 
 const resolveProp = (propName: string, propValue: string | undefined): string | null => {
@@ -978,7 +988,7 @@ watch(showNewGraphModal, (val) => {
         />
         <div v-else class="db-empty-placeholder">
           <div class="db-msg-box">
-            <i class="fas fa-spinner fa-spin"></i>
+            <i class="pi pi-spin pi-spinner"></i>
             <p>Initializing...</p>
           </div>
         </div>
@@ -997,7 +1007,7 @@ watch(showNewGraphModal, (val) => {
         class="db-widget-control-btn"
         :class="{ 'db-active': isEditMode }"
       >
-        <i :class="isEditMode ? 'fas fa-eye' : 'fas fa-pen'"></i>
+        <i :class="isEditMode ? 'pi pi-eye' : 'pi pi-pencil'"></i>
       </button>
     </div>
 
@@ -1049,7 +1059,7 @@ watch(showNewGraphModal, (val) => {
       >
         <!-- Collapsed Sidebar Triggers -->
         <template v-if="showEditorUI">
-          <Transition name="fade">
+          <Transition name="db-fade">
             <div
               v-if="!isLeftSidebarOpen"
               class="db-collapsed-sidebar-trigger db-left-trigger"
@@ -1104,7 +1114,7 @@ watch(showNewGraphModal, (val) => {
             </div>
           </Transition>
 
-          <Transition name="fade">
+          <Transition name="db-fade">
             <div
               v-if="!isRightSidebarOpen"
               class="db-collapsed-sidebar-trigger db-right"
@@ -1476,6 +1486,10 @@ watch(showNewGraphModal, (val) => {
   flex-direction: column;
   box-sizing: border-box;
   padding-top: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 12px;
+  color: var(--theme-text-primary);
+  -webkit-font-smoothing: antialiased;
 
   --theme-bg-canvas: #f3f4f6;
   --theme-grid-line: #d1d5db;
