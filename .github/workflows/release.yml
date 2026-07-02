@@ -9,7 +9,7 @@ concurrency: release-${{ github.ref }}
 permissions:
   contents: write
   pull-requests: write
-  id-token: write # for npm provenance
+  id-token: write # for npm OIDC trusted publishing (and its automatic provenance)
 
 jobs:
   release:
@@ -18,10 +18,15 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup
       - run: pnpm build
+      # Publishing authenticates via OIDC trusted publishing, configured per package
+      # on npmjs.com against this repo and workflow, so no npm token is involved and
+      # provenance is attested automatically. Pre-creating .npmrc stops the changesets
+      # action from injecting a token line that would shadow the OIDC exchange.
+      - run: echo "registry=https://registry.npmjs.org/" > ~/.npmrc
       # While changesets are pending, this opens or updates the release PR.
       # When that PR is merged (no changesets left), it publishes the changed
-      # packages to npm with provenance, pushes per-package tags (name@version),
-      # and creates a GitHub Release per package. Requires the NPM_TOKEN secret.
+      # packages to npm, pushes per-package tags (name@version), and creates a
+      # GitHub Release per package.
       - id: changesets
         uses: changesets/action@v1
         with:
@@ -32,8 +37,6 @@ jobs:
           commitMode: github-api # signed, verified version commits and tags
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
       # The action's title input is static, so refine it with the actual versions
       # parsed from the release PR body (the "## name@version" headers it wrote).
       - name: Add versions to the release PR title
