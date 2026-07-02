@@ -1,5 +1,17 @@
 # doodleppl
 
+## 0.3.0
+
+### Minor Changes
+
+- 12fcee6: Export the bundled example catalog as `exampleModels` (with `ExampleModelConfig`), so hosts can list the models accepted by the `example` option.
+- 970cce9: Add a `mode` option: `"embedded"` (default) keeps the maximize and edit toggles, `"fullpage"` pins the editor maximized with editing always on. Also fix three UI regressions: the debug console now layers above the sidebars, long graph names truncate with an ellipsis instead of forcing a horizontal scroll, and the collapsed right-sidebar maximize icon matches the size used everywhere else.
+- 0b0e5d9: Render the editor canvas inside a shadow root so host page CSS cannot restyle it, and stop the widget from restyling the host page: the global `body`, `#app`, scrollbar, and placeholder rules are removed or scoped to the widget's own surfaces.
+
+### Patch Changes
+
+- 5c3e428: Fix the CDN build: `doodleppl.global.js` shipped bare `process.env.NODE_ENV` references and threw `process is not defined` when loaded from a script tag; the IIFE now bakes in production mode.
+
 ## 0.2.0
 
 ### Minor Changes
