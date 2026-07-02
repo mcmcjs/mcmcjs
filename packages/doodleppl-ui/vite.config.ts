@@ -24,9 +24,9 @@ export default defineConfig(({ mode }) => {
             fileName: () => "doodleppl.global.js",
           }
         : {
-            entry: "src/index.ts",
+            entry: { index: "src/index.ts", element: "src/element.ts" },
             formats: ["es"] as const,
-            fileName: () => "index.js",
+            fileName: (_format, entryName) => `${entryName}.js`,
           },
       rollupOptions: cdn
         ? {}
