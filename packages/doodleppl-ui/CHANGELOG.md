@@ -1,5 +1,11 @@
 # doodleppl
 
+## 0.2.0
+
+### Minor Changes
+
+- 3b9a5a2: Expose the editor element on the `doodleppl/element` subpath: importing it registers `<doodle-ppl>` and exports the `DoodlePPLElement` class, so a host can mount the element declaratively or register an alias tag by subclassing.
+
 ## 0.1.2
 
 ### Patch Changes
