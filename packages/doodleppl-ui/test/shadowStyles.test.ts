@@ -21,6 +21,18 @@ afterEach(() => {
 });
 
 describe("adoptBundleCss", () => {
+  it("replays font imports into the head exactly once per chunk", () => {
+    registry().push('@import "https://fonts.example/icons.css";.a { color: red; }');
+    const stop1 = adoptBundleCss(makeRoot());
+    const stop2 = adoptBundleCss(makeRoot());
+    const fontTags = document.head.querySelectorAll("style[data-doodleppl-fonts]");
+    expect(fontTags).toHaveLength(1);
+    expect(fontTags[0].textContent).toContain('@import "https://fonts.example/icons.css";');
+    expect(fontTags[0].textContent).not.toContain(".a {");
+    stop1();
+    stop2();
+  });
+
   it("copies recorded chunk CSS into the shadow root and follows late chunks", () => {
     registry().push(".a { color: red; }");
     const root = makeRoot();

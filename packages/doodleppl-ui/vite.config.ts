@@ -20,23 +20,12 @@ export default defineConfig(({ mode }) => {
         relativeCSSInjection: !cdn,
         // Stringified into each chunk, so it must stay self-contained. The widget
         // renders entirely inside shadow roots, so the bundle CSS goes to a registry
-        // that widget instances replay into those roots (src/widget/utils/
-        // shadowStyles.ts) instead of polluting the host document. Only font
-        // registrations reach document.head: browsers ignore @font-face declared
-        // inside a shadow root.
+        // that widget instances replay into those roots instead of polluting the
+        // host document; src/widget/utils/shadowStyles.ts also re-registers the
+        // font rules at document level, where browsers require them.
         injectCodeFunction: function doodlepplInjectCss(cssCode) {
           try {
             if (typeof document !== "undefined") {
-              const fonts = ([] as string[]).concat(
-                cssCode.match(/@import[^;]*;/g) || [],
-                cssCode.match(/@font-face\s*\{[^{}]*\}/g) || [],
-              );
-              if (fonts.length > 0) {
-                const style = document.createElement("style");
-                style.setAttribute("data-doodleppl-fonts", "");
-                style.appendChild(document.createTextNode(fonts.join("\n")));
-                document.head.appendChild(style);
-              }
               const g = globalThis as { __DOODLEPPL_CSS__?: string[] };
               g.__DOODLEPPL_CSS__ = g.__DOODLEPPL_CSS__ || [];
               g.__DOODLEPPL_CSS__.push(cssCode);
