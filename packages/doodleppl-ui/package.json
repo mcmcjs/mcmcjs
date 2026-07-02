@@ -1,6 +1,6 @@
 {
   "name": "doodleppl",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Embed the DoodlePPL graphical model editor anywhere: a typed mount class over the compiled editor, with callbacks for graph state and generated BUGS/Stan code.",
   "keywords": [
     "doodleppl",

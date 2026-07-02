@@ -1,5 +1,14 @@
 # mcmcjs
 
+## 0.15.6
+
+### Patch Changes
+
+- Updated dependencies [a9fb706]
+- Updated dependencies [dacb976]
+  - @mcmcjs/doodleppl@0.2.0
+  - @mcmcjs/julia@0.9.0
+
 ## 0.15.5
 
 ### Patch Changes

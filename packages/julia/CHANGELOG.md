@@ -1,5 +1,11 @@
 # @mcmcjs/julia
 
+## 0.9.0
+
+### Minor Changes
+
+- dacb976: Streamed draw batches now include the sampler statistics (acceptance rate, tree depth, step size, ...) under the same names the samples file records as internals, so consumers get per-draw diagnostics without a second channel. `FitIo` gains `drawBatchSize` to control how many draws each streamed batch carries. The managed Julia environment now includes StatsFuns, whose `logistic`/`logit` helpers are common in model files.
+
 ## 0.8.0
 
 ### Minor Changes
