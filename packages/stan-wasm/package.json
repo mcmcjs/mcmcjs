@@ -1,0 +1,76 @@
+{
+  "name": "@mcmcjs/stan-wasm",
+  "version": "0.0.0",
+  "description": "Run Stan models in the browser: a WebAssembly sampling runtime with a typed compile-server client and an optional React adapter.",
+  "keywords": [
+    "mcmc",
+    "bayesian",
+    "inference",
+    "stan",
+    "wasm",
+    "webassembly",
+    "sampler"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Shravan Goswami",
+    "email": "contact@shravangoswami.com",
+    "url": "https://shravangoswami.com"
+  },
+  "homepage": "https://github.com/mcmcjs/mcmcjs/tree/main/packages/stan-wasm#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mcmcjs/mcmcjs.git",
+    "directory": "packages/stan-wasm"
+  },
+  "bugs": {
+    "url": "https://github.com/mcmcjs/mcmcjs/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js",
+      "require": "./dist/react/index.cjs"
+    },
+    "./worker": {
+      "import": "./dist/worker.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "tinystan": "^0.3.2"
+  },
+  "peerDependencies": {
+    "react": ">=18 <20"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "react": "^18.3.0"
+  }
+}
