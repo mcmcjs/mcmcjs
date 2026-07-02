@@ -108,7 +108,21 @@ export function generateStandaloneScript(input: StandaloneScriptInput): string {
   const censoredPrimitive = hasCensoring
     ? "\n# Register censored() as a valid BUGS primitive\nJuliaBUGS.@bugs_primitive censored\n"
     : "";
-  const initializeCall = Object.keys(inits).length > 0 ? "initialize!(model, inits)" : "";
+  // initialize! only exists for the plain BUGSModel, and NUTS takes its starting
+  // point from the initial_params kwarg (a transformed-space vector), so inits are
+  // applied before the gradient wrap and carried into sample() via init_vec.
+  const modelSetup =
+    Object.keys(inits).length > 0
+      ? [
+          "model = model_def(data)",
+          "model = JuliaBUGS.initialize!(model, inits)",
+          "init_vec = JuliaBUGS.getparams(model)",
+          "model = JuliaBUGS.BUGSModelWithGradient(model, AutoMooncake(; config = nothing))",
+        ].join("\n")
+      : [
+          "model = model_def(data; adtype = AutoMooncake(; config = nothing))",
+          "init_vec = nothing",
+        ].join("\n");
 
   return renderTemplate(runTemplate, {
     censoredImport,
@@ -116,7 +130,7 @@ export function generateStandaloneScript(input: StandaloneScriptInput): string {
     initsLiteral,
     censoredPrimitive,
     modelCode,
-    initializeCall,
+    modelSetup,
     nSamples,
     nAdapts,
     nChains,

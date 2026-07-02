@@ -54,8 +54,10 @@ model {
 }
 """, true, false)
 
-model = model_def(data; adtype = AutoMooncake(; config = nothing))
-initialize!(model, inits)
+model = model_def(data)
+model = JuliaBUGS.initialize!(model, inits)
+init_vec = JuliaBUGS.getparams(model)
+model = JuliaBUGS.BUGSModelWithGradient(model, AutoMooncake(; config = nothing))
 n_samples, n_adapts = 1000, 1000
 n_chains = 4
 seed = 42
@@ -68,18 +70,21 @@ if n_chains > 1 && Threads.nthreads() > 1
         rng, model, NUTS(0.65), MCMCThreads(), n_samples, n_chains;
         chain_type = FlexiChains.VNChain, n_adapts = n_adapts,
         discard_initial = n_adapts, progress = false,
+        initial_params = init_vec === nothing ? nothing : fill(init_vec, n_chains),
     )
 elseif n_chains > 1
     chain = AbstractMCMC.sample(
         rng, model, NUTS(0.65), MCMCSerial(), n_samples, n_chains;
         chain_type = FlexiChains.VNChain, n_adapts = n_adapts,
         discard_initial = n_adapts, progress = false,
+        initial_params = init_vec === nothing ? nothing : fill(init_vec, n_chains),
     )
 else
     chain = AbstractMCMC.sample(
         rng, model, NUTS(0.65), n_samples;
         chain_type = FlexiChains.VNChain, n_adapts = n_adapts,
         discard_initial = n_adapts, progress = false,
+        initial_params = init_vec,
     )
 end
 
