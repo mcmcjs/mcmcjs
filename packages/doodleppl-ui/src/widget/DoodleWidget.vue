@@ -47,6 +47,7 @@ const props = withDefaults(
     width?: string
     height?: string
     themeMode?: string
+    mode?: 'embedded' | 'fullpage'
     controlsPosition?: string
     controlsMarginTop?: string
     controlsMarginRight?: string
@@ -57,6 +58,7 @@ const props = withDefaults(
   {
     width: '100%',
     height: '600px',
+    mode: 'embedded',
     controlsPosition: 'bottom-right',
     sidebarInsetRight: '0',
   }
@@ -176,6 +178,9 @@ const inlineRightTriggerStyle = computed(() => {
 })
 
 const isInlineEditor = computed(() => !isFullScreen.value)
+// Fullpage deployments pin the editor maximized with editing always on; the
+// maximize and edit toggles only exist in the embedded mode.
+const isPinned = computed(() => props.mode === 'fullpage')
 
 const leftSidebarDrag = ref({ x: 0, y: 0 })
 const rightSidebarDrag = ref({ x: 0, y: 0 })
@@ -448,6 +453,7 @@ const widgetTeleportCSS = `
 .db-sidebar-wrapper.db-right { right: 0; top: 0; left: auto; }
 .db-ui-overlay .db-floating-panel { z-index: 1000002 !important; }
 .db-ui-overlay .db-toolbar-container { z-index: 1000003 !important; }
+.db-ui-overlay .db-debug-panel { z-index: 1000006 !important; }
 .p-popover, .p-select-overlay, .p-dialog, .p-toast, .p-tooltip { z-index: 1000010 !important; }
 .p-dialog-mask { z-index: 1000009 !important; }
 `
@@ -631,6 +637,7 @@ const activateWidget = (source: 'click' | 'scroll') => {
 }
 
 const toggleEditMode = () => {
+  if (isPinned.value) return
   isEditMode.value = !isEditMode.value
   if (isEditMode.value) activateWidget('click')
   saveWidgetUIState()
@@ -638,6 +645,7 @@ const toggleEditMode = () => {
 
 let editModeBeforeFullScreen = false
 const toggleFullScreen = () => {
+  if (isPinned.value) return
   if (!isFullScreen.value) {
     editModeBeforeFullScreen = isEditMode.value
     isEditMode.value = true
@@ -756,6 +764,10 @@ onMounted(async () => {
 
   if (savedUIState?.editMode != null) {
     isEditMode.value = savedUIState.editMode
+  }
+  if (isPinned.value) {
+    isFullScreen.value = true
+    isEditMode.value = true
   }
   if (isEditMode.value) activateWidget('click')
 
@@ -1124,6 +1136,7 @@ watch(showNewGraphModal, (val) => {
                     <i class="fas fa-share-alt"></i>
                   </button>
                   <button
+                    v-if="!isPinned"
                     v-tooltip.top="{
                       value: isFullScreen ? 'Exit Full Screen' : 'Maximize Graph',
                       showDelay: 0,
@@ -1138,7 +1151,7 @@ watch(showNewGraphModal, (val) => {
                       viewBox="0 0 24 24"
                       fill="none"
                       xmlns="http://www.w3.org/2000/svg"
-                      style="width: 14px; height: 14px"
+                      style="width: 16px; height: 16px"
                     >
                       <path
                         d="M18 20.75H12C11.8011 20.75 11.6103 20.671 11.4697 20.5303C11.329 20.3897 11.25 20.1989 11.25 20C11.25 19.8011 11.329 19.6103 11.4697 19.4697C11.6103 19.329 11.8011 19.25 12 19.25H18C18.3315 19.25 18.6495 19.1183 18.8839 18.8839C19.1183 18.6495 19.25 18.3315 19.25 18V6C19.25 5.66848 19.1183 5.35054 18.8839 5.11612C18.6495 4.8817 18.3315 4.75 18 4.75H6C5.66848 4.75 5.35054 4.8817 5.11612 5.11612C4.8817 5.35054 4.75 5.66848 4.75 6V12C4.75 12.1989 4.67098 12.3897 4.53033 12.5303C4.38968 12.671 4.19891 12.75 4 12.75C3.80109 12.75 3.61032 12.671 3.46967 12.5303C3.32902 12.3897 3.25 12.1989 3.25 12V6C3.25 5.27065 3.53973 4.57118 4.05546 4.05546C4.57118 3.53973 5.27065 3.25 6 3.25H18C18.7293 3.25 19.4288 3.53973 19.9445 4.05546C20.4603 4.57118 20.75 5.27065 20.75 6V18C20.75 18.7293 20.4603 19.4288 19.9445 19.9445C19.4288 20.4603 18.7293 20.75 18 20.75Z"
@@ -1233,7 +1246,7 @@ watch(showNewGraphModal, (val) => {
             :validationErrors="validationErrors"
             :isModelValid="isModelValid"
             :isFullScreen="isFullScreen"
-            :showFullscreenToggle="true"
+            :showFullscreenToggle="!isPinned"
             @toggle-right-sidebar="uiStore.toggleRightSidebar"
             @update-element="updateElement"
             @delete-element="deleteElement"

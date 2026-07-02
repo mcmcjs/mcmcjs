@@ -52,6 +52,7 @@ describe("DoodlePPL", () => {
       element: "#mount",
       state: STATE,
       example: "rats",
+      mode: "fullpage",
       theme: "dark",
       storageKey: "k1",
       width: "800px",
@@ -60,6 +61,7 @@ describe("DoodlePPL", () => {
     });
     expect(JSON.parse(el.getAttribute("initial-state") ?? "")).toEqual(STATE);
     expect(el.getAttribute("model")).toBe("rats");
+    expect(el.getAttribute("mode")).toBe("fullpage");
     expect(el.getAttribute("theme-mode")).toBe("dark");
     expect(el.getAttribute("storage-key")).toBe("k1");
     expect(el.getAttribute("width")).toBe("800px");
