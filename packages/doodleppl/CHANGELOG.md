@@ -1,5 +1,11 @@
 # @mcmcjs/doodleppl
 
+## 0.2.1
+
+### Patch Changes
+
+- c6f2c64: Republish under a fresh version: 0.2.0 was published and unpublished during an earlier version correction, and npm permanently refuses reuse of such versions, which also left mcmcjs 0.15.6 pointing at a nonexistent dependency.
+
 ## 0.2.0
 
 ### Minor Changes
