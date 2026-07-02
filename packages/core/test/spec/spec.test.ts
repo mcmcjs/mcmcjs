@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { hashSpec } from "../../src/spec/normalize";
 import { parseSpec } from "../../src/spec/parse";
-import { DEFAULT_JULIA_CHANNEL, SpecSchema } from "../../src/spec/schema";
+import { DEFAULT_CMDSTAN_CHANNEL, DEFAULT_JULIA_CHANNEL, SpecSchema } from "../../src/spec/schema";
 
 const VALID = {
   schema_version: "0",
@@ -46,7 +46,29 @@ describe("SpecSchema", () => {
     expect(SpecSchema.parse({ ...VALID, backend: { id: "juliabugs" } }).backend.id).toBe(
       "juliabugs",
     );
-    expect(() => SpecSchema.parse({ ...VALID, backend: { id: "stan" } })).toThrow();
+    expect(() => SpecSchema.parse({ ...VALID, backend: { id: "nimble" } })).toThrow();
+  });
+
+  it("derives the runtime and default channel per backend", () => {
+    const julia = SpecSchema.parse({ ...VALID, backend: { id: "turing" } }).backend;
+    expect(julia.runtime).toBe("julia");
+    expect(julia.version).toBe(DEFAULT_JULIA_CHANNEL);
+
+    const stan = SpecSchema.parse({ ...VALID, backend: { id: "stan" } }).backend;
+    expect(stan.runtime).toBe("cmdstan");
+    expect(stan.version).toBe(DEFAULT_CMDSTAN_CHANNEL);
+  });
+
+  it("rejects a backend on the wrong runtime and julia-only package pins on stan", () => {
+    expect(() => SpecSchema.parse({ ...VALID, backend: { id: "stan", runtime: "julia" } })).toThrow(
+      /runs on the .{1,2}cmdstan.{1,2} runtime/,
+    );
+    expect(() =>
+      SpecSchema.parse({ ...VALID, backend: { id: "turing", runtime: "cmdstan" } }),
+    ).toThrow(/runs on the .{1,2}julia.{1,2} runtime/);
+    expect(() =>
+      SpecSchema.parse({ ...VALID, backend: { id: "stan", packages: { Turing: "0.45" } } }),
+    ).toThrow(/julia runtime only/);
   });
 
   it("leaves predict undefined when absent", () => {

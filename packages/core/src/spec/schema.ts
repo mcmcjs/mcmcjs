@@ -10,18 +10,51 @@ export const SPEC_SCHEMA_VERSION = "0";
  */
 export const DEFAULT_JULIA_CHANNEL = "1.12.6";
 
-const Backend = z.object({
-  id: z.enum(["turing", "juliabugs"]),
-  runtime: z.literal("julia").default("julia"),
-  /** The juliaup channel the runtime resolves to (e.g. a version like "1.12.6"). */
-  version: z.string().min(1).default(DEFAULT_JULIA_CHANNEL),
-  /**
-   * Optional version pins for managed Julia packages, by name (e.g.
-   * `{ Turing = "0.45" }`). Pinned packages provision into their own managed
-   * environment, so different pins can be compared without interfering.
-   */
-  packages: z.record(z.string(), z.string().min(1)).optional(),
-});
+/**
+ * The default CmdStan channel: "installed" resolves to whatever CmdStan the
+ * machine already has (newest managed or `~/.cmdstan` install). A concrete
+ * version is frozen into the run when the fit resolves it.
+ */
+export const DEFAULT_CMDSTAN_CHANNEL = "installed";
+
+const Backend = z
+  .object({
+    id: z.enum(["turing", "juliabugs", "stan"]),
+    runtime: z.enum(["julia", "cmdstan"]).optional(),
+    /** The runtime version request: a juliaup channel, or a CmdStan version. */
+    version: z.string().min(1).optional(),
+    /**
+     * Optional version pins for managed Julia packages, by name (e.g.
+     * `{ Turing = "0.45" }`). Pinned packages provision into their own managed
+     * environment, so different pins can be compared without interfering.
+     */
+    packages: z.record(z.string(), z.string().min(1)).optional(),
+  })
+  .transform((b) => {
+    const stan = b.id === "stan";
+    return {
+      ...b,
+      runtime: b.runtime ?? (stan ? ("cmdstan" as const) : ("julia" as const)),
+      version: b.version ?? (stan ? DEFAULT_CMDSTAN_CHANNEL : DEFAULT_JULIA_CHANNEL),
+    };
+  })
+  .superRefine((b, ctx) => {
+    const expected = b.id === "stan" ? "cmdstan" : "julia";
+    if (b.runtime !== expected) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["runtime"],
+        message: `backend "${b.id}" runs on the "${expected}" runtime, not "${b.runtime}"`,
+      });
+    }
+    if (b.packages && b.runtime !== "julia") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["packages"],
+        message: "package pins apply to the julia runtime only",
+      });
+    }
+  });
 
 const Sampler = z
   .object({

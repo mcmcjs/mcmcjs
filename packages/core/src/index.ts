@@ -11,6 +11,7 @@ export { canonicalJson, hashSpec, normalizeSpec } from "./spec/normalize";
 export type { ResolvedSpec } from "./spec/parse";
 export { parseSpec } from "./spec/parse";
 export {
+  DEFAULT_CMDSTAN_CHANNEL,
   DEFAULT_JULIA_CHANNEL,
   type PredictSpec,
   SPEC_SCHEMA_VERSION,
