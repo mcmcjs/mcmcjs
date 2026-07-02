@@ -9,6 +9,7 @@ import type { GraphElement, UnifiedModelData } from "@mcmcjs/doodleppl";
 import { WIDGET_TAG } from "./tag";
 
 export type { GraphEdge, GraphElement, GraphNode, UnifiedModelData } from "@mcmcjs/doodleppl";
+export { type ExampleModelConfig, examples as exampleModels } from "./widget/config/examples";
 
 /** One graph's canvas content inside the editor state. */
 export interface DoodlePPLGraphContent {
