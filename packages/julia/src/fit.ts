@@ -23,6 +23,8 @@ export interface FitIo {
   onProgress?: (progress: FitProgress) => void;
   /** Streamed draw batches as sampling proceeds. */
   onDraws?: (batch: DrawBatch) => void;
+  /** Draws per streamed batch (driver default 25); lower it when models have many leaves. */
+  drawBatchSize?: number;
   /** Aborts an in-progress fit; the run then ends with a "cancelled" status. */
   signal?: AbortSignal;
   /** Source path when the data came from a referenced file; recorded, not copied. */
@@ -43,7 +45,7 @@ export function makeRequestDir(kind: string): string {
 export function fitRequest(
   spec: ResolvedSpec,
   outPath: string,
-  opts?: { streamDraws?: boolean },
+  opts?: { streamDraws?: boolean; drawBatchSize?: number },
 ): Record<string, unknown> {
   return {
     schema_version: spec.schema_version,
@@ -54,6 +56,7 @@ export function fitRequest(
     seed: spec.seed,
     out: outPath,
     ...(opts?.streamDraws ? { stream_draws: true } : {}),
+    ...(opts?.drawBatchSize ? { draw_batch_size: opts.drawBatchSize } : {}),
   };
 }
 
@@ -139,7 +142,12 @@ export async function runFit(
   const requestPath = join(tmp, "request.json");
   writeFileSync(
     requestPath,
-    JSON.stringify(fitRequest(spec, io.outPath, { streamDraws: io.onDraws !== undefined })),
+    JSON.stringify(
+      fitRequest(spec, io.outPath, {
+        streamDraws: io.onDraws !== undefined,
+        drawBatchSize: io.drawBatchSize,
+      }),
+    ),
   );
 
   const args = [

@@ -282,7 +282,7 @@ export async function runFitViaWorker(
     };
   }
   sock.write(
-    `${JSON.stringify(fitRequest(spec, io.outPath, { streamDraws: io.onDraws !== undefined }))}\n`,
+    `${JSON.stringify(fitRequest(spec, io.outPath, { streamDraws: io.onDraws !== undefined, drawBatchSize: io.drawBatchSize }))}\n`,
   );
   let final: Record<string, unknown>;
   try {
