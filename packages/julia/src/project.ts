@@ -15,6 +15,7 @@ const PACKAGES = [
   "ForwardDiff",
   "JSON",
   "StableRNGs",
+  "StatsFuns",
 ];
 
 /** Version pins for managed packages, by name (e.g. { Turing: "0.45" }). */
