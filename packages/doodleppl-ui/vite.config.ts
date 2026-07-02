@@ -11,6 +11,10 @@ export default defineConfig(({ mode }) => {
   const cdn = mode === "cdn";
   return {
     plugins: [vue(), cssInjectedByJsPlugin({ relativeCSSInjection: !cdn })],
+    // The npm build keeps process.env.NODE_ENV for consumer bundlers to define
+    // (the same convention as Vue's esm-bundler builds); a script tag has no
+    // bundler, so the IIFE must bake it in.
+    define: cdn ? { "process.env.NODE_ENV": JSON.stringify("production") } : undefined,
     build: {
       outDir: "dist",
       emptyOutDir: !cdn,
