@@ -33,7 +33,10 @@ export function parseMCMCChainsJson(input: string | MCMCChainsJson): Samples {
     const out = new Float64Array(nChains * nIter);
     for (let c = 0; c < nChains; c++) {
       for (let i = 0; i < nIter; i++) {
-        out[c * nIter + i] = Number(flat[i + p * nIter + c * nIter * nParams]);
+        // null encodes a missing or non-finite draw (JSON has no NaN); 0 would
+        // silently fabricate data, so it must come back as NaN.
+        const value = flat[i + p * nIter + c * nIter * nParams];
+        out[c * nIter + i] = value == null ? Number.NaN : Number(value);
       }
     }
     (internals.has(name) ? sampleStats : draws).set(name, out);

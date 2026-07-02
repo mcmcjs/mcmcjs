@@ -56,4 +56,18 @@ describe("parseMCMCChainsJson", () => {
     expect([...chainView(again, "mu", 1)]).toEqual([1.1, 2.1, 3.1]);
     expect([...chainView(again, "sigma", 0)]).toEqual([0.5, 0.6, 0.7]);
   });
+
+  it("reads null draws back as NaN, never as zero", () => {
+    // JSON has no NaN/Infinity, so non-finite draws serialize as null; reading
+    // them as 0 would fabricate data.
+    const parsed = parseMCMCChainsJson({
+      size: [2, 1, 1],
+      value_flat: [1.5, null],
+      parameters: ["mu"],
+      name_map: { parameters: ["mu"], internals: [] },
+    });
+    const values = [...chainView(parsed, "mu", 0)];
+    expect(values[0]).toBe(1.5);
+    expect(values[1]).toBeNaN();
+  });
 });
