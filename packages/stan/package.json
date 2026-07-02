@@ -1,0 +1,56 @@
+{
+  "name": "@mcmcjs/stan",
+  "version": "0.0.0",
+  "description": "Stan runtime engine for MCMC.js: provisions CmdStan, compiles models, and runs NUTS with streamed progress and draws.",
+  "keywords": [
+    "mcmc",
+    "bayesian",
+    "inference",
+    "stan",
+    "cmdstan",
+    "nuts"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Shravan Goswami",
+    "email": "contact@shravangoswami.com",
+    "url": "https://shravangoswami.com"
+  },
+  "homepage": "https://github.com/mcmcjs/mcmcjs/tree/main/packages/stan#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mcmcjs/mcmcjs.git",
+    "directory": "packages/stan"
+  },
+  "bugs": {
+    "url": "https://github.com/mcmcjs/mcmcjs/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mcmcjs/core": "workspace:*",
+    "@mcmcjs/engine": "workspace:*"
+  }
+}
