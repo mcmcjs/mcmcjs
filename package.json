@@ -40,6 +40,7 @@
     "@changesets/cli": "^2.31.0",
     "@types/node": "^24",
     "@vitest/coverage-v8": "4.1.8",
+    "happy-dom": "^20.10.6",
     "tsup": "8.5.1",
     "typescript": "6.0.3",
     "vitest": "4.1.8"

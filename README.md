@@ -68,6 +68,7 @@ Every command supports `--json` (except the interactive `sandbox`) and uses exit
 | [`@mcmcjs/plots`](./packages/plots) | MCMC diagnostic plots (trace, forest, rank, ...) over `@mcmcjs/charts`; terminal, SVG, and self-contained HTML. |
 | [`@mcmcjs/plots-gl`](./packages/plots-gl) | Interactive WebGL renderers (3D scatter, SPLOM, parallel coordinates); `regl` optional peer. |
 | [`@mcmcjs/doodleppl`](./packages/doodleppl) | Turn a DoodlePPL graph into BUGS / JuliaBUGS and Stan model code. |
+| [`doodleppl`](./packages/doodleppl-ui) | Embed the DoodlePPL graphical model editor anywhere; typed mount class over the editor widget. |
 
 ## Development
 
