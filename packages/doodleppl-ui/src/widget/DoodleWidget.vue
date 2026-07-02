@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed, nextTick, provide } from 'vue'
 import { storeToRefs } from 'pinia'
 import Toast from 'primevue/toast'
 import Tooltip from 'primevue/tooltip'
@@ -35,6 +35,7 @@ import { useGraphValidator } from './composables/useGraphValidator'
 import { usePersistence } from './composables/usePersistence'
 import { useEditorActions } from './composables/useEditorActions'
 import { useWidgetEmitter } from './composables/useWidgetEmitter'
+import { adoptBundleCss, mirrorPrimeVueStyles } from './utils/shadowStyles'
 import { examples } from './config/examples'
 import type { CodeLanguage } from './components/panels/CodePreviewPanel.vue'
 
@@ -224,6 +225,7 @@ const handleSidebarDragStart = (side: 'left' | 'right', e: MouseEvent | TouchEve
   dragStartY = clientY - pos.y
   document.body.style.userSelect = 'none'
   document.body.style.webkitUserSelect = 'none'
+  overlayMount.style.userSelect = 'none'
   document.addEventListener('mousemove', handleSidebarDragMove)
   document.addEventListener('mouseup', handleSidebarDragEnd)
   document.addEventListener('touchmove', handleSidebarDragMoveTouch, { passive: false })
@@ -262,6 +264,7 @@ const handleSidebarDragEnd = () => {
   }
   document.body.style.userSelect = ''
   document.body.style.webkitUserSelect = ''
+  overlayMount.style.userSelect = ''
   document.removeEventListener('mousemove', handleSidebarDragMove)
   document.removeEventListener('mouseup', handleSidebarDragEnd)
   document.removeEventListener('touchmove', handleSidebarDragMoveTouch)
@@ -422,15 +425,46 @@ const saveWidgetUIState = () => {
 
 const WIDGET_STYLES_ID = 'doodlebugs-widget-teleport-styles'
 
-const widgetTeleportCSS = `
-.db-ui-overlay,
-.db-sidebar-wrapper,
-.db-floating-panel,
+// PrimeVue portals its panels (dialogs, popovers, select overlays, tooltips, toasts)
+// to document.body, so their baseline and stacking rules must live in the head. They
+// share the page with host CSS; the armor rules below out-specify the usual blanket
+// host resets (button/i/div selectors) on the spots they visibly hit.
+const popupHeadCSS = `
 .p-dialog,
 .p-popover,
 .p-toast,
 .p-select-overlay,
 .p-tooltip {
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: normal;
+  font-weight: 400;
+  color: var(--theme-text-primary, #1f2937);
+  box-sizing: border-box;
+}
+.p-popover, .p-select-overlay, .p-dialog, .p-toast, .p-tooltip { z-index: 1000010 !important; }
+.p-dialog-mask { z-index: 1000009 !important; }
+.p-dialog *, .p-popover *, .p-toast *, .p-select-overlay *, .p-tooltip * {
+  letter-spacing: inherit !important;
+  text-transform: none !important;
+}
+.p-toast .p-toast-close-button,
+.p-dialog .p-dialog-header-actions button {
+  background: transparent !important;
+  border: 0 !important;
+  color: inherit !important;
+  font-size: inherit !important;
+  border-radius: 50% !important;
+}
+`
+
+// The overlay chrome renders inside the overlay host's shadow root; these rules are
+// injected there, where host page CSS cannot reach.
+const overlayShadowCSS = `
+.db-ui-overlay,
+.db-sidebar-wrapper,
+.db-floating-panel {
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   font-size: 12px;
   line-height: 1.5;
@@ -454,9 +488,27 @@ const widgetTeleportCSS = `
 .db-ui-overlay .db-floating-panel { z-index: 1000002 !important; }
 .db-ui-overlay .db-toolbar-container { z-index: 1000003 !important; }
 .db-ui-overlay .db-debug-panel { z-index: 1000006 !important; }
-.p-popover, .p-select-overlay, .p-dialog, .p-toast, .p-tooltip { z-index: 1000010 !important; }
-.p-dialog-mask { z-index: 1000009 !important; }
 `
+
+// The chrome teleports into this shadow root: it sits on document.body (escaping
+// host stacking contexts and overflow clipping like the old body teleport) while
+// its shadow boundary keeps host page CSS out. PrimeVue panels still portal to
+// document.body itself; Select and the dialogs survive that split (Select dismisses
+// via composedPath, dialogs via direct mask handlers), and the popover trigger
+// stops propagation of its opening click (see DropdownMenu.vue).
+const overlayHost = document.createElement('div')
+overlayHost.setAttribute('data-doodleppl-overlay', '')
+const overlayRoot = overlayHost.attachShadow({ mode: 'open' })
+const overlayBaseStyle = document.createElement('style')
+overlayBaseStyle.textContent = overlayShadowCSS
+overlayRoot.appendChild(overlayBaseStyle)
+const overlayMount = document.createElement('div')
+overlayMount.className = 'db-overlay-mount'
+overlayRoot.appendChild(overlayMount)
+provide('doodlepplOverlayTarget', overlayMount)
+
+let stopOverlayBundleCss: (() => void) | null = null
+let stopOverlayStyleMirror: (() => void) | null = null
 
 // The shared stylesheet is ref-counted on the element itself: instances cannot be
 // counted via the DOM (hosts may hold them inside shadow roots), and the count must
@@ -470,7 +522,7 @@ const injectWidgetStyles = () => {
   const styleElement = document.createElement('style')
   styleElement.id = WIDGET_STYLES_ID
   styleElement.dataset.users = '1'
-  styleElement.textContent = widgetTeleportCSS
+  styleElement.textContent = popupHeadCSS
   document.head.appendChild(styleElement)
 }
 
@@ -786,6 +838,9 @@ onMounted(async () => {
   widgetInitialized.value = true
   validateGraph()
   injectWidgetStyles()
+  document.body.appendChild(overlayHost)
+  stopOverlayBundleCss = adoptBundleCss(overlayRoot)
+  stopOverlayStyleMirror = mirrorPrimeVueStyles(overlayRoot)
   window.addEventListener('resize', handleResize)
 
   if (widgetRoot.value) {
@@ -812,6 +867,9 @@ onUnmounted(() => {
   window.removeEventListener('resize', updateWidgetRect)
   document.body.classList.remove('db-dark-mode')
   document.documentElement.classList.remove('db-dark-mode')
+  stopOverlayBundleCss?.()
+  stopOverlayStyleMirror?.()
+  overlayHost.remove()
   removeWidgetStyles()
 })
 
@@ -847,6 +905,8 @@ const {
 watch(
   isDarkMode,
   (val) => {
+    // The html/body classes theme the PrimeVue panels portaled to document.body;
+    // the overlay mount class themes the chrome inside the overlay shadow root.
     const html = document.documentElement
     if (val) {
       html.classList.add('db-dark-mode')
@@ -855,6 +915,7 @@ watch(
       html.classList.remove('db-dark-mode')
       document.body.classList.remove('db-dark-mode')
     }
+    overlayMount.classList.toggle('db-dark-mode', val)
   },
   { immediate: true }
 )
@@ -1012,7 +1073,7 @@ watch(showNewGraphModal, (val) => {
     </div>
 
     <!-- Floating Toolbar -->
-    <Teleport to="body" :disabled="!shouldTeleport">
+    <Teleport :to="overlayMount" :disabled="!shouldTeleport">
       <FloatingBottomToolbar
         ref="bottomToolbarRef"
         v-if="isWidgetInView && showEditorUI && isEditMode"
@@ -1043,7 +1104,7 @@ watch(showNewGraphModal, (val) => {
       />
     </Teleport>
 
-    <Teleport to="body" :disabled="!shouldTeleport">
+    <Teleport :to="overlayMount" :disabled="!shouldTeleport">
       <div class="db-toast-wrapper">
         <Toast position="top-center" />
       </div>

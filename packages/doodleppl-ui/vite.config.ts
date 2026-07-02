@@ -16,7 +16,28 @@ export default defineConfig(({ mode }) => {
       // defineCustomElement injects them there. Everything else teleports to the page
       // body and keeps its styles head-injected by cssInjectedByJsPlugin.
       vue({ features: { customElement: /(DoodleWidget|GraphEditor|GraphCanvas)\.vue$/ } }),
-      cssInjectedByJsPlugin({ relativeCSSInjection: !cdn }),
+      cssInjectedByJsPlugin({
+        relativeCSSInjection: !cdn,
+        // Stringified into each chunk, so it must stay self-contained: it appends the
+        // CSS to document.head (the default behavior) and also records it so widget
+        // instances can replay it into their overlay shadow roots (see
+        // src/widget/utils/shadowStyles.ts).
+        injectCodeFunction: function doodlepplInjectCss(cssCode) {
+          try {
+            if (typeof document !== "undefined") {
+              const style = document.createElement("style");
+              style.appendChild(document.createTextNode(cssCode));
+              document.head.appendChild(style);
+              const g = globalThis as { __DOODLEPPL_CSS__?: string[] };
+              g.__DOODLEPPL_CSS__ = g.__DOODLEPPL_CSS__ || [];
+              g.__DOODLEPPL_CSS__.push(cssCode);
+              document.dispatchEvent(new CustomEvent("doodleppl:css"));
+            }
+          } catch (e) {
+            console.error("doodleppl css injection", e);
+          }
+        },
+      }),
     ],
     // The npm build keeps process.env.NODE_ENV for consumer bundlers to define
     // (the same convention as Vue's esm-bundler builds); a script tag has no

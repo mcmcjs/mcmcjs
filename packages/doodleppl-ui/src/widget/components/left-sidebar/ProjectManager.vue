@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, computed, inject, nextTick } from 'vue'
 import { useProjectStore, type Project, type GraphMeta } from '../../stores/projectStore'
 import { useGraphStore } from '../../stores/graphStore'
 import Tooltip from 'primevue/tooltip'
@@ -33,6 +33,8 @@ const contextMenu = ref<{ type: 'project' | 'graph'; id: string; x: number; y: n
   null
 )
 const contextMenuRef = ref<HTMLElement | null>(null)
+// The context menu follows the rest of the chrome into the overlay shadow root.
+const overlayTarget = inject<HTMLElement | null>('doodlepplOverlayTarget', null)
 
 const currentProject = computed(() => projectStore.currentProject)
 const currentProjectGraphs = computed(() => {
@@ -228,7 +230,7 @@ const handleNewGraph = () => {
       </div>
     </div>
 
-    <Teleport to="body">
+    <Teleport :to="overlayTarget ?? 'body'">
       <div
         v-if="contextMenu"
         ref="contextMenuRef"

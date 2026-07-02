@@ -5,6 +5,9 @@ import Popover from 'primevue/popover'
 const op = ref()
 
 const toggle = (event: Event) => {
+  // The popover's document-level dismiss listener reads event.target, which shadow
+  // DOM retargets to the overlay host; keep the opening click from reaching it.
+  event.stopPropagation()
   op.value.toggle(event)
 }
 
