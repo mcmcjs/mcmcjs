@@ -1,5 +1,11 @@
 # doodleppl
 
+## 0.1.2
+
+### Patch Changes
+
+- ed2f366: Ship the type declarations at the documented path: 0.1.1 published them under `dist/src/`, so TypeScript consumers resolved no types. Declarations are now emitted by `vue-tsc` alongside the build.
+
 ## 0.1.1
 
 ### Patch Changes
