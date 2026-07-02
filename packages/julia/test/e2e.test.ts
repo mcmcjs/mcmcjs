@@ -145,10 +145,15 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
     const chains = [...new Set(batches.map((b) => b.chain))].sort((a, c) => a - c);
     expect(chains).toEqual([0, 1]);
 
+    // Sampler statistics stream alongside the parameters, under the names the
+    // samples file records as internals.
+    expect([...samples.sampleStats.keys()]).toContain("acceptance_rate");
+
     for (const chain of chains) {
       const cols = reconstructChain(batches, chain);
-      // Every leaf the run reported appears in the stream and matches exactly.
-      for (const leaf of samples.variables) {
+      // Every leaf the run reported appears in the stream and matches exactly,
+      // parameters and sampler statistics alike.
+      for (const leaf of [...samples.variables, ...samples.sampleStats.keys()]) {
         const truth = chainView(samples, leaf, chain);
         const recon = cols[leaf];
         if (!recon) throw new Error(`chain ${chain} leaf ${leaf} never appeared in the stream`);

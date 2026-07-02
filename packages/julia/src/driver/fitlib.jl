@@ -157,11 +157,19 @@ end
 
 # Expand one sampler transition to canonical scalar leaves (theta -> theta[1], ...),
 # the same names the final samples file uses, so streamed batches reconstruct it.
+# Sampler statistics (acceptance rate, tree depth, ...) ride along under the same
+# names the samples file records as internals, so consumers get per-draw
+# diagnostics without a second channel; Bool stats become 0/1.
 function flatten_draw(transition)
     out = Pair{String,Float64}[]
     for (vn, val) in pairs(transition.params)
         for (leaf, leafval) in Turing.DynamicPPL.varname_and_value_leaves(vn, val)
             push!(out, string(leaf) => Float64(leafval))
+        end
+    end
+    if hasproperty(transition, :stats)
+        for (name, value) in pairs(transition.stats)
+            value isa Real && push!(out, string(name) => Float64(value))
         end
     end
     return out
