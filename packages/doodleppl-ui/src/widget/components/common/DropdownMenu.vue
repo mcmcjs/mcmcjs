@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { inject, ref } from 'vue'
 import Popover from 'primevue/popover'
+
+// The panel renders into the overlay shadow root, out of host CSS reach.
+const overlayTarget = inject<HTMLElement | null>('doodlepplOverlayTarget', null)
 
 const op = ref()
 
@@ -29,7 +32,7 @@ const onContentClick = (event: MouseEvent) => {
     <div @click="toggle" class="cursor-pointer inline-block">
       <slot name="trigger"></slot>
     </div>
-    <Popover ref="op">
+    <Popover ref="op" :append-to="overlayTarget ?? 'body'">
       <div class="flex flex-col min-w-[150px] py-1" @click="onContentClick">
         <slot name="content"></slot>
       </div>

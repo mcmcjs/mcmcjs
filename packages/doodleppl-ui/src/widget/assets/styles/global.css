@@ -1,7 +1,11 @@
 @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css');
 @import './shared-ui.css';
 
-:root {
+/* The widget renders inside shadow roots, where a document-level :root rule cannot
+   reach; the tokens are declared on each shadow tree's root element as well. */
+:root,
+.db-widget-root,
+.db-overlay-mount {
   /* Fonts */
   --font-family-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-size-xs: 10px;
@@ -80,7 +84,9 @@
   --color-border-dark: var(--theme-text-secondary);
 }
 
-html.db-dark-mode {
+html.db-dark-mode,
+.db-widget-root.db-dark-mode,
+.db-overlay-mount.db-dark-mode {
   /* Semantic Theme Configuration (Dark Mode) */
   /* Backgrounds */
   --theme-bg-canvas: #0f1115;
@@ -169,17 +175,6 @@ html.db-dark-mode {
 
 .h-full {
   height: 100%;
-}
-
-/* Custom Base Modal Responsive Width */
-.base-modal-responsive {
-  width: 50vw;
-}
-
-@media (max-width: 768px) {
-  .base-modal-responsive {
-    width: 95vw !important;
-  }
 }
 
 /* Input Placeholder and Styling */

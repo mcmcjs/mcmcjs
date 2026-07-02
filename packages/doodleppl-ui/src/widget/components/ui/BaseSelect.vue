@@ -1,5 +1,10 @@
 <script setup lang="ts">
+import { inject } from 'vue'
 import Select from 'primevue/select'
+
+// The panel renders into the overlay shadow root (out of host CSS reach) instead of
+// document.body; the element target also escapes any scrollable sidebar ancestor.
+const overlayTarget = inject<HTMLElement | null>('doodlepplOverlayTarget', null)
 
 // Relaxed interface to allow any object shape since we map with optionLabel/optionValue
 export interface SelectOption {
@@ -26,6 +31,7 @@ const emit = defineEmits(['update:modelValue', 'change'])
     :optionValue="optionValue || 'value'"
     :disabled="disabled"
     :placeholder="placeholder"
+    :append-to="overlayTarget ?? 'body'"
     @update:model-value="(val) => emit('update:modelValue', val)"
     @change="(e) => emit('change', e)"
     class="w-auto db-select-field"

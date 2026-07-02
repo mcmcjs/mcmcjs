@@ -18,16 +18,25 @@ export default defineConfig(({ mode }) => {
       vue({ features: { customElement: /(DoodleWidget|GraphEditor|GraphCanvas)\.vue$/ } }),
       cssInjectedByJsPlugin({
         relativeCSSInjection: !cdn,
-        // Stringified into each chunk, so it must stay self-contained: it appends the
-        // CSS to document.head (the default behavior) and also records it so widget
-        // instances can replay it into their overlay shadow roots (see
-        // src/widget/utils/shadowStyles.ts).
+        // Stringified into each chunk, so it must stay self-contained. The widget
+        // renders entirely inside shadow roots, so the bundle CSS goes to a registry
+        // that widget instances replay into those roots (src/widget/utils/
+        // shadowStyles.ts) instead of polluting the host document. Only font
+        // registrations reach document.head: browsers ignore @font-face declared
+        // inside a shadow root.
         injectCodeFunction: function doodlepplInjectCss(cssCode) {
           try {
             if (typeof document !== "undefined") {
-              const style = document.createElement("style");
-              style.appendChild(document.createTextNode(cssCode));
-              document.head.appendChild(style);
+              const fonts = ([] as string[]).concat(
+                cssCode.match(/@import[^;]*;/g) || [],
+                cssCode.match(/@font-face\s*\{[^{}]*\}/g) || [],
+              );
+              if (fonts.length > 0) {
+                const style = document.createElement("style");
+                style.setAttribute("data-doodleppl-fonts", "");
+                style.appendChild(document.createTextNode(fonts.join("\n")));
+                document.head.appendChild(style);
+              }
               const g = globalThis as { __DOODLEPPL_CSS__?: string[] };
               g.__DOODLEPPL_CSS__ = g.__DOODLEPPL_CSS__ || [];
               g.__DOODLEPPL_CSS__.push(cssCode);

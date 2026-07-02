@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Dialog from 'primevue/dialog'
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 
 const props = defineProps<{
   isOpen: boolean
@@ -8,6 +8,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits(['close'])
+
+// Render the dialog inside the overlay shadow root so host page CSS cannot reach
+// it; PrimeVue's default appendTo="body" would portal it back into the page.
+const overlayTarget = inject<HTMLElement | null>('doodlepplOverlayTarget', null)
 
 const visible = computed({
   get: () => props.isOpen,
@@ -24,6 +28,7 @@ const visible = computed({
     :header="header"
     class="db-base-modal-responsive"
     dismissableMask
+    :append-to="overlayTarget ?? 'body'"
   >
     <template #header v-if="$slots.header">
       <slot name="header"></slot>

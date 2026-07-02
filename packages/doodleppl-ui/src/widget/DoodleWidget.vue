@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed, nextTick, provide } from 'vue'
 import { storeToRefs } from 'pinia'
-import Toast from 'primevue/toast'
 import Tooltip from 'primevue/tooltip'
 
 import GraphEditor from './components/canvas/GraphEditor.vue'
@@ -19,6 +18,7 @@ import ShareModal from './components/layouts/ShareModal.vue'
 import ValidationIssuesModal from './components/layouts/ValidationIssuesModal.vue'
 import BaseModal from './components/common/BaseModal.vue'
 import DebugPanel from './components/common/DebugPanel.vue'
+import DbToast from './components/common/DbToast.vue'
 import BaseButton from './components/ui/BaseButton.vue'
 import BaseInput from './components/ui/BaseInput.vue'
 import ScriptSettingsPanel from './components/panels/ScriptSettingsPanel.vue'
@@ -425,46 +425,47 @@ const saveWidgetUIState = () => {
 
 const WIDGET_STYLES_ID = 'doodlebugs-widget-teleport-styles'
 
-// PrimeVue portals its panels (dialogs, popovers, select overlays, tooltips, toasts)
-// to document.body, so their baseline and stacking rules must live in the head. They
-// share the page with host CSS; the armor rules below out-specify the usual blanket
-// host resets (button/i/div selectors) on the spots they visibly hit.
+// Tooltips are the one PrimeVue overlay that cannot be re-targeted (the directive
+// always appends to document.body), so their baseline, stacking, and armor rules
+// stay in the head; every other panel renders inside the shadow roots.
 const popupHeadCSS = `
-.p-dialog,
-.p-popover,
-.p-toast,
-.p-select-overlay,
 .p-tooltip {
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   font-size: 12px;
   line-height: 1.5;
   letter-spacing: normal;
   font-weight: 400;
-  color: var(--theme-text-primary, #1f2937);
   box-sizing: border-box;
+  z-index: 1000010 !important;
 }
-.p-popover, .p-select-overlay, .p-dialog, .p-toast, .p-tooltip { z-index: 1000010 !important; }
-.p-dialog-mask { z-index: 1000009 !important; }
-.p-dialog *, .p-popover *, .p-toast *, .p-select-overlay *, .p-tooltip * {
+.p-tooltip * {
   letter-spacing: inherit !important;
   text-transform: none !important;
-}
-.p-toast .p-toast-close-button,
-.p-dialog .p-dialog-header-actions button {
-  background: transparent !important;
-  border: 0 !important;
-  color: inherit !important;
-  font-size: inherit !important;
-  border-radius: 50% !important;
 }
 `
 
 // The overlay chrome renders inside the overlay host's shadow root; these rules are
 // injected there, where host page CSS cannot reach.
 const overlayShadowCSS = `
+/* Inherited text properties (font, letter-spacing, color...) cross the shadow
+   boundary from the host page; reset them once at the mount root. */
+.db-overlay-mount {
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: normal;
+  text-transform: none;
+  font-weight: 400;
+  color: var(--theme-text-primary, #1f2937);
+  word-spacing: normal;
+  text-shadow: none;
+}
 .db-ui-overlay,
 .db-sidebar-wrapper,
-.db-floating-panel {
+.db-floating-panel,
+.p-dialog,
+.p-popover,
+.p-select-overlay {
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   font-size: 12px;
   line-height: 1.5;
@@ -488,6 +489,8 @@ const overlayShadowCSS = `
 .db-ui-overlay .db-floating-panel { z-index: 1000002 !important; }
 .db-ui-overlay .db-toolbar-container { z-index: 1000003 !important; }
 .db-ui-overlay .db-debug-panel { z-index: 1000006 !important; }
+.p-dialog-mask { z-index: 1000009 !important; }
+.p-dialog, .p-popover, .p-select-overlay { z-index: 1000010 !important; }
 `
 
 // The chrome teleports into this shadow root: it sits on document.body (escaping
@@ -509,6 +512,7 @@ provide('doodlepplOverlayTarget', overlayMount)
 
 let stopOverlayBundleCss: (() => void) | null = null
 let stopOverlayStyleMirror: (() => void) | null = null
+let stopCanvasBundleCss: (() => void) | null = null
 
 // The shared stylesheet is ref-counted on the element itself: instances cannot be
 // counted via the DOM (hosts may hold them inside shadow roots), and the count must
@@ -841,6 +845,12 @@ onMounted(async () => {
   document.body.appendChild(overlayHost)
   stopOverlayBundleCss = adoptBundleCss(overlayRoot)
   stopOverlayStyleMirror = mirrorPrimeVueStyles(overlayRoot)
+  // The canvas shadow root needs the bundle CSS too: the theme tokens live there
+  // (global.css no longer applies at document level), and head styles cannot reach in.
+  const canvasRoot = widgetRoot.value?.getRootNode()
+  if (canvasRoot instanceof ShadowRoot) {
+    stopCanvasBundleCss = adoptBundleCss(canvasRoot)
+  }
   window.addEventListener('resize', handleResize)
 
   if (widgetRoot.value) {
@@ -869,6 +879,7 @@ onUnmounted(() => {
   document.documentElement.classList.remove('db-dark-mode')
   stopOverlayBundleCss?.()
   stopOverlayStyleMirror?.()
+  stopCanvasBundleCss?.()
   overlayHost.remove()
   removeWidgetStyles()
 })
@@ -1106,7 +1117,7 @@ watch(showNewGraphModal, (val) => {
 
     <Teleport :to="overlayMount" :disabled="!shouldTeleport">
       <div class="db-toast-wrapper">
-        <Toast position="top-center" />
+        <DbToast />
       </div>
 
       <div
@@ -1549,6 +1560,11 @@ watch(showNewGraphModal, (val) => {
   padding-top: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: normal;
+  text-transform: none;
+  word-spacing: normal;
+  text-shadow: none;
   color: var(--theme-text-primary);
   -webkit-font-smoothing: antialiased;
 
