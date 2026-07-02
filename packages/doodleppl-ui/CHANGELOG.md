@@ -1,5 +1,12 @@
 # doodleppl
 
+## 0.4.0
+
+### Minor Changes
+
+- e9d32b3: Complete the CSS isolation in both directions: dialogs, select panels, and popovers now render inside the overlay shadow root via `appendTo`, toasts get an in-shadow display on the same toast service (PrimeVue's Toast cannot be re-targeted), and inherited text properties are reset at each shadow boundary. In the other direction the widget no longer injects its bundle CSS into the host document at all; only font registrations reach `document.head` (browsers ignore `@font-face` inside shadow roots), so the utility classes, CodeMirror styles, root token overrides, and PrimeVue input tweaks that previously leaked into host pages are gone. Tooltips remain the one light-DOM overlay (armored), since the tooltip directive has no retarget option.
+- 9c5a9a6: Isolate the editor chrome from host page CSS: the toolbar, sidebars, floating panels, debug console, and context menu now render inside a shadow root on a body-level overlay host (still escaping host stacking contexts like the old body teleport), with the bundle CSS and PrimeVue's runtime styles mirrored in. PrimeVue popups that stay in the page (dialogs, dropdown panels, toasts, tooltips) get armor rules against blanket host resets on their close buttons and text.
+
 ## 0.3.0
 
 ### Minor Changes
