@@ -55,6 +55,7 @@
     "@mcmcjs/engine": "workspace:*",
     "@mcmcjs/julia": "workspace:*",
     "@mcmcjs/plots": "workspace:*",
+    "@mcmcjs/stan": "workspace:*",
     "commander": "^15.0.0",
     "picocolors": "^1.1.1",
     "zod": "^4.4.3"

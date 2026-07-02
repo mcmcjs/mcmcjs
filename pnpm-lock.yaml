@@ -59,6 +59,9 @@ importers:
       '@mcmcjs/plots':
         specifier: workspace:*
         version: link:../plots
+      '@mcmcjs/stan':
+        specifier: workspace:*
+        version: link:../stan
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -192,6 +195,15 @@ importers:
       regl:
         specifier: ^2.1.1
         version: 2.1.1
+
+  packages/stan:
+    dependencies:
+      '@mcmcjs/core':
+        specifier: workspace:*
+        version: link:../core
+      '@mcmcjs/engine':
+        specifier: workspace:*
+        version: link:../engine
 
   packages/stan-wasm:
     dependencies:

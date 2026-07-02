@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createRegistry, createRunner, type EngineContext } from "@mcmcjs/engine";
 import { juliaEngine } from "@mcmcjs/julia";
+import { stanEngine } from "@mcmcjs/stan";
 import { Command } from "commander";
 import { registerAll } from "./register";
 import { maybeNotifyUpdate } from "./update-check";
@@ -40,6 +41,7 @@ program
 const ctx: EngineContext = { run: createRunner(), platform: process.platform };
 const registry = createRegistry("julia");
 registry.register(juliaEngine);
+registry.register(stanEngine);
 
 registerAll(program, ctx, registry);
 

@@ -40,6 +40,7 @@ import {
   validatePins,
   validateVersionString,
 } from "@mcmcjs/julia";
+import { resolveCmdStan, runFit as runStanFit } from "@mcmcjs/stan";
 import type { Command } from "commander";
 import pc from "picocolors";
 import { ZodError } from "zod";
@@ -92,7 +93,7 @@ type InputKind = "spec" | "model" | "graph";
 function classifyInput(path: string): InputKind {
   const ext = extname(path).toLowerCase();
   if (ext === ".toml") return "spec";
-  if (ext === ".jl") return "model";
+  if (ext === ".jl" || ext === ".stan") return "model";
   if (ext === ".json") {
     let doc: unknown;
     try {
@@ -105,7 +106,9 @@ function classifyInput(path: string): InputKind {
     }
     return "spec";
   }
-  throw new Error(`unsupported input (expected a .toml/.json spec, .jl model, or graph): ${path}`);
+  throw new Error(
+    `unsupported input (expected a .toml/.json spec, .jl/.stan model, or graph): ${path}`,
+  );
 }
 
 export interface RunCliOptions {
@@ -170,10 +173,18 @@ function validated(spec: Record<string, unknown>): Spec {
 
 /** Layers CLI flags over a spec; flags always win. */
 function applyOverrides(spec: Spec, opts: RunCliOptions): Spec {
+  // Switching to a backend on another runtime invalidates the spec's runtime
+  // and version, so they re-derive from the new backend's defaults.
+  const crossesRuntime =
+    opts.backend !== undefined && (opts.backend === "stan") !== (spec.backend.id === "stan");
   return validated({
     ...spec,
     ...(opts.seed !== undefined ? { seed: opts.seed } : {}),
-    backend: { ...spec.backend, ...(opts.backend ? { id: opts.backend } : {}) },
+    backend: {
+      ...spec.backend,
+      ...(opts.backend ? { id: opts.backend } : {}),
+      ...(crossesRuntime ? { runtime: undefined, version: undefined } : {}),
+    },
     model: { ...spec.model, ...(opts.entry ? { entry: opts.entry } : {}) },
     sampler: {
       ...spec.sampler,
@@ -265,7 +276,14 @@ export function buildRunConfig(inputPath: string, opts: RunCliOptions): RunConfi
   }
 
   const source = readFileSync(modelPath, "utf8");
-  const backend = (opts.backend as "turing" | "juliabugs" | undefined) ?? detectBackend(source);
+  const isStanFile = extname(modelPath).toLowerCase() === ".stan";
+  if (isStanFile && opts.backend && opts.backend !== "stan") {
+    throw new Error(`a .stan model runs on the stan backend, not --backend ${opts.backend}`);
+  }
+  if (!isStanFile && opts.backend === "stan") {
+    throw new Error("--backend stan expects a .stan model file");
+  }
+  const backend = isStanFile ? "stan" : (opts.backend ?? detectBackend(source));
   if (!backend) {
     throw new Error(
       `could not detect the backend from ${inputPath}; pass --backend turing|juliabugs`,
@@ -399,16 +417,16 @@ export function refitReasons(prev: LedgerEntry, next: RunInputs, seedPinned: boo
     }
   }
   if (prev.backend.version !== next.channel) {
-    reasons.push(`julia ${prev.backend.version} -> ${next.channel}`);
+    reasons.push(`runtime ${prev.backend.version} -> ${next.channel}`);
   }
   if (seedPinned && prev.seed !== next.seed) reasons.push(`seed ${prev.seed} -> ${next.seed}`);
   return reasons;
 }
 
-function fitBanner(config: RunConfig, juliaLabel: string): string {
+function fitBanner(config: RunConfig, runtimeLabel: string): string {
   const s = config.spec.sampler;
   const backend = backendLabel(config.spec.backend.id);
-  return `Fitting ${basename(config.modelPath)} with ${backend} (${s.algorithm}, ${s.chains} chains x ${s.draws} draws + ${s.warmup} warmup, seed ${config.spec.seed}) on Julia ${juliaLabel}...`;
+  return `Fitting ${basename(config.modelPath)} with ${backend} (${s.algorithm}, ${s.chains} chains x ${s.draws} draws + ${s.warmup} warmup, seed ${config.spec.seed}) on ${runtimeLabel}...`;
 }
 
 function displayPath(path: string): string {
@@ -484,6 +502,17 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       validatePins(pins); // fail fast on a bad spec/flag pin
       if (pins) config.spec.backend.packages = pins;
       else delete config.spec.backend.packages;
+
+      const isStan = config.spec.backend.id === "stan";
+      if (isStan) {
+        for (const [set, flag] of [
+          [opts.daemon, "--daemon"],
+          [opts.juliaVersion, "--julia-version"],
+          [pins, "--package"],
+        ] as const) {
+          if (set) throw new Error(`${flag} does not apply to a Stan model`);
+        }
+      }
 
       // A referenced data file is loaded for the fit but recorded by path + hash,
       // not inlined into the spec or the store.
@@ -572,23 +601,38 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         if (reasons.length > 0) say(`refitting: ${reasons.join(", ")} since run ${previous.id}`);
       }
 
-      const bin = await juliaupBin(ctx);
-      const resolved = await resolveVersion(bin, config.channel, ctx.run);
-      const projectDir = managedProjectDir(resolved.version, pins);
-      await ensureProject(
-        resolved.command,
-        installRunner({
-          label: "preparing the Julia environment",
-          timeoutMs: INSTALL_TIMEOUT_MS,
-          json: opts.json,
-          verbose: opts.verbose,
-        }),
-        projectDir,
-        pins,
-        { version: resolved.version },
-      );
+      // Like the juliaup resolution below, CmdStan resolves after the reuse
+      // check so replaying a cached run never needs the toolchain.
+      const stan = isStan ? resolveCmdStan(config.channel) : undefined;
+      let resolved: Awaited<ReturnType<typeof resolveVersion>> | undefined;
+      let projectDir: string | undefined;
+      if (!stan) {
+        const bin = await juliaupBin(ctx);
+        resolved = await resolveVersion(bin, config.channel, ctx.run);
+        projectDir = managedProjectDir(resolved.version, pins);
+        await ensureProject(
+          resolved.command,
+          installRunner({
+            label: "preparing the Julia environment",
+            timeoutMs: INSTALL_TIMEOUT_MS,
+            json: opts.json,
+            verbose: opts.verbose,
+          }),
+          projectDir,
+          pins,
+          { version: resolved.version },
+        );
+      }
 
-      say(fitBanner(config, resolved.version ?? `channel "${config.channel}"`));
+      const runtimeName = stan ? "CmdStan" : "Julia";
+      say(
+        fitBanner(
+          config,
+          stan
+            ? `CmdStan ${stan.version}`
+            : `Julia ${resolved?.version ?? `channel "${config.channel}"`}`,
+        ),
+      );
 
       const startedAt = new Date();
       let runId = makeRunId(startedAt, runKey);
@@ -618,7 +662,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         modelPath: config.modelPath,
         specHash,
       };
-      const progress = rendererFor(opts.json, backendLabel(config.spec.backend.id));
+      const progress = rendererFor(opts.json, backendLabel(config.spec.backend.id), runtimeName);
       if (streamToStdout) {
         // A downstream consumer closing the pipe (e.g. `| head`) must not crash the run.
         process.stdout.on("error", () => {});
@@ -643,19 +687,29 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       process.once("SIGINT", onSigint);
       let fit: Awaited<ReturnType<typeof runFitAuto>>;
       try {
-        fit = await runFitAuto(resolvedSpec, resolved, {
-          spawn: createFitRunner(),
-          projectDir,
-          outPath: join(dir, "samples.json"),
-          recordPath: join(dir, "run.json"),
-          onProgress: progress.onProgress,
-          onDraws: drawsSink,
-          signal: controller.signal,
-          daemon: opts.daemon ?? process.env.MCMC_DAEMON === "1",
-          notify: (line) => say(line),
-          dataFile: config.dataFile,
-          dataSha256: resolvedData.dataSha256,
-        });
+        fit = stan
+          ? await runStanFit(resolvedSpec, stan, {
+              outPath: join(dir, "samples.json"),
+              recordPath: join(dir, "run.json"),
+              onProgress: progress.onProgress,
+              onDraws: drawsSink,
+              signal: controller.signal,
+              dataFile: config.dataFile,
+              dataSha256: resolvedData.dataSha256,
+            })
+          : await runFitAuto(resolvedSpec, resolved as NonNullable<typeof resolved>, {
+              spawn: createFitRunner(),
+              projectDir: projectDir as string,
+              outPath: join(dir, "samples.json"),
+              recordPath: join(dir, "run.json"),
+              onProgress: progress.onProgress,
+              onDraws: drawsSink,
+              signal: controller.signal,
+              daemon: opts.daemon ?? process.env.MCMC_DAEMON === "1",
+              notify: (line) => say(line),
+              dataFile: config.dataFile,
+              dataSha256: resolvedData.dataSha256,
+            });
       } finally {
         process.removeListener("SIGINT", onSigint);
         progress.finish();
@@ -672,7 +726,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         seed: config.spec.seed,
         backend: { id: config.spec.backend.id, version: config.channel },
         sampler: config.spec.sampler,
-        julia: fit.status === "ok" ? fit.runtimeActual : resolved.version,
+        ...(stan ? {} : { julia: fit.status === "ok" ? fit.runtimeActual : resolved?.version }),
         started_at: startedAt.toISOString(),
         elapsed_ms: fit.elapsedMs,
       };
@@ -723,7 +777,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       updateLedgerEntry(storeDir, { ...entry, diagnostics: diagnosticsSummary(report) });
 
       say(
-        `${pc.green("ok:")} run ${runId} (${(fit.elapsedMs / 1000).toFixed(1)} s, Julia ${fit.runtimeActual ?? config.channel}) saved to ${displayPath(storeDir)}`,
+        `${pc.green("ok:")} run ${runId} (${(fit.elapsedMs / 1000).toFixed(1)} s, ${runtimeName} ${fit.runtimeActual ?? config.channel}) saved to ${displayPath(storeDir)}`,
       );
       say("");
       finish(report, runId, false, fit, frozen);

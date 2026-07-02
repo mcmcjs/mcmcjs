@@ -13,6 +13,7 @@ import {
   runMatrix,
   validatePins,
 } from "@mcmcjs/julia";
+import { resolveCmdStan, runFit as runStanFit } from "@mcmcjs/stan";
 import type { Command } from "commander";
 import pc from "picocolors";
 import { installRunner, juliaupBin } from "./julia";
@@ -20,7 +21,11 @@ import { rendererFor } from "./progress";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
 
-const BACKEND_NAMES: Record<string, string> = { turing: "Turing.jl", juliabugs: "JuliaBUGS" };
+const BACKEND_NAMES: Record<string, string> = {
+  turing: "Turing.jl",
+  juliabugs: "JuliaBUGS",
+  stan: "Stan",
+};
 
 /** A human display name for a backend id (e.g. "turing" -> "Turing.jl"). */
 export function backendLabel(id: string): string {
@@ -64,9 +69,14 @@ export function matrixOutDir(specPath: string): string {
 }
 
 /** Renders a single fit result for the terminal. */
-export function formatFitResult(result: FitResult, channel: string, recordPath: string): string {
+export function formatFitResult(
+  result: FitResult,
+  channel: string,
+  recordPath: string,
+  runtimeName = "Julia",
+): string {
   if (result.status === "ok") {
-    return `${pc.green("ok")} ${result.samplesFile} (Julia ${result.runtimeActual ?? channel}, ${result.elapsedMs} ms)\n${pc.dim(`run record: ${recordPath}`)}`;
+    return `${pc.green("ok")} ${result.samplesFile} (${runtimeName} ${result.runtimeActual ?? channel}, ${result.elapsedMs} ms)\n${pc.dim(`run record: ${recordPath}`)}`;
   }
   if (result.status === "cancelled") {
     return `${pc.yellow("cancelled")}: the fit was stopped before finishing`;
@@ -127,6 +137,47 @@ export function registerFit(program: Command, ctx: EngineContext): void {
         // Load a referenced data file (recorded by path + hash, not inlined).
         const resolvedData = resolveData(spec.data, spec.dataFilePath);
         spec.data = resolvedData.data;
+
+        if (spec.backend.id === "stan") {
+          for (const [set, flag] of [
+            [opts.versions, "--versions"],
+            [opts.packageVersions, "--package-versions"],
+            [opts.daemon, "--daemon"],
+            [opts.juliaVersion, "--julia-version"],
+          ] as const) {
+            if (set) throw new Error(`${flag} does not apply to a Stan spec`);
+          }
+          const install = resolveCmdStan(spec.backend.version);
+          const outPath = resolve(opts.out ?? defaultOut(specPath));
+          if (!opts.json) {
+            process.stdout.write(`Fitting stan on CmdStan ${install.version}...\n`);
+          }
+          const progress = rendererFor(opts.json, backendLabel(spec.backend.id), "CmdStan");
+          const controller = new AbortController();
+          const onSigint = () => controller.abort();
+          process.once("SIGINT", onSigint);
+          let result: FitResult;
+          try {
+            result = await runStanFit(spec, install, {
+              outPath,
+              onProgress: progress.onProgress,
+              signal: controller.signal,
+              dataFile: resolvedData.dataFile,
+              dataSha256: resolvedData.dataSha256,
+            });
+          } finally {
+            process.removeListener("SIGINT", onSigint);
+            progress.finish();
+          }
+          process.stdout.write(
+            opts.json
+              ? `${JSON.stringify(result, null, 2)}\n`
+              : `${formatFitResult(result, spec.backend.version, `${outPath}.run.json`, "CmdStan")}\n`,
+          );
+          process.exitCode = result.status === "ok" ? 0 : result.status === "cancelled" ? 130 : 1;
+          return;
+        }
+
         const bin = await juliaupBin(ctx);
         const provision = (label: string) =>
           installRunner({

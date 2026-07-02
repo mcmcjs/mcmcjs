@@ -42,7 +42,7 @@ export function formatRunDetail(
   );
   row(
     "backend",
-    `${entry.backend.id} on Julia ${entry.backend.version}${entry.julia ? ` (ran ${entry.julia})` : ""}`,
+    `${entry.backend.id} on ${entry.backend.id === "stan" ? "CmdStan" : "Julia"} ${entry.backend.version}${entry.julia ? ` (ran ${entry.julia})` : ""}`,
   );
   row(
     "sampler",

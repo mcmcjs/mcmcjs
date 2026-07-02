@@ -379,7 +379,7 @@ describe("refitReasons", () => {
       "the model changed",
       "the data changed",
       "draws 500 -> 1000",
-      "julia 1.10 -> release",
+      "runtime 1.10 -> release",
       "seed 7 -> 42",
     ]);
   });

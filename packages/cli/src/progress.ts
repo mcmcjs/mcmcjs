@@ -11,15 +11,24 @@ export interface ProgressRenderer {
 export const silentProgress: ProgressRenderer = { onProgress: () => {}, finish: () => {} };
 
 /** The renderer a command should use: silent under --json, stderr otherwise. */
-export function rendererFor(json: boolean | undefined, backend?: string): ProgressRenderer {
+export function rendererFor(
+  json: boolean | undefined,
+  backend?: string,
+  runtime = "Julia",
+): ProgressRenderer {
   if (json) return silentProgress;
+  const starting =
+    runtime === "Julia"
+      ? `starting Julia and loading ${backend ?? "the inference backend"}...`
+      : `compiling the model with ${runtime}...`;
   const renderer = createProgressRenderer({
     tty: process.stderr.isTTY === true,
     write: (text) => process.stderr.write(text),
-    starting: `starting Julia and loading ${backend ?? "the inference backend"}...`,
+    starting,
   });
-  // Julia start + backend load is silent for ~15s before the first chain; show
-  // something so the wait is never a dead screen.
+  // Runtime start-up (Julia boot + package load, or a first-time Stan model
+  // compile) is silent before the first chain; show something so the wait is
+  // never a dead screen.
   renderer.start?.();
   return renderer;
 }
