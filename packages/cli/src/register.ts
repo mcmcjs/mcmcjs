@@ -17,6 +17,7 @@ import { registerSamples } from "./samples";
 import { registerSandbox } from "./sandbox";
 import { registerSetup } from "./setup";
 import { registerShow } from "./show";
+import { registerStan } from "./stan";
 import { registerSummary } from "./summary";
 import { registerUpdateCheck } from "./update-check";
 
@@ -44,6 +45,7 @@ export function registerAll(program: Command, ctx: EngineContext, registry: Engi
   registerDoctor(program, registry, ctx);
   registerEngines(program, registry, ctx);
   registerJulia(program, ctx);
+  registerStan(program, ctx);
   registerDaemon(program);
   registerUpdateCheck(program);
 }

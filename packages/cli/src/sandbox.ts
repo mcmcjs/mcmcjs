@@ -26,10 +26,10 @@ function makeSandboxDir(): string {
 }
 
 /**
- * Env that redirects every mcmcjs/Julia state path into the sandbox, so a
- * --strict session starts with no Julia installed: the managed env, Julia and
- * juliaup depots, caches, and worker sockets all live in (and die with) the
- * sandbox. `mcmc setup` inside installs a fresh toolchain there.
+ * Env that redirects every mcmcjs toolchain path into the sandbox, so a
+ * --strict session starts with no Julia or CmdStan installed: the managed
+ * envs, Julia and juliaup depots, caches, and worker sockets all live in (and
+ * die with) the sandbox. `mcmc setup` inside installs a fresh toolchain there.
  */
 export function strictEnv(dir: string): Record<string, string> {
   const root = join(dir, "env");
@@ -49,6 +49,10 @@ export function strictEnv(dir: string): Record<string, string> {
     XDG_RUNTIME_DIR: sub("run", 0o700),
     JULIA_DEPOT_PATH: sub("julia-depot"),
     JULIAUP_DEPOT_PATH: sub("juliaup"),
+    // An explicit CmdStan override on the host must not leak in; empty values
+    // are falsy, so detection falls back to scanning the sandboxed paths.
+    MCMCJS_CMDSTAN: "",
+    CMDSTAN: "",
   };
 }
 
@@ -166,7 +170,7 @@ export function registerSandbox(program: Command): void {
     .description("Open a throwaway shell seeded with a working example model")
     .option(
       "--strict",
-      "isolate Julia entirely: a fresh environment with no Julia installed, all of it inside the sandbox",
+      "isolate the toolchains entirely: a fresh environment with no Julia or CmdStan installed, all of it inside the sandbox",
     )
     .option("--keep", "keep the sandbox on exit instead of prompting")
     .option("--delete", "delete the sandbox on exit without prompting")
@@ -176,7 +180,8 @@ export function registerSandbox(program: Command): void {
       "after",
       "\nLeaving the shell (exit or Ctrl+D) prompts to keep or delete; press Enter to delete." +
         "\nPre-decide without the prompt: --keep, --delete, or --keep-dir <path> [--name <n>]." +
-        "\n--strict starts with no Julia installed; run `mcmc setup` inside to provision it." +
+        "\n--strict starts with no Julia or CmdStan installed; run `mcmc setup` (or" +
+        "\n`mcmc setup --engine stan`) inside to provision into the sandbox." +
         "\nFor scripts and agents, `mcmc init <dir>` seeds the same files without a shell.",
     )
     .action(async (opts: SandboxOpts) => {
@@ -199,10 +204,10 @@ export function registerSandbox(program: Command): void {
           `  seeded: ${files.join(", ")}`,
           ...(opts.strict
             ? [
-                `  ${pc.yellow("strict:")} no Julia here yet, run ${pc.bold("mcmc setup")} first (installs into the sandbox)`,
+                `  ${pc.yellow("strict:")} no toolchains here yet; run ${pc.bold("mcmc setup")} (Julia) or ${pc.bold("mcmc setup --engine stan")} first`,
               ]
             : []),
-          `  try:    ${pc.bold("mcmc run model.jl")}  ${pc.dim("(picks up data.csv automatically)")}`,
+          `  try:    ${pc.bold("mcmc run model.jl")} or ${pc.bold("mcmc run model.stan")}  ${pc.dim("(picks up data.csv automatically)")}`,
           "  leaving the shell deletes the sandbox (you will be asked first)",
           "",
         ].join("\n"),
@@ -231,8 +236,8 @@ export function registerSandbox(program: Command): void {
         if (opts.strict) {
           process.stderr.write(
             pc.yellow(
-              "note: a strict sandbox carries a full Julia depot under env/; this copies it and the\n" +
-                "      Julia install is pinned to the old path, so it will not run from the new location\n",
+              "note: a strict sandbox carries its toolchains under env/; this copies them, but Julia\n" +
+                "      and CmdStan installs are pinned to the old path and will not run from the new location\n",
             ),
           );
         }

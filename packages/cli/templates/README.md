@@ -4,6 +4,7 @@ A throwaway playground with one model, two ways to run it.
 
 ```bash
 mcmc run model.jl                    # fit + convergence report; data.csv is picked up automatically
+mcmc run model.stan                  # the same model through the Stan engine (needs `mcmc setup --engine stan`)
 mcmc runs                            # what ran, what converged
 mcmc show                            # the latest run in detail
 mcmc run model.jl --draws 4000 --daemon   # more draws, warm worker

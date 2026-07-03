@@ -260,18 +260,39 @@ export function buildRunConfig(inputPath: string, opts: RunCliOptions): RunConfi
   const sibling = join(dirname(modelPath), `${basename(modelPath, extname(modelPath))}.toml`);
   if (existsSync(sibling)) {
     const config = fromSpecFile(sibling, opts);
-    // The model named on the command line wins over the spec's model.path.
+    // The model named on the command line wins over the spec's model.path, and
+    // its language wins over the spec's backend: a .stan model next to a spec
+    // authored for a Julia backend runs on the stan backend (and vice versa the
+    // spec's Julia backend applies only to a .jl model), with the runtime and
+    // version re-derived for the new backend.
+    const stanModel = extname(modelPath).toLowerCase() === ".stan";
+    const stanSpec = config.spec.backend.id === "stan";
+    const crossesRuntime = stanModel !== stanSpec;
+    const notes = [`using settings from ${sibling}; flags override`];
+    let backend = config.spec.backend;
+    if (crossesRuntime) {
+      if (!stanModel) {
+        throw new Error(
+          `${basename(sibling)} declares the stan backend, but ${basename(modelPath)} is not a .stan model`,
+        );
+      }
+      backend = { ...backend, id: "stan", runtime: undefined, version: undefined } as never;
+      notes.push(
+        `running the .stan model on the stan backend (the spec declares ${config.spec.backend.id})`,
+      );
+    }
     const spec = validated({
       ...config.spec,
+      backend,
       model: { ...config.spec.model, path: `./${basename(modelPath)}` },
     });
     return {
       spec,
       modelPath,
-      channel: config.channel,
+      channel: crossesRuntime ? spec.backend.version : config.channel,
       dataFile: config.dataFile,
       specSource: "sibling",
-      notes: [`using settings from ${sibling}; flags override`],
+      notes,
     };
   }
 
@@ -439,7 +460,10 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .command("run")
     .summary("full workflow: fit, diagnose, record a run")
     .helpGroup("Run inference:")
-    .argument("<input>", "model file (.jl), spec file (.toml/.json), or DoodleBUGS graph (.json)")
+    .argument(
+      "<input>",
+      "model file (.jl/.stan), spec file (.toml/.json), or DoodleBUGS graph (.json)",
+    )
     .description("Run the whole workflow: fit, diagnose, and record the run in the project store")
     .option("--data <file>", "data file (.json object or .csv columns)")
     .option("-o, --out <file>", "also export the samples file to this path")
@@ -453,9 +477,12 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .option("--adapt-delta <x>", "NUTS target acceptance rate (default 0.8)", parseFloatOption)
     .option("--seed <n>", "random seed (default: drawn fresh and recorded)", parseIntOption)
     .option("--backend <id>", "backend (default: detected from the model)")
-    .option("--entry <name>", "model entry function (default build_model)")
+    .option("--entry <name>", "model entry function for Julia backends (default build_model)")
     .option("--refit", "fit even when nothing changed since the last run")
-    .option("--daemon", "fit through a persistent Julia worker (or set MCMC_DAEMON=1)")
+    .option(
+      "--daemon",
+      "fit through a persistent Julia worker (Julia backends; or set MCMC_DAEMON=1)",
+    )
     .option("--verbose", "show the full raw install/precompile output, not a collapsed spinner")
     .option(
       "--package <name=version>",

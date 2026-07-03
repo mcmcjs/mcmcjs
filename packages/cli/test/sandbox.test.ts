@@ -26,7 +26,13 @@ const TEMPLATES = join(__dirname, "..", "templates");
 describe("seedSandbox", () => {
   it("copies the example trio plus the README", () => {
     const names = seedSandbox(dir, TEMPLATES);
-    expect(names).toEqual(["README.md", "data.csv", "model.jl", "run_without_mcmcjs.jl"]);
+    expect(names).toEqual([
+      "README.md",
+      "data.csv",
+      "model.jl",
+      "model.stan",
+      "run_without_mcmcjs.jl",
+    ]);
     expect(readFileSync(join(dir, "model.jl"), "utf8")).toContain("build_model(data)");
     expect(readFileSync(join(dir, "data.csv"), "utf8")).toMatch(/^x,y\n/);
     expect(readFileSync(join(dir, "run_without_mcmcjs.jl"), "utf8")).toContain("summarystats");
@@ -120,5 +126,11 @@ describe("strictEnv", () => {
     }
     // The runtime dir holds sockets, so it must be private.
     expect(statSync(env.XDG_RUNTIME_DIR as string).mode & 0o777).toBe(0o700);
+  });
+
+  it("blanks explicit CmdStan overrides so the host install cannot leak in", () => {
+    const env = strictEnv(dir);
+    expect(env.MCMCJS_CMDSTAN).toBe("");
+    expect(env.CMDSTAN).toBe("");
   });
 });

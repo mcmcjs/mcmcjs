@@ -9,6 +9,7 @@ import {
   runPredict,
   validatePins,
 } from "@mcmcjs/julia";
+import { resolveCmdStan, runPredict as runStanPredict } from "@mcmcjs/stan";
 import type { Command } from "commander";
 import { formatFitResult } from "./fit";
 import { installRunner, juliaupBin } from "./julia";
@@ -44,11 +45,33 @@ export function registerPredict(program: Command, ctx: EngineContext): void {
         if (!spec.predict) {
           throw new Error("spec has no [predict] block; add [predict].targets to predict");
         }
-        if (spec.backend.id !== "turing") {
-          throw new Error(`predict is not yet supported for backend ${spec.backend.id}`);
+        if (spec.backend.id === "juliabugs") {
+          throw new Error("predict is not yet supported for backend juliabugs");
         }
-        // Fail fast if the posterior samples are unreadable, before spawning Julia.
+        // Fail fast if the posterior samples are unreadable, before spawning anything.
         parseSamples(readFileSync(resolve(samplesPath), "utf8"));
+
+        if (spec.backend.id === "stan") {
+          if (opts.juliaVersion) throw new Error("--julia-version does not apply to a Stan spec");
+          const install = resolveCmdStan(spec.backend.version);
+          const outPath = resolve(opts.out ?? defaultPredictOut(samplesPath));
+          if (!opts.json) {
+            process.stdout.write(
+              `Predicting ${spec.predict.targets.join(", ")} on CmdStan ${install.version}...\n`,
+            );
+          }
+          const result = await runStanPredict(spec, install, {
+            outPath,
+            samplesPath: resolve(samplesPath),
+          });
+          process.stdout.write(
+            opts.json
+              ? `${JSON.stringify(result, null, 2)}\n`
+              : `${formatFitResult(result, spec.backend.version, `${outPath}.run.json`, "CmdStan")}\n`,
+          );
+          process.exitCode = result.status === "ok" ? 0 : 1;
+          return;
+        }
 
         const channel = opts.juliaVersion ?? spec.backend.version;
         const outPath = resolve(opts.out ?? defaultPredictOut(samplesPath));

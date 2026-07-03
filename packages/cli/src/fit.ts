@@ -13,7 +13,7 @@ import {
   runMatrix,
   validatePins,
 } from "@mcmcjs/julia";
-import { resolveCmdStan, runFit as runStanFit } from "@mcmcjs/stan";
+import { resolveCmdStan, runFit as runStanFit, runMatrix as runStanMatrix } from "@mcmcjs/stan";
 import type { Command } from "commander";
 import pc from "picocolors";
 import { installRunner, juliaupBin } from "./julia";
@@ -110,7 +110,10 @@ export function registerFit(program: Command, ctx: EngineContext): void {
     .option("-o, --out <path>", "samples output file, or directory when --versions is used")
     .option("--daemon", "fit through a persistent Julia worker (or set MCMC_DAEMON=1)")
     .option("--julia-version <channel>", "Julia version/channel to run (overrides the spec)")
-    .option("--versions <list>", "run the spec across these Julia versions (comma-separated)")
+    .option(
+      "--versions <list>",
+      "run the spec across these Julia or CmdStan versions (comma-separated)",
+    )
     .option(
       "--package-versions <name=list>",
       "run the spec across these versions of one managed package (e.g. Turing=0.44,0.45)",
@@ -140,13 +143,36 @@ export function registerFit(program: Command, ctx: EngineContext): void {
 
         if (spec.backend.id === "stan") {
           for (const [set, flag] of [
-            [opts.versions, "--versions"],
             [opts.packageVersions, "--package-versions"],
             [opts.daemon, "--daemon"],
             [opts.juliaVersion, "--julia-version"],
           ] as const) {
             if (set) throw new Error(`${flag} does not apply to a Stan spec`);
           }
+
+          if (opts.versions) {
+            const versions = opts.versions
+              .split(",")
+              .map((v) => v.trim())
+              .filter(Boolean);
+            const outDir = resolve(opts.out ?? matrixOutDir(specPath));
+            mkdirSync(outDir, { recursive: true });
+            if (!opts.json) {
+              process.stdout.write(`Fitting stan across ${versions.length} CmdStan versions...\n`);
+            }
+            const result = await runStanMatrix(spec, versions, {
+              outDir,
+              dataFile: resolvedData.dataFile,
+              dataSha256: resolvedData.dataSha256,
+              keepGoing: opts.keepGoing,
+            });
+            process.stdout.write(
+              opts.json ? `${JSON.stringify(result, null, 2)}\n` : `${formatMatrix(result)}\n`,
+            );
+            process.exitCode = result.ok ? 0 : 1;
+            return;
+          }
+
           const install = resolveCmdStan(spec.backend.version);
           const outPath = resolve(opts.out ?? defaultOut(specPath));
           if (!opts.json) {

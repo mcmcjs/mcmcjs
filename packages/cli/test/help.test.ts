@@ -33,6 +33,7 @@ const GROUPS: Record<string, string> = {
   doctor: "Toolchain:",
   engines: "Toolchain:",
   julia: "Toolchain:",
+  stan: "Toolchain:",
   daemon: "Toolchain:",
 };
 

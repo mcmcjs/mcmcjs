@@ -18,7 +18,13 @@ describe("initSeed", () => {
   it("seeds the example files into an empty directory", () => {
     const target = join(dir, "fresh");
     const files = initSeed(target, TEMPLATES, false);
-    expect(files).toEqual(["README.md", "data.csv", "model.jl", "run_without_mcmcjs.jl"]);
+    expect(files).toEqual([
+      "README.md",
+      "data.csv",
+      "model.jl",
+      "model.stan",
+      "run_without_mcmcjs.jl",
+    ]);
     expect(readdirSync(target).sort()).toEqual(files);
   });
 
