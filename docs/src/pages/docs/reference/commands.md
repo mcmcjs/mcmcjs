@@ -50,7 +50,7 @@ See [Convert DoodleBUGS](/docs/guides/convert/).
 | Command | Description | Key flags |
 | --- | --- | --- |
 | `setup` | install an inference toolchain: Julia via juliaup by default, CmdStan with `--engine stan` | `--engine`, `--stan-version`, `--dry-run`, `--verbose` |
-| `doctor` | report the toolchain mcmc needs | `--engine` |
+| `doctor` | report every engine's toolchain (or one with `--engine`) | `--engine` |
 | `engines` | list known inference engines | |
 | `julia version <sub>` | manage installed Julia versions: `list`, `status`, `add`, `remove`, `default`, `update`, `gc` | `--default` (add), `--verbose` |
 | `stan version <sub>` | manage installed CmdStan versions: `list`, `status`, `add`, `remove` | `--verbose` (add) |

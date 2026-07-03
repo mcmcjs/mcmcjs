@@ -37,20 +37,28 @@ Pass `--dry-run` to see what would be installed without making changes, or `--ve
 
 ## 3. Verify
 
-`mcmc doctor` reports the toolchain MCMC.js needs and tells you whether you are ready to fit.
+`mcmc doctor` reports every engine's toolchain and tells you whether you are ready to fit.
 
 ```bash
 mcmc doctor
 ```
 
 ```
+Julia
 juliaup  1.20.7  /home/you/.juliaup/bin/juliaup
 julia    1.12.6  /home/you/.juliaup/bin/julia
+ready for inference
 
+Stan (CmdStan)
+cmdstan  2.39.0  /home/you/.cmdstan/cmdstan-2.39.0
+stanc    2.39.0  /home/you/.cmdstan/cmdstan-2.39.0/bin/stanc
+make     4.4.1  make
+c++      16.1.1  g++
 ready for inference
 ```
 
-Add `--json` for a machine-readable report, or `--engine <id>` to check a specific engine.
+The exit code is 0 as long as at least one engine is ready.
+Add `--json` for a machine-readable report, or `--engine <id>` to check one engine in the original flat format.
 
 ## Stan (optional)
 
