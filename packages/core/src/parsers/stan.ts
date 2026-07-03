@@ -51,6 +51,13 @@ function parseCsvLine(line: string): string[] {
   return out;
 }
 
+/** Scalarized `a[1,2]` -> Stan CSV `a.1.2`; names without brackets pass through. */
+export function toStanName(name: string): string {
+  const match = name.match(/^([^[\]]+)\[([\d,]+)\]$/);
+  if (!match) return name;
+  return `${match[1]}.${(match[2] ?? "").split(",").join(".")}`;
+}
+
 /** Stan `a.1.2` -> `a[1,2]`; names without all-numeric index parts pass through. */
 export function fromStanName(name: string): string {
   if (!name.includes(".")) return name;
