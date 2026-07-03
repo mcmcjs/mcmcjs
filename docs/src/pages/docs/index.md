@@ -4,11 +4,11 @@ title: Introduction
 description: What MCMC.js is and how the command-line workflow fits together.
 ---
 
-MCMC.js is a thin TypeScript command-line tool that automates the Bayesian workflow over the Julia probabilistic-programming ecosystem.
-You write a model in [Turing.jl](https://turinglang.org) or [JuliaBUGS](https://github.com/TuringLang/JuliaBUGS.jl), and the `mcmc` CLI bootstraps Julia, runs the sampler, and turns the result into convergence diagnostics, summary tables, and plots.
+MCMC.js is a thin TypeScript command-line tool that automates the Bayesian workflow across probabilistic programming languages.
+You write a model in [Turing.jl](https://turinglang.org), [JuliaBUGS](https://github.com/TuringLang/JuliaBUGS.jl), or [Stan](https://mc-stan.org), and the `mcmc` CLI provisions the runtime, runs the sampler, and turns the result into convergence diagnostics, summary tables, and plots.
 
 The CLI does not reimplement inference.
-It orchestrates: it owns argument parsing, spec validation, file I/O, diagnostics, and bootstrapping, and reaches into Julia only to run the model itself.
+It orchestrates: it owns argument parsing, spec validation, file I/O, diagnostics, and bootstrapping, and reaches into the backend's runtime (Julia, or CmdStan for Stan) only to run the model itself.
 
 ## One spec in, one samples file out
 
@@ -26,7 +26,7 @@ Choosing a cross-ecosystem samples format on purpose also insulates MCMC.js from
 model  ->  infer  ->  diagnose  ->  predict
 ```
 
-- **Model** in a `.jl` file, a `spec.toml`, or a DoodleBUGS `graph.json`.
+- **Model** in a `.jl` or `.stan` file, a `spec.toml`, or a DoodleBUGS `graph.json`.
 - **Infer** with `mcmc run` (zero-config) or `mcmc fit` (spec in, samples out).
 - **Diagnose** with `mcmc diagnose` and `mcmc summary`, visualize with `mcmc plot`.
 - **Predict** posterior-predictive draws with `mcmc predict`.
@@ -42,4 +42,4 @@ MCMC.js targets humans and AI agents at the same time, which drives two design c
 
 ## Next steps
 
-Install the CLI and provision Julia in [Installation](/docs/install/), then fit and diagnose your first model in the [Quickstart](/docs/quickstart/).
+Install the CLI and provision a runtime in [Installation](/docs/install/), then fit and diagnose your first model in the [Quickstart](/docs/quickstart/).

@@ -1,42 +1,43 @@
 ---
 layout: ../../../layouts/DocsLayout.astro
 title: Architecture
-description: How the CLI orchestrator and the Julia inference engine fit together.
+description: How the CLI orchestrator and the inference engines fit together.
 ---
 
-MCMC.js is a thin TypeScript orchestrator over a Julia subprocess.
-The orchestrator owns everything that does not strictly require a probabilistic-programming runtime; it reaches into Julia only to run the model itself.
+MCMC.js is a thin TypeScript orchestrator over inference subprocesses.
+The orchestrator owns everything that does not strictly require a probabilistic-programming runtime; it starts a runtime process, Julia or CmdStan, only to run the model itself.
 
 ## A thin orchestrator
 
 The TypeScript side, running on Node.js (>= 22), owns argument parsing, spec validation, file I/O, diagnostics, plotting, the run store, environment bootstrap, and end-to-end command sequencing.
 This keeps the surface that humans and agents interact with fast, portable, and dependency-light.
 
-## The Julia subprocess boundary
+## The subprocess boundary
 
-Only inference needs the live model, so only inference enters Julia.
-Four commands touch Julia: `setup` (provision the toolchain), `fit` and `predict` (run the model), and `run` (which sequences a `fit`).
+Only inference needs the live model, so only inference enters a runtime.
+Four commands touch one: `setup` (provision the toolchain), `fit` and `predict` (run the model), and `run` (which sequences a `fit`).
+The runtime follows the spec's backend: Turing and JuliaBUGS models run a Julia subprocess, Stan models run CmdStan executables.
 
-Everything else is pure TypeScript and never starts a Julia process: `diagnose`, `summary`, `samples`, `plot`, `convert`, `doctor`, `engines`, the `runs`/`show`/`export` store commands, and the `julia version` management group.
-Those commands operate on files, not on live models, so they have no reason to pay Julia's startup or installation cost.
+Everything else is pure TypeScript and never starts a runtime process: `diagnose`, `summary`, `samples`, `plot`, `convert`, `doctor`, `engines`, the `runs`/`show`/`export` store commands, and the `julia version` and `stan version` management groups.
+Those commands operate on files, not on live models, so they have no reason to pay a runtime's startup or installation cost.
 
 This split is the central design decision.
-It also explains why the orchestrator lives outside Julia: a bootstrapping tool cannot be written in the runtime it bootstraps, because it must be able to install Julia on a machine that has none.
+It also explains why the orchestrator lives outside the runtimes: a bootstrapping tool cannot be written in the runtime it bootstraps, because it must be able to install Julia or CmdStan on a machine that has neither.
 
-When inference does run, the TypeScript side calls Julia through `node:child_process` `execFile` (no shell), crossing a single, narrow boundary.
+When inference does run, the TypeScript side starts the runtime through `node:child_process` (no shell), crossing a single, narrow boundary.
 
 ## Spec in, samples out
 
 The whole system is organized around two file contracts.
 
 ```
-spec file (TOML/JSON)  ->  [ fit / predict in Julia ]  ->  samples file (MCMCChains JSON)
-                                                              |
-                       [ diagnose / summary / plot in TS ] <-+
+spec file (TOML/JSON)  ->  [ fit / predict in Julia or CmdStan ]  ->  samples file (MCMCChains JSON)
+                                                                        |
+                                 [ diagnose / summary / plot in TS ] <-+
 ```
 
 - The [spec file](/docs/reference/spec/) declares the model, data, and sampler. It is validated with zod and carries a `schema_version`.
-- The [samples file](/docs/reference/samples/) is MCMCChains JSON, capturing draws plus sampler statistics. Alongside it, a fit writes a run record (its own `schema_version`) capturing the spec hash, seed, backend, resolved Julia and package versions, and provenance hashes.
+- The [samples file](/docs/reference/samples/) is MCMCChains JSON, capturing draws plus sampler statistics. Alongside it, a fit writes a run record (its own `schema_version`) capturing the spec hash, seed, backend, resolved runtime and package versions, and provenance hashes.
 
 Because the output of one stage is the input to the next, the commands compose.
 
@@ -51,4 +52,5 @@ The conversion happens in exactly one place, inside the Julia bridge, so the cha
 - The package map: [Packages](/docs/dev/packages/).
 - The pluggable engine contract: [Engine contract](/docs/dev/engine/).
 - The Julia bridge and driver: [Julia driver](/docs/dev/julia/).
+- The native Stan engine: [Stan engine](/docs/dev/stan/).
 - The plotting stack: [Plotting internals](/docs/dev/plotting/).

@@ -11,7 +11,7 @@ MCMC.js gives you two ways to run inference: `mcmc run` for a zero-config end-to
 `mcmc run <input>` runs the whole workflow in one step: it fits, diagnoses, and records the run in the project store.
 The input can be any of three things, and the backend is detected from it:
 
-- a model file (`.jl`), a Turing or JuliaBUGS model,
+- a model file (`.jl` for Turing or JuliaBUGS, `.stan` for Stan),
 - a spec file (`.toml` / `.json`), or
 - a DoodleBUGS graph (`.json`), which is converted first.
 
@@ -41,6 +41,9 @@ Flags are always honored.
 | `--julia-version <channel>` | Julia version/channel to run, overriding the spec |
 | `--package <name=version>` | pin a managed package version, repeatable (e.g. `--package Turing=0.45`) |
 | `--json` | print results as JSON |
+
+A `.stan` model implies `--backend stan`, so you never need to pass it.
+`--daemon`, `--julia-version`, and `--package` are Julia-only and error on a Stan model, and `--entry` has no meaning for Stan.
 
 ### Reuse and `--refit`
 
@@ -87,6 +90,7 @@ The samples file it writes is documented in [the Samples file reference](/docs/r
 ### Version matrices
 
 `--versions` and `--package-versions` run the same spec across several Julia versions or several versions of one managed package, which is useful for reproducibility checks.
+For a Stan spec, `--versions` runs across installed CmdStan versions instead; `--package-versions` is Julia-only, as are `--daemon` and `--julia-version`.
 Point `-o` at a directory; each cell writes its own samples file there.
 
 ```bash

@@ -15,6 +15,8 @@ Run `mcmc <command> --help` for the authoritative, current flags.
 | `fit <spec>` | run MCMC inference, write a samples file | `-o/--out`, `--julia-version`, `--versions`, `--package-versions`, `--keep-going`, `--daemon` |
 | `predict <spec> <samples>` | draw posterior-predictive samples | `-o/--out`, `--julia-version`, `--verbose` |
 
+`run` takes a `.jl` or `.stan` model file, a spec, or a DoodleBUGS graph; `fit` and `predict` accept specs for both the Julia backends and Stan.
+For Stan, `predict` re-runs the model's `generated quantities` block over the posterior draws.
 See [Run inference](/docs/guides/run/) and [Predict](/docs/guides/predict/).
 
 ## Inspect runs
@@ -47,10 +49,11 @@ See [Convert DoodleBUGS](/docs/guides/convert/).
 
 | Command | Description | Key flags |
 | --- | --- | --- |
-| `setup` | install the Julia toolchain (juliaup and Julia) | `--dry-run`, `--verbose` |
+| `setup` | install an inference toolchain: Julia via juliaup by default, CmdStan with `--engine stan` | `--engine`, `--stan-version`, `--dry-run`, `--verbose` |
 | `doctor` | report the toolchain mcmc needs | `--engine` |
 | `engines` | list known inference engines | |
 | `julia version <sub>` | manage installed Julia versions: `list`, `status`, `add`, `remove`, `default`, `update`, `gc` | `--default` (add), `--verbose` |
+| `stan version <sub>` | manage installed CmdStan versions: `list`, `status`, `add`, `remove` | `--verbose` (add) |
 | `daemon <sub>` | manage persistent Julia workers: `status`, `stop` | |
 
 See [Manage Julia](/docs/guides/julia/).

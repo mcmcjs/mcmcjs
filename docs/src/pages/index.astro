@@ -61,7 +61,7 @@ const structuredData = [
 				name: "Does it run the inference itself?",
 				acceptedAnswer: {
 					"@type": "Answer",
-					text: "The CLI is a thin orchestrator. Inference steps run a Julia subprocess, while diagnostics and the rest of the workflow are pure TypeScript.",
+					text: "The CLI is a thin orchestrator. Inference steps run a Julia or CmdStan subprocess, while diagnostics and the rest of the workflow are pure TypeScript.",
 				},
 			},
 			{
@@ -209,7 +209,7 @@ not converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
 		<div class="feature-grid">
 			<div class="feature">
 				<h3>Fit anywhere</h3>
-				<p>Run inference through a managed Julia runtime, with the CLI as a thin TypeScript orchestrator.</p>
+				<p>Run Turing, JuliaBUGS, or Stan models through a managed Julia or CmdStan runtime, with the CLI as a thin TypeScript orchestrator.</p>
 			</div>
 			<div class="feature">
 				<h3>Diagnostics built in</h3>
@@ -230,7 +230,7 @@ not converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
 		<div class="install-strip">
 			<div>
 				<strong>npm global install</strong>
-				<span>Installs the <code>mcmc</code> binary. Run <code>mcmc setup</code> once to provision Julia via juliaup.</span>
+				<span>Installs the <code>mcmc</code> binary. Run <code>mcmc setup</code> once to provision Julia via juliaup, or <code>mcmc setup --engine stan</code> for CmdStan.</span>
 			</div>
 			<pre><code>npm i -g mcmcjs</code></pre>
 			<a class="button secondary" href={withBase('/docs/quickstart/')}>Quickstart</a>
@@ -245,7 +245,7 @@ not converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
 		<div class="docs-grid">
 			<a class="doc-link" href={withBase('/docs/install/')}>
 				<h3>Installation</h3>
-				<p>Install the CLI and provision the Julia runtime with a single setup command.</p>
+				<p>Install the CLI and provision a runtime with a single setup command.</p>
 			</a>
 			<a class="doc-link" href={withBase('/docs/guides/run/')}>
 				<h3>Run inference</h3>
@@ -270,7 +270,7 @@ not converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
 			</div>
 			<div class="feature">
 				<h3>Does it run the inference?</h3>
-				<p>The CLI is a thin orchestrator. Inference runs in a Julia subprocess; diagnostics are pure TypeScript.</p>
+				<p>The CLI is a thin orchestrator. Inference runs in a Julia or CmdStan subprocess; diagnostics are pure TypeScript.</p>
 			</div>
 			<div class="feature">
 				<h3>How do I check convergence?</h3>

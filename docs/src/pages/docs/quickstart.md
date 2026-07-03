@@ -22,7 +22,7 @@ mcmc init demo
 ```
 
 ```
-seeded README.md, data.csv, model.jl, run_without_mcmcjs.jl in /path/to/demo
+seeded README.md, data.csv, model.jl, model.stan, run_without_mcmcjs.jl in /path/to/demo
 try: mcmc run demo/model.jl
 ```
 
@@ -67,6 +67,17 @@ converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)
 
 The fit recovers `alpha = 2`, `beta = 3`, exactly as the example data was generated.
 The process exits `0` because every variable converged; a non-convergent fit would exit `2`.
+
+### Stan
+
+The scaffold also seeds `model.stan`, the same regression written in Stan and sharing `data.csv`, so the flow is identical for the Stan engine.
+Provision it once with `mcmc setup --engine stan` ([Installation](/docs/install/)), then:
+
+```bash
+mcmc run model.stan --data data.csv --seed 42
+```
+
+The first run compiles the model through CmdStan, which takes half a minute or so; compiled models are cached, so later runs start instantly.
 
 ## 4. Inspect the run
 

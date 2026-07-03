@@ -18,12 +18,16 @@ mcmc predict model.toml samples.json -o predictions.json
 | `--verbose` | show the full raw install/precompile output |
 | `--json` | print the result as JSON |
 
-Like `fit`, `predict` runs a Julia subprocess, so it is one of the few commands that touch Julia.
+Like `fit`, `predict` runs the model in the backend's runtime (a Julia subprocess, or CmdStan for Stan), so it is one of the few commands that leave the CLI process.
 
 ## The `[predict]` block
 
 Which outcomes to predict is declared in a `[predict]` table in the spec.
-`targets` lists the outcome variables by base name; each is blanked to missing so the sampler draws it from the posterior predictive.
+`targets` lists the variables to predict by base name, and what happens to them depends on the backend.
+
+- **Turing**: each target is blanked to missing, so the sampler draws it from the posterior predictive.
+- **Stan**: the model's `generated quantities` block is re-run for every posterior draw, and `targets` selects which generated variables to keep (for example `y_rep`); the model must declare them.
+
 You can optionally override the data used for the prediction.
 
 ```toml
@@ -37,4 +41,4 @@ x = [11, 12, 13, 14, 15]
 `predict.data` is merged on top of the spec's `[data]`, so you can predict at new covariate values without editing the rest of the spec.
 See [the Spec file reference](/docs/reference/spec/) for the full schema.
 
-<div class="callout note"><p><code>mcmc predict</code> is supported for the Turing backend today.</p></div>
+<div class="callout note"><p><code>mcmc predict</code> is supported for the Turing and Stan backends today.</p></div>

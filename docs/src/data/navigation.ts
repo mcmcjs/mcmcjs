@@ -17,6 +17,7 @@ export const navGroups = [
 			{ title: "The run store", href: "/docs/guides/run-store/" },
 			{ title: "Convert DoodleBUGS", href: "/docs/guides/convert/" },
 			{ title: "Manage Julia", href: "/docs/guides/julia/" },
+			{ title: "Use Stan", href: "/docs/guides/stan/" },
 		],
 	},
 	{
@@ -35,6 +36,7 @@ export const navGroups = [
 			{ title: "Packages", href: "/docs/dev/packages/" },
 			{ title: "Engine contract", href: "/docs/dev/engine/" },
 			{ title: "Julia driver", href: "/docs/dev/julia/" },
+			{ title: "Stan engine", href: "/docs/dev/stan/" },
 			{ title: "Plotting internals", href: "/docs/dev/plotting/" },
 			{ title: "Contributing", href: "/docs/dev/contributing/" },
 		],

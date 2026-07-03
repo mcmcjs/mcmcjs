@@ -5,7 +5,7 @@ description: Install the mcmc CLI and provision the Julia runtime.
 ---
 
 MCMC.js ships as the `mcmcjs` npm package, which installs the `mcmc` binary.
-Inference runs in Julia, which the CLI can install for you.
+Inference runs in a backend runtime (Julia, or CmdStan for Stan), which the CLI can install for you.
 
 ## 1. Install the CLI
 
@@ -51,6 +51,24 @@ ready for inference
 ```
 
 Add `--json` for a machine-readable report, or `--engine <id>` to check a specific engine.
+
+## Stan (optional)
+
+Stan models run through a local [CmdStan](https://mc-stan.org/users/interfaces/cmdstan), which `mcmc setup` can download and build for you.
+
+```bash
+mcmc setup --engine stan
+```
+
+Building CmdStan uses `make` and a C++ compiler (`g++` or `clang++`) from your system; Linux and macOS are supported today.
+Pass `--stan-version <v>` to install a specific CmdStan release instead of the pinned default.
+Check readiness the same way as for Julia:
+
+```bash
+mcmc doctor --engine stan
+```
+
+If you already have CmdStan, the CLI also finds it through the `MCMCJS_CMDSTAN` or `CMDSTAN` environment variable, or at `~/.cmdstan`, shared with other Stan interfaces.
 
 ## Libraries
 

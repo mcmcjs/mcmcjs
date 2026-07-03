@@ -2,8 +2,8 @@
 
 Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics across probabilistic programming languages.
 
-MCMC.js is a thin TypeScript orchestrator over the Julia PPL ecosystem (Turing.jl and JuliaBUGS).
-It bootstraps Julia for you, runs inference as a subprocess, and turns the result into convergence diagnostics and plots, behind one consistent command-line surface designed for both humans and AI agents: structured `--json` output and clear exit codes everywhere.
+MCMC.js is a thin TypeScript orchestrator over the Julia PPL ecosystem (Turing.jl and JuliaBUGS) and Stan via a local CmdStan.
+It bootstraps the toolchain for you, runs inference as a subprocess, and turns the result into convergence diagnostics and plots, behind one consistent command-line surface designed for both humans and AI agents: structured `--json` output and clear exit codes everywhere.
 
 > Early alpha: under active development. APIs and the CLI surface are not yet stable.
 
@@ -30,6 +30,7 @@ mcmc plot --kind trace                # plot the latest run in the terminal
 ```bash
 # Run inference
 mcmc run model.jl --data data.csv     # fit + diagnose; artifacts go to .mcmc/
+mcmc run model.stan                   # same workflow for a Stan model
 mcmc fit model.toml -o out.json       # plumbing: spec in, samples file out
 mcmc predict model.toml samples.json  # posterior-predictive draws
 
@@ -48,6 +49,7 @@ mcmc convert graph.json               # DoodleBUGS graph -> model file + spec
 
 # Toolchain
 mcmc doctor                           # check the environment
+mcmc setup --engine stan              # download and build CmdStan
 mcmc julia version list               # manage installed Julia versions
 ```
 
@@ -67,6 +69,8 @@ Every command supports `--json` (except the interactive `sandbox`) and uses exit
 | [`@mcmcjs/charts`](./packages/charts) | Dependency-free plotting engine: terminal (braille/ASCII) and SVG, plus a live uPlot DOM layer. |
 | [`@mcmcjs/plots`](./packages/plots) | MCMC diagnostic plots (trace, forest, rank, ...) over `@mcmcjs/charts`; terminal, SVG, and self-contained HTML. |
 | [`@mcmcjs/plots-gl`](./packages/plots-gl) | Interactive WebGL renderers (3D scatter, SPLOM, parallel coordinates); `regl` optional peer. |
+| [`@mcmcjs/stan`](./packages/stan) | The native Stan engine via a local CmdStan: provisioning, version management, and the fit/predict driver. |
+| [`@mcmcjs/stan-wasm`](./packages/stan-wasm) | The browser Stan runtime: WASM sampler plus a compile-server client. |
 | [`@mcmcjs/doodleppl`](./packages/doodleppl) | Turn a DoodlePPL graph into BUGS / JuliaBUGS and Stan model code. |
 | [`doodleppl`](./packages/doodleppl-ui) | Embed the DoodlePPL graphical model editor anywhere; typed mount class over the editor widget. |
 

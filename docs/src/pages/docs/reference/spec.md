@@ -48,10 +48,10 @@ y = [5.2, 7.7, 11.1, 13.8, 17.4, 19.9, 23.3, 25.6, 29.2, 31.8]
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `id` | `"turing"` \| `"juliabugs"` | required | the probabilistic-programming backend |
-| `runtime` | `"julia"` | `"julia"` | the runtime |
-| `version` | string | the toolchain's pinned channel | the juliaup channel the runtime resolves to, e.g. `"1.12.6"` |
-| `packages` | table of name to version | optional | version pins for managed Julia packages, e.g. `Turing = "0.45"` |
+| `id` | `"turing"` \| `"juliabugs"` \| `"stan"` | required | the probabilistic-programming backend |
+| `runtime` | `"julia"` \| `"cmdstan"` | per backend | `"julia"` for `turing` and `juliabugs`, `"cmdstan"` for `stan` |
+| `version` | string | per runtime | Julia: the juliaup channel to run, e.g. `"1.12.6"` (default: the toolchain's pinned channel); Stan: a CmdStan version, e.g. `"2.39.0"`, or `"installed"` (the default), which resolves the newest local CmdStan |
+| `packages` | table of name to version | optional | Julia-only: version pins for managed Julia packages, e.g. `Turing = "0.45"` |
 
 Pinned packages provision into their own managed environment, so different pins can be compared without interfering.
 
@@ -61,7 +61,7 @@ Pinned packages provision into their own managed environment, so different pins 
 | --- | --- | --- | --- |
 | `kind` | `"file"` | required | only file-based models today |
 | `path` | string | required | path to the model file, resolved relative to the spec's directory |
-| `entry` | string | `"build_model"` | the model entry function |
+| `entry` | string | `"build_model"` | the model entry function (Julia backends; ignored for Stan) |
 
 ### `[sampler]`
 
@@ -96,7 +96,7 @@ Optional; used by [`mcmc predict`](/docs/guides/predict/).
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `targets` | array of strings (at least one) | outcome variables to predict, by base name; each is blanked to missing |
+| `targets` | array of strings (at least one) | outcome variables to predict, by base name; Turing blanks each to missing, Stan keeps the matching generated quantities |
 | `data` | table | optional data overrides applied on top of `[data]` for the prediction |
 
 ```toml
@@ -118,5 +118,32 @@ The same spec as JSON:
   "data": {}
 }
 ```
+
+## A Stan example
+
+The same schema drives the Stan backend.
+
+```toml
+schema_version = "0"
+seed = 42
+data_file = "./data.json"
+
+[backend]
+id = "stan"
+
+[model]
+kind = "file"
+path = "./model.stan"
+
+[sampler]
+algorithm = "NUTS"
+draws = 1000
+
+[predict]
+targets = ["y_rep"]
+```
+
+`version` defaults to `"installed"`, the newest local CmdStan; a concrete version such as `"2.39.0"` pins it.
+For Stan, `[predict].targets` selects which generated quantities to keep, and the model must declare them in a `generated quantities` block.
 
 <div class="callout note"><p>The <code>schema_version</code> lets the format evolve without silently breaking consumers. A spec with an unknown version is rejected rather than misread.</p></div>

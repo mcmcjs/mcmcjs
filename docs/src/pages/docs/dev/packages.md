@@ -1,7 +1,7 @@
 ---
 layout: ../../../layouts/DocsLayout.astro
 title: Packages
-description: The pnpm workspace and the nine packages that make up MCMC.js.
+description: The pnpm workspace and the eleven packages that make up MCMC.js.
 ---
 
 MCMC.js is a pnpm workspace monorepo.
@@ -17,13 +17,15 @@ packages/
   charts/       -> @mcmcjs/charts
   plots/        -> @mcmcjs/plots
   plots-gl/     -> @mcmcjs/plots-gl
+  stan/         -> @mcmcjs/stan
+  stan-wasm/    -> @mcmcjs/stan-wasm
   doodleppl/    -> @mcmcjs/doodleppl
 ```
 
 ## The packages
 
 **`mcmcjs` (CLI).**
-A thin TypeScript orchestrator that bootstraps Julia, runs inference as a subprocess, and turns the result into diagnostics and plots.
+A thin TypeScript orchestrator that bootstraps a runtime (Julia or CmdStan), runs inference as a subprocess, and turns the result into diagnostics and plots.
 It owns argument parsing, the run store, and command sequencing, and exposes everything through the `mcmc` binary.
 
 **`@mcmcjs/core`.**
@@ -52,6 +54,12 @@ Split into a data layer (each `*Data` builder turns `Samples` into a serializabl
 **`@mcmcjs/plots-gl`.**
 Interactive WebGL renderers (3D point cloud, scatter-plot matrix, parallel coordinates) backed by `regl`, an optional peer dependency.
 It consumes data built by `@mcmcjs/plots`, so the terminal, SVG, and HTML backends never pull in WebGL.
+
+**`@mcmcjs/stan`.**
+The native Stan engine: CmdStan resolution and provisioning, CmdStan version management, a content-hash compile cache, and process-per-chain sampling and `generate_quantities` prediction that write the samples file. See [Stan engine](/docs/dev/stan/).
+
+**`@mcmcjs/stan-wasm`.**
+The browser Stan runtime: a WebAssembly sampler plus a client for a configurable compile server, so Stan models can compile and sample without a local toolchain.
 
 **`@mcmcjs/doodleppl`.**
 Framework-free code generation from a DoodlePPL graph to BUGS / JuliaBUGS and Stan model code: parse a saved graph, topologically order it, emit the model code, and validate for issues such as cycles.
