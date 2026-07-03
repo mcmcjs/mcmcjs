@@ -1,5 +1,16 @@
 # @mcmcjs/core
 
+## 0.7.0
+
+### Minor Changes
+
+- cd96f4d: Specs accept `backend.id = "stan"`: the runtime and default version channel are now derived per backend (julia channels for Turing/JuliaBUGS, the local CmdStan install for Stan), with validation that backends run on their own runtime and that package pins stay julia-only.
+- 84cfd6b: Add `toStanName`, the inverse of `fromStanName`, mapping scalarized names like `theta[1,2]` back to Stan CSV notation.
+
+### Patch Changes
+
+- 824bf3c: Non-finite draws (serialized as JSON null in the MCMCChains format) now parse back as NaN instead of silently becoming 0, so diagnostics never run on fabricated zeros.
+
 ## 0.6.0
 
 ### Minor Changes
