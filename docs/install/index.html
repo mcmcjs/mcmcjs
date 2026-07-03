@@ -22,13 +22,21 @@ Check it:</p>
 <p>Pass <code>--dry-run</code> to see what would be installed without making changes, or <code>--verbose</code> to see the full install and precompile output instead of a collapsed spinner.</p>
 <div class="callout note"><p>The first <code>setup</code> downloads and precompiles a Julia project, which takes a few minutes. After that, fits start fast.</p></div>
 <h2 id="3-verify">3. Verify</h2>
-<p><code>mcmc doctor</code> reports the toolchain MCMC.js needs and tells you whether you are ready to fit.</p>
+<p><code>mcmc doctor</code> reports every engine’s toolchain and tells you whether you are ready to fit.</p>
 <pre class="astro-code astro-code-themes github-light github-dark" style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-light-bg:#fff;--shiki-dark-bg:#24292e; overflow-x: auto;" tabindex="0" data-language="bash"><code><span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">mcmc</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> doctor</span></span></code></pre>
-<pre class="astro-code astro-code-themes github-light github-dark" style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-light-bg:#fff;--shiki-dark-bg:#24292e; overflow-x: auto;" tabindex="0" data-language="plaintext"><code><span class="line"><span>juliaup  1.20.7  /home/you/.juliaup/bin/juliaup</span></span>
+<pre class="astro-code astro-code-themes github-light github-dark" style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-light-bg:#fff;--shiki-dark-bg:#24292e; overflow-x: auto;" tabindex="0" data-language="plaintext"><code><span class="line"><span>Julia</span></span>
+<span class="line"><span>juliaup  1.20.7  /home/you/.juliaup/bin/juliaup</span></span>
 <span class="line"><span>julia    1.12.6  /home/you/.juliaup/bin/julia</span></span>
+<span class="line"><span>ready for inference</span></span>
 <span class="line"><span></span></span>
+<span class="line"><span>Stan (CmdStan)</span></span>
+<span class="line"><span>cmdstan  2.39.0  /home/you/.cmdstan/cmdstan-2.39.0</span></span>
+<span class="line"><span>stanc    2.39.0  /home/you/.cmdstan/cmdstan-2.39.0/bin/stanc</span></span>
+<span class="line"><span>make     4.4.1  make</span></span>
+<span class="line"><span>c++      16.1.1  g++</span></span>
 <span class="line"><span>ready for inference</span></span></code></pre>
-<p>Add <code>--json</code> for a machine-readable report, or <code>--engine &#x3C;id></code> to check a specific engine.</p>
+<p>The exit code is 0 as long as at least one engine is ready.
+Add <code>--json</code> for a machine-readable report, or <code>--engine &#x3C;id></code> to check one engine in the original flat format.</p>
 <h2 id="stan-optional">Stan (optional)</h2>
 <p>Stan models run through a local <a href="https://mc-stan.org/users/interfaces/cmdstan" rel="noopener noreferrer" target="_blank">CmdStan</a>, which <code>mcmc setup</code> can download and build for you.</p>
 <pre class="astro-code astro-code-themes github-light github-dark" style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-light-bg:#fff;--shiki-dark-bg:#24292e; overflow-x: auto;" tabindex="0" data-language="bash"><code><span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">mcmc</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> setup</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --engine</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> stan</span></span></code></pre>
