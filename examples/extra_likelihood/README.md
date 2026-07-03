@@ -11,3 +11,11 @@ mcmc run extra_likelihood.jl --data data.csv
 ```
 
 The five observations average to 0, so `mu` concentrates near 0.
+
+## Stan version
+
+```bash
+mcmc run extra_likelihood.stan
+```
+
+The `@addlogprob!` term maps directly to `target += normal_lpdf(x | mu, 1)` in the model block.

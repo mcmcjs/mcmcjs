@@ -12,9 +12,16 @@ a one-line `build_model(data)` adapter: the driver loads the data, calls
 Data is supplied with `--data` (a `.csv` of columns or a `.json` object), so no
 configuration file is needed; settings come from defaults and flags.
 
+Every example also ships a `.stan` translation of the same model, sharing the
+same data file, so the two engines can be compared side by side.
+Parameter names match the Julia version, and any adapter-side data
+standardisation is replicated in the Stan model's `transformed data` block.
+Running a Stan example needs a local CmdStan (`mcmc setup --engine stan`).
+
 ```bash
 cd examples/coin_flip
 mcmc run coin_flip.jl --data data.csv                         # fit + convergence report
+mcmc run coin_flip.stan --data data.csv                       # the same model on the Stan engine
 mcmc run coin_flip.jl --data data.csv --draws 4000 --daemon   # more draws, warm worker
 ```
 

@@ -11,3 +11,13 @@ mcmc run coin_flip.jl
 ```
 
 The data has 23 heads in 40 tosses, so `p` concentrates near 0.575.
+
+## Stan version
+
+The same model is available as `coin_flip.stan`:
+
+```bash
+mcmc run coin_flip.stan
+```
+
+It is a direct translation with a vectorized `bernoulli` likelihood and the same `p` parameter name, so diagnostics line up side by side with the Julia run.

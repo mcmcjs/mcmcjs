@@ -11,3 +11,12 @@ mcmc run hierarchical_groups.jl
 ```
 
 The three entries of `a` recover near 1, 2, and 3.
+
+## Stan version
+
+```bash
+mcmc run hierarchical_groups.stan
+```
+
+The number of groups `K` is derived as `max(g)` in `transformed data`, matching Turing's `length(unique(g))` for the contiguous 1-based group indices in `data.csv`.
+The Julia model's `mu` is only a return value, not tracked in the chain, so the Stan version has no generated quantities block.
