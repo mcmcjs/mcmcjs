@@ -1,5 +1,25 @@
 # mcmcjs
 
+## 0.16.0
+
+### Minor Changes
+
+- bde15df: Bare `mcmc doctor` now reports every engine's toolchain as titled sections (exit 0 when at least one engine is ready); `--engine <id>` keeps the flat single-engine format.
+- 5409664: Stan reaches full command parity: `mcmc predict` works for Stan specs via generated quantities, `mcmc stan version list/add/remove` manages CmdStan installs, `mcmc fit --versions` runs a spec across CmdStan versions, `mcmc sandbox --strict` now isolates CmdStan alongside Julia, the sandbox and `mcmc init` templates include a Stan model, and a `.stan` model named next to a Julia-backend spec runs on the Stan engine with the spec's settings.
+- 10c2959: Stan support across the CLI: `mcmc run model.stan` fits through a local CmdStan with the full store/diagnose workflow, `mcmc fit` accepts Stan specs, `mcmc setup --engine stan` provisions CmdStan, and `doctor`/`engines` report the Stan toolchain.
+
+### Patch Changes
+
+- Updated dependencies [824bf3c]
+- Updated dependencies [cd96f4d]
+- Updated dependencies [84cfd6b]
+- Updated dependencies [4cec81d]
+- Updated dependencies [2d321f0]
+  - @mcmcjs/core@0.7.0
+  - @mcmcjs/stan@0.1.0
+  - @mcmcjs/julia@0.9.1
+  - @mcmcjs/plots@0.4.2
+
 ## 0.15.8
 
 ### Patch Changes
