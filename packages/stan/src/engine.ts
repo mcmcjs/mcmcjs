@@ -4,7 +4,7 @@ import { runDoctor } from "./doctor";
 export const stanEngine: Engine = {
   id: "stan",
   displayName: "Stan (CmdStan)",
-  capabilities: { setup: true, versions: false, fit: true, predict: false },
+  capabilities: { setup: true, versions: true, fit: true, predict: true },
   async doctor(ctx: EngineContext): Promise<HealthReport> {
     const report = await runDoctor(ctx.run);
     const missingToolchain = !report.make.found || !report.cxx.found;

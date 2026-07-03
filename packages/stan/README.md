@@ -8,8 +8,11 @@ It resolves a local [CmdStan](https://mc-stan.org/docs/cmdstan-guide/) install, 
 
 - `stanEngine`: the engine descriptor with a `doctor` that reports CmdStan, stanc, make, and the C++ compiler.
 - `runFit(spec, install, io)`: one inference run producing the standard samples file and run record, with `onProgress`/`onDraws` streaming and `AbortSignal` cancellation.
+- `runPredict(spec, install, io)`: posterior prediction via CmdStan `generate_quantities`, replaying a samples file through the model's generated quantities block; `[predict].targets` selects which generated variables to keep.
+- `runMatrix(spec, versions, io)`: the same fit across several installed CmdStan versions, one entry per version (backs `mcmc fit --versions`).
 - `resolveCmdStan(version?)`: finds a CmdStan install; an explicit `MCMCJS_CMDSTAN`/`CMDSTAN` home wins, then the managed root, then `~/.cmdstan` shared with other Stan interfaces.
 - `runSetup(options)`: provisions CmdStan from the official release tarball into the managed root and builds it once.
+- `listVersions()` / `addVersion(version)` / `removeVersion(version)`: manage CmdStan installs under the managed root (backs `mcmc stan version`).
 - `compileModel(install, modelPath)`: the cached model compile, reusable on its own.
 
 ## How a fit runs

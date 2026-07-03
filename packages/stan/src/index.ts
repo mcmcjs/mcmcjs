@@ -13,6 +13,19 @@ export {
 } from "./environment";
 export { chainArgs, runFit, type StanFitIo } from "./fit";
 export {
+  runMatrix,
+  type StanMatrixEntry,
+  type StanMatrixIo,
+  type StanMatrixResult,
+} from "./matrix";
+export {
+  fittedParamsCsv,
+  matchesTarget,
+  predictData,
+  runPredict,
+  type StanPredictIo,
+} from "./predict";
+export {
   createStanSpawn,
   parseIterationLine,
   type StanSpawn,
@@ -28,3 +41,4 @@ export {
   type StanSetupResult,
   type StepStatus,
 } from "./setup";
+export { addVersion, listVersions, removeVersion } from "./versions";
