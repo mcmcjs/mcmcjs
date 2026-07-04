@@ -595,9 +595,9 @@ watch(
     linear-gradient(to bottom, var(--theme-grid-line) 1px, transparent 1px) !important;
 }
 
-/* Dark mode overrides using :global to catch class on widget root or body (for teleported content) */
-:global(.db-dark-mode) .db-cytoscape-container.db-grid-background.db-grid-dots,
-:global(body.db-dark-mode) .db-cytoscape-container.db-grid-background.db-grid-dots {
+/* Dark mode overrides, matching the class on the widget root or body (for teleported content) */
+.db-dark-mode .db-cytoscape-container.db-grid-background.db-grid-dots,
+body.db-dark-mode .db-cytoscape-container.db-grid-background.db-grid-dots {
   background-image: radial-gradient(
     circle,
     rgba(255, 255, 255, 0.2) 1.2px,
@@ -605,8 +605,8 @@ watch(
   ) !important;
 }
 
-:global(.db-dark-mode) .db-cytoscape-container.db-grid-background.db-grid-lines,
-:global(body.db-dark-mode) .db-cytoscape-container.db-grid-background.db-grid-lines {
+.db-dark-mode .db-cytoscape-container.db-grid-background.db-grid-lines,
+body.db-dark-mode .db-cytoscape-container.db-grid-background.db-grid-lines {
   background-image:
     linear-gradient(to right, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 1px, transparent 1px) !important;
