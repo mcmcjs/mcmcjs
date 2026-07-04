@@ -3,6 +3,7 @@ import type { CompileResult } from "./types";
 export interface CompileRequest {
   serverUrl: string;
   passcode?: string;
+  getAuthToken?: () => Promise<string>;
   stanCode: string;
   signal?: AbortSignal;
 }
@@ -12,8 +13,9 @@ const trimTrailingSlash = (url: string): string => url.replace(/\/+$/, "");
 export async function compileStanCode(req: CompileRequest): Promise<CompileResult> {
   const base = trimTrailingSlash(req.serverUrl);
   const headers: Record<string, string> = { "Content-Type": "text/plain" };
-  if (req.passcode) {
-    headers.Authorization = `Bearer ${req.passcode}`;
+  const token = req.getAuthToken ? await req.getAuthToken() : req.passcode;
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
   const res = await fetch(`${base}/compile`, {
     method: "POST",

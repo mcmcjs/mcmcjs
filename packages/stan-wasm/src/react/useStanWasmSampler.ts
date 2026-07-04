@@ -107,8 +107,21 @@ export function useStanWasmSampler(opts: StanSamplerOptions): UseStanWasmSampler
   const { compileServerUrl, passcode } = opts;
   const workerUrl = opts.workerUrl ?? REACT_FALLBACK_WORKER_URL;
 
+  // Read the getter through a ref so an unstable callback identity does not
+  // recreate the sampler and cancel in-flight work.
+  const getAuthTokenRef = useRef(opts.getAuthToken);
+  getAuthTokenRef.current = opts.getAuthToken;
+  const hasAuthToken = opts.getAuthToken !== undefined;
+
   useEffect(() => {
-    const sampler = new StanSampler({ compileServerUrl, passcode, workerUrl });
+    const getAuthToken = hasAuthToken
+      ? async () => {
+          const getter = getAuthTokenRef.current;
+          if (!getter) throw new Error("getAuthToken was removed while the sampler was active");
+          return getter();
+        }
+      : undefined;
+    const sampler = new StanSampler({ compileServerUrl, passcode, getAuthToken, workerUrl });
     samplerRef.current = sampler;
     return () => {
       sampler.cancel();
@@ -116,7 +129,7 @@ export function useStanWasmSampler(opts: StanSamplerOptions): UseStanWasmSampler
         samplerRef.current = null;
       }
     };
-  }, [compileServerUrl, passcode, workerUrl]);
+  }, [compileServerUrl, passcode, hasAuthToken, workerUrl]);
 
   const compile = useCallback(async (stanCode: string) => {
     const sampler = samplerRef.current;
