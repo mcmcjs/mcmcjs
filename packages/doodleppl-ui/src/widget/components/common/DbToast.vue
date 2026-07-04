@@ -166,27 +166,27 @@ onUnmounted(() => {
   background: rgba(0, 0, 0, 0.06);
 }
 
-:global(.db-dark-mode) .db-toast-info {
+.db-dark-mode .db-toast-info {
   background: #172554;
   border-color: #1e40af;
   color: #93c5fd;
 }
 
-:global(.db-dark-mode) .db-toast-success {
+.db-dark-mode .db-toast-success {
   background: #064e3b;
   border-color: #047857;
   color: #6ee7b7;
 }
 
-:global(.db-dark-mode) .db-toast-warn {
+.db-dark-mode .db-toast-warn {
   background: #451a03;
   border-color: #b45309;
   color: #fcd34d;
 }
 
-:global(.db-dark-mode) .db-toast-error,
-:global(.db-dark-mode) .db-toast-secondary,
-:global(.db-dark-mode) .db-toast-contrast {
+.db-dark-mode .db-toast-error,
+.db-dark-mode .db-toast-secondary,
+.db-dark-mode .db-toast-contrast {
   background: #450a0a;
   border-color: #b91c1c;
   color: #fca5a5;
