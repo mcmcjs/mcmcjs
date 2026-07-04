@@ -15,7 +15,8 @@ React is an optional peer dependency, only needed for the `./react` entry point.
 
 ## How it works
 
-Stan models are compiled to WebAssembly by a compile server: the client posts Stan source to `POST /compile` and receives a model id, then the sampler loads the compiled module from `GET /download/<id>/main.js` inside a Web Worker and runs NUTS via TinyStan.
+Stan models are compiled to WebAssembly by a compile server: the client posts Stan source to `POST /compile` and receives a model id, then the sampler loads the compiled module inside a Web Worker and runs NUTS via TinyStan.
+If the compile response includes a `main_js_url` field, the sampler loads the module from that URL; otherwise it falls back to `GET /download/<id>/main.js` on the compile server.
 The compile server URL is always explicit; nothing is baked in.
 
 ## Quickstart
@@ -46,6 +47,19 @@ With Vite, pass the worker URL explicitly:
 import workerUrl from "@mcmcjs/stan-wasm/worker?url";
 
 const sampler = new StanSampler({ compileServerUrl, workerUrl });
+```
+
+## Authentication
+
+Compile requests can carry a bearer token.
+Pass `getAuthToken` to resolve a fresh token for each compile request, or `passcode` for servers that use a static shared secret.
+When both are set, `getAuthToken` wins.
+
+```ts
+const sampler = new StanSampler({
+  compileServerUrl,
+  getAuthToken: () => auth.getAccessToken(),
+});
 ```
 
 ## React

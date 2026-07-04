@@ -12,6 +12,7 @@ import {
 export interface StanSamplerOptions {
   compileServerUrl: string;
   passcode?: string;
+  getAuthToken?: () => Promise<string>;
   workerUrl?: string | URL;
 }
 
@@ -35,6 +36,7 @@ const calculateRefreshRate = (cfg: SampleConfig): number => {
 export class StanSampler {
   readonly #compileServerUrl: string;
   readonly #passcode: string | undefined;
+  readonly #getAuthToken: (() => Promise<string>) | undefined;
   readonly #workerUrl: string | URL;
 
   #worker: Worker | null = null;
@@ -50,6 +52,7 @@ export class StanSampler {
   constructor(opts: StanSamplerOptions) {
     this.#compileServerUrl = opts.compileServerUrl;
     this.#passcode = opts.passcode;
+    this.#getAuthToken = opts.getAuthToken;
     this.#workerUrl = opts.workerUrl ?? defaultWorkerUrl();
   }
 
@@ -66,6 +69,7 @@ export class StanSampler {
     const result = await compileStanCode({
       serverUrl: this.#compileServerUrl,
       passcode: this.#passcode,
+      getAuthToken: this.#getAuthToken,
       stanCode,
       signal,
     });

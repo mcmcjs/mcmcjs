@@ -45,6 +45,70 @@ describe("compileStanCode", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it("resolves getAuthToken per request and sends it as the Bearer header", async () => {
+    const tokens = ["token-1", "token-2"];
+    const getAuthToken = vi.fn(async () => tokens.shift() as string);
+    const seenAuth: string[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seenAuth.push((init?.headers as Record<string, string>).Authorization ?? "");
+      return new Response(JSON.stringify({ model_id: "abc123" }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const req = { serverUrl: "https://x", stanCode: "", getAuthToken };
+    await compileStanCode(req);
+    await compileStanCode(req);
+
+    expect(getAuthToken).toHaveBeenCalledTimes(2);
+    expect(seenAuth).toEqual(["Bearer token-1", "Bearer token-2"]);
+  });
+
+  it("prefers getAuthToken over passcode when both are given", async () => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer fresh-token");
+      return new Response(JSON.stringify({ model_id: "abc123" }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await compileStanCode({
+      serverUrl: "https://x",
+      stanCode: "",
+      passcode: "legacy",
+      getAuthToken: async () => "fresh-token",
+    });
+  });
+
+  it("uses main_js_url from the compile response when present", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          model_id: "abc123",
+          main_js_url: "https://cdn.example.com/artifacts/abc123/main.js",
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+
+    const result = await compileStanCode({
+      serverUrl: "https://stan-wasm.example.com",
+      stanCode: "data{}parameters{}model{}",
+    });
+
+    expect(result.modelId).toBe("abc123");
+    expect(result.mainJsUrl).toBe("https://cdn.example.com/artifacts/abc123/main.js");
+  });
+
+  it("falls back to the derived download URL when main_js_url is empty", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ model_id: "abc123", main_js_url: "" }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const result = await compileStanCode({
+      serverUrl: "https://stan-wasm.example.com",
+      stanCode: "",
+    });
+
+    expect(result.mainJsUrl).toBe("https://stan-wasm.example.com/download/abc123/main.js");
+  });
+
   it("throws on non-200 with response text in the message", async () => {
     globalThis.fetch = (async () =>
       new Response("Stan syntax error on line 4", { status: 400 })) as unknown as typeof fetch;
