@@ -45,6 +45,39 @@ describe("compileStanCode", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it("uses main_js_url from the compile response when present", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          model_id: "abc123",
+          main_js_url: "https://cdn.example.com/artifacts/abc123/main.js",
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+
+    const result = await compileStanCode({
+      serverUrl: "https://stan-wasm.example.com",
+      stanCode: "data{}parameters{}model{}",
+    });
+
+    expect(result.modelId).toBe("abc123");
+    expect(result.mainJsUrl).toBe("https://cdn.example.com/artifacts/abc123/main.js");
+  });
+
+  it("falls back to the derived download URL when main_js_url is empty", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ model_id: "abc123", main_js_url: "" }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const result = await compileStanCode({
+      serverUrl: "https://stan-wasm.example.com",
+      stanCode: "",
+    });
+
+    expect(result.mainJsUrl).toBe("https://stan-wasm.example.com/download/abc123/main.js");
+  });
+
   it("throws on non-200 with response text in the message", async () => {
     globalThis.fetch = (async () =>
       new Response("Stan syntax error on line 4", { status: 400 })) as unknown as typeof fetch;
