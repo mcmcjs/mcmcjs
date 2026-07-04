@@ -90,4 +90,19 @@ describe("mirrorPrimeVueStyles", () => {
     expect(root.querySelectorAll("style")).toHaveLength(0);
     stop();
   });
+
+  it("re-emits the dark token remaps at :host scope so the overlay anchor turns dark", () => {
+    addHeadStyle(
+      "theme",
+      ":root,:host{--p-content-background:#ffffff}.db-dark-mode{--p-content-background:#18181b}",
+    );
+    const root = makeRoot();
+    const stop = mirrorPrimeVueStyles(root);
+    const darkHost = root.querySelector("style[data-doodleppl-dark-host]");
+    expect(darkHost).not.toBeNull();
+    const css = (darkHost?.textContent ?? "").replace(/\s+/g, "");
+    expect(css).toContain(":host(.db-dark-mode){");
+    expect(css).toContain("--p-content-background:#18181b");
+    stop();
+  });
 });

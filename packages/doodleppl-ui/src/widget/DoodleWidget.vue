@@ -927,6 +927,9 @@ watch(
       document.body.classList.remove('db-dark-mode')
     }
     overlayMount.classList.toggle('db-dark-mode', val)
+    // The host carries the class too so the mirror's :host(.db-dark-mode) rules
+    // reach PrimeVue's :host-scoped token anchor (see mirrorPrimeVueStyles).
+    overlayHost.classList.toggle('db-dark-mode', val)
   },
   { immediate: true }
 )

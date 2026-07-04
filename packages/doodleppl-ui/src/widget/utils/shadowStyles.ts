@@ -58,6 +58,41 @@ export function adoptBundleCss(root: ShadowRoot): () => void {
   return () => document.removeEventListener('doodleppl:css', apply)
 }
 
+// The dark-mode class the widget toggles; matches PrimeVue's configured
+// darkModeSelector (see element.ts) and every .db-dark-mode rule in the styles.
+const DARK_SELECTOR = '.db-dark-mode'
+
+/**
+ * PrimeVue anchors its design tokens at `:root, :host` and remaps the dark ones
+ * under `.db-dark-mode`. Inside the overlay shadow root that class only sits on
+ * the mount (a descendant of the host), so tokens defined through var() at :host
+ * scope, such as `--p-accordion-header-background: var(--p-content-background)`,
+ * resolve against the light base at the host and inherit down as fixed light
+ * values, leaving teleported PrimeVue chrome light in dark mode. Re-emitting the
+ * dark token remaps at `:host(.db-dark-mode)` turns the anchor itself dark (and
+ * its higher specificity beats the `:root, :host` base regardless of order); the
+ * widget mirrors the class onto the overlay host so the selector matches.
+ */
+function hostScopedDarkTokens(): string {
+  const blocks: string[] = []
+  for (const el of document.head.querySelectorAll<HTMLStyleElement>(
+    'style[data-primevue-style-id]'
+  )) {
+    const sheet = el.sheet
+    if (!sheet) continue
+    try {
+      for (const rule of sheet.cssRules) {
+        if (rule instanceof CSSStyleRule && rule.selectorText === DARK_SELECTOR) {
+          blocks.push(rule.style.cssText)
+        }
+      }
+    } catch {
+      // A sheet that has not parsed yet is picked up on the next sync.
+    }
+  }
+  return blocks.length > 0 ? `:host(${DARK_SELECTOR}){${blocks.join(';')}}` : ''
+}
+
 /**
  * Mirror PrimeVue's head styles into the root. Component styles load lazily on each
  * component type's first mount and theme styles are rewritten in place on theme
@@ -67,6 +102,8 @@ export function adoptBundleCss(root: ShadowRoot): () => void {
  */
 export function mirrorPrimeVueStyles(root: ShadowRoot): () => void {
   const clones = new Map<string, HTMLStyleElement>()
+  const darkHost = document.createElement('style')
+  darkHost.setAttribute('data-doodleppl-dark-host', '')
   const copy = (source: HTMLStyleElement) => {
     const id = source.getAttribute('data-primevue-style-id')
     if (!id) return
@@ -84,6 +121,15 @@ export function mirrorPrimeVueStyles(root: ShadowRoot): () => void {
       'style[data-primevue-style-id]'
     )) {
       copy(el)
+    }
+    // :host(.db-dark-mode) outspecs the :root, :host base, so source order does
+    // not matter; only attach the element once there is something to emit.
+    const css = hostScopedDarkTokens()
+    if (css) {
+      if (darkHost.parentNode !== root) root.appendChild(darkHost)
+      if (darkHost.textContent !== css) darkHost.textContent = css
+    } else if (darkHost.parentNode === root) {
+      root.removeChild(darkHost)
     }
   }
   sync()
