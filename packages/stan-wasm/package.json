@@ -1,6 +1,6 @@
 {
   "name": "@mcmcjs/stan-wasm",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Run Stan models in the browser: a WebAssembly sampling runtime with a typed compile-server client and an optional React adapter.",
   "keywords": [
     "mcmc",
