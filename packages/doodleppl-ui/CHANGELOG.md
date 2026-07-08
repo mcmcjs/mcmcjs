@@ -1,5 +1,11 @@
 # doodleppl
 
+## 0.5.0
+
+### Minor Changes
+
+- 822a12a: Add a read-only mode, a localModel option to load a portable graph, and fit a loaded graph to the viewport
+
 ## 0.4.4
 
 ### Patch Changes
