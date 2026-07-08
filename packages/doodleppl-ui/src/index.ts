@@ -37,11 +37,16 @@ export interface DoodlePPLOptions {
   state?: DoodlePPLState | string;
   /** Bundled example model to open (e.g. `"rats"`). */
   example?: string;
+  /** A portable model document to load by URL (a data: URL works for an inline graph),
+   * fetched through the editor's model-import path. */
+  localModel?: string;
   /**
    * `"embedded"` (default) keeps the maximize and edit toggles for hosts that mount
    * the editor as one feature; `"fullpage"` pins it maximized with editing always on.
    */
   mode?: "embedded" | "fullpage";
+  /** Show the graph read-only: editing is disabled and the edit toggle is hidden. */
+  readOnly?: boolean;
   theme?: "light" | "dark";
   /** localStorage key for the editor's persistence; omit for the editor default. */
   storageKey?: string;
@@ -125,7 +130,9 @@ export class DoodlePPL {
       el.setAttribute("initial-state", typeof state === "string" ? state : JSON.stringify(state));
     }
     if (opts.example) el.setAttribute("model", opts.example);
+    if (opts.localModel) el.setAttribute("local-model", opts.localModel);
     if (opts.mode) el.setAttribute("mode", opts.mode);
+    if (opts.readOnly) el.setAttribute("read-only", "true");
     if (opts.theme) el.setAttribute("theme-mode", opts.theme);
     if (opts.storageKey) el.setAttribute("storage-key", opts.storageKey);
     if (opts.width) el.setAttribute("width", opts.width);

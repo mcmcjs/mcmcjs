@@ -49,6 +49,9 @@ const props = withDefaults(
     height?: string
     themeMode?: string
     mode?: 'embedded' | 'fullpage'
+    // View-only: the graph is shown but cannot be edited, and the edit toggle is
+    // hidden. For displaying a model immutably (a gallery entry, a shared link).
+    readOnly?: boolean
     controlsPosition?: string
     controlsMarginTop?: string
     controlsMarginRight?: string
@@ -60,6 +63,7 @@ const props = withDefaults(
     width: '100%',
     height: '600px',
     mode: 'embedded',
+    readOnly: false,
     controlsPosition: 'bottom-right',
     sidebarInsetRight: '0',
   }
@@ -635,7 +639,11 @@ const initGraph = async () => {
   nextTick(() => {
     if (graphStore.currentGraphId) {
       const cy = getCyInstance(graphStore.currentGraphId)
-      if (cy) cy.resize()
+      if (cy) {
+        cy.resize()
+        // A graph loaded from a source has no saved viewport, so frame it to fit.
+        if (sourceKey) handleFit()
+      }
     }
   })
 }
@@ -703,7 +711,7 @@ const activateWidget = (source: 'click' | 'scroll') => {
 }
 
 const toggleEditMode = () => {
-  if (isPinned.value) return
+  if (isPinned.value || props.readOnly) return
   isEditMode.value = !isEditMode.value
   if (isEditMode.value) activateWidget('click')
   saveWidgetUIState()
@@ -835,6 +843,8 @@ onMounted(async () => {
     isFullScreen.value = true
     isEditMode.value = true
   }
+  // A read-only widget is never editable, whatever the saved or pinned state.
+  if (props.readOnly) isEditMode.value = false
   if (isEditMode.value) activateWidget('click')
 
   await initGraph()
@@ -1050,7 +1060,7 @@ watch(showNewGraphModal, (val) => {
           :current-node-type="currentNodeType"
           :validation-errors="validationErrors"
           :show-zoom-controls="false"
-          :read-only="!isEditMode"
+          :read-only="readOnly || !isEditMode"
           @update:current-mode="currentMode = $event"
           @update:current-node-type="currentNodeType = $event"
           @element-selected="handleElementSelected"
@@ -1071,7 +1081,7 @@ watch(showNewGraphModal, (val) => {
     </div>
 
     <!-- Non-Fullscreen Controls -->
-    <div v-if="!isFullScreen" :style="controlsStyle">
+    <div v-if="!isFullScreen && !readOnly" :style="controlsStyle">
       <button
         v-tooltip.top="{
           value: isEditMode ? 'Disable Editing' : 'Enable Editing',

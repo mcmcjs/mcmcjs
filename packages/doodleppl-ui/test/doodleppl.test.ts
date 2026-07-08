@@ -69,6 +69,20 @@ describe("DoodlePPL", () => {
     expect(el.getAttribute("controls-position")).toBe("top-left");
   });
 
+  it("maps localModel and read-only, and omits read-only unless set", async () => {
+    const { el } = await mounted({
+      element: "#mount",
+      localModel: "data:application/json,%7B%7D",
+      readOnly: true,
+    });
+    expect(el.getAttribute("local-model")).toBe("data:application/json,%7B%7D");
+    expect(el.getAttribute("read-only")).toBe("true");
+
+    host.innerHTML = "";
+    const plain = await mounted({ element: "#mount" });
+    expect(plain.el.getAttribute("read-only")).toBeNull();
+  });
+
   it("resolves ready and fires onReady with the parsed state", async () => {
     const onReady = vi.fn();
     const { editor, el } = await mounted({ element: host, onReady });
