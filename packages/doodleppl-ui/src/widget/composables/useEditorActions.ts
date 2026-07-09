@@ -190,7 +190,7 @@ export function useEditorActions(
     toast.add({
       severity: 'info',
       summary: 'Loading...',
-      detail: `Loading model: ${exampleIdOrUrl}`,
+      detail: type === 'local' ? 'Loading model' : `Loading model: ${exampleIdOrUrl}`,
       life: 2000,
     })
 
