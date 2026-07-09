@@ -1,5 +1,11 @@
 # doodleppl
 
+## 0.5.1
+
+### Patch Changes
+
+- c3e6119: Keep the model-loading toast concise instead of printing a full local source URL
+
 ## 0.5.0
 
 ### Minor Changes
