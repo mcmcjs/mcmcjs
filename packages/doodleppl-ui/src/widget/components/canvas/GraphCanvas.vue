@@ -55,6 +55,9 @@ const uiStore = useUiStore()
 
 const isGraphVisible = ref(false)
 const isGraphReady = ref(false)
+// An embedded host can size the container before the graph's elements have loaded,
+// so the initial fit runs on an empty graph; fit once when real content arrives.
+let hasFitContent = false
 
 const validNodeTypes: NodeType[] = ['stochastic', 'deterministic', 'constant', 'observed', 'plate']
 
@@ -279,6 +282,8 @@ onMounted(() => {
 
     if (props.readOnly) {
       cy.autoungrabify(true)
+      cy.userPanningEnabled(false)
+      cy.boxSelectionEnabled(false)
     }
 
     const ur = getUndoRedoInstance(props.graphId)
@@ -406,6 +411,7 @@ onMounted(() => {
                 cy.zoom(0.8)
                 cy.center()
               }
+              hasFitContent = true
             }
 
             updateGridStyle()
@@ -438,6 +444,8 @@ watch(
   (newVal) => {
     if (cy) {
       cy.autoungrabify(!!newVal)
+      cy.userPanningEnabled(!newVal)
+      cy.boxSelectionEnabled(!newVal)
     }
   },
   { immediate: true }
@@ -496,6 +504,14 @@ watch(
     // Only sync if graph is ready (container sized and initialized)
     if (isGraphReady.value) {
       syncGraphWithProps(newElements, newErrors)
+      if (!hasFitContent && cy && newElements.length > 0) {
+        hasFitContent = true
+        cy.fit(undefined, 50)
+        if (cy.zoom() > 0.8) {
+          cy.zoom(0.8)
+          cy.center()
+        }
+      }
     }
   },
   { deep: true }
