@@ -1,5 +1,12 @@
 # doodleppl
 
+## 0.5.2
+
+### Patch Changes
+
+- 2573c49: Fit the graph to view when its content loads after the container is already sized, so an embedded editor is not blank
+- 2573c49: Lock panning and node dragging in read-only mode so an embedded graph stays put
+
 ## 0.5.1
 
 ### Patch Changes
