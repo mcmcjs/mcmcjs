@@ -14,6 +14,18 @@ mcmc run normal.jl --data data.csv
 The CSV's row count becomes `N` automatically, and `mu` recovers near the data
 mean (~1.08).
 
+## Posterior prediction
+
+`normal.toml` is the same model as a full spec, with a `[predict]` block that targets `y`: the fit conditions on the CSV data, and predict blanks `y` and forward-samples it from the fitted posterior.
+
+```bash
+cd examples/normal_bugs
+mcmc fit normal.toml -o normal.samples.json
+mcmc predict normal.toml normal.samples.json
+```
+
+The predictive draws land in `normal.samples.predict.json` with a grand mean near the data mean.
+
 ## Stan version
 
 A hand-written Stan translation lives in `normal.stan`.

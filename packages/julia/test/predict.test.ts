@@ -74,6 +74,12 @@ describe("predictData", () => {
     expect(data.sigma).toEqual([2, 2]);
     expect(data.y).toEqual([null, null]);
   });
+
+  it("blanks a target absent from the data to a null key", () => {
+    const s = spec();
+    s.predict = { targets: ["y_rep"] };
+    expect(predictData(s).y_rep).toBeNull();
+  });
 });
 
 describe("runPredict", () => {
@@ -106,6 +112,29 @@ describe("runPredict", () => {
     const record = JSON.parse(readFileSync(`${outPath}.run.json`, "utf8"));
     expect(record.posterior_samples).toBe(samplesPath);
     expect(typeof record.posterior_samples_sha256).toBe("string");
+  });
+
+  it("passes the juliabugs backend through with blanked targets", async () => {
+    const outPath = out();
+    const samplesPath = postFile();
+    let request: Record<string, unknown> = {};
+    const spawn: FitRunner = async (_command, args) => {
+      request = JSON.parse(readFileSync(args.at(-1) as string, "utf8"));
+      writeFileSync(outPath, SAMPLES);
+      return { stdout: PROVENANCE, stderr: "", code: 0 };
+    };
+    const s = spec();
+    s.backend = { id: "juliabugs", runtime: "julia", version: "release" };
+    const result = await runPredict(
+      s,
+      { command: "/bin/julia", args: [] },
+      { spawn, projectDir: "/proj", outPath, samplesPath },
+    );
+
+    expect(result.status).toBe("ok");
+    expect(request.mode).toBe("predict");
+    expect(request.backend).toEqual({ id: "juliabugs" });
+    expect((request.data as Record<string, unknown>).y).toEqual([null, null]);
   });
 
   it("reports the driver stage on failure", async () => {

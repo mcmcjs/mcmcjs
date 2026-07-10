@@ -133,6 +133,9 @@ bugs_namedtuple(data) = (; (Symbol(k) => narrow(v) for (k, v) in data)...)
 to_missing(x) = x === nothing ? missing : (x isa AbstractVector ? map(to_missing, x) : x)
 predict_namedtuple(data) = (; (Symbol(k) => to_missing(v) for (k, v) in data)...)
 
+# A blanked target compiles to a latent node; JuliaBUGS drops scalar missings.
+bugs_predict_namedtuple(data) = (; (Symbol(k) => narrow(to_missing(v)) for (k, v) in data)...)
+
 # Rebuild a posterior Chains (latents only) from our MCMCChains-JSON wire object so
 # it can feed Turing.predict. The varname_to_symbol map is required for VarName
 # indexing; target outcome columns are excluded.
@@ -311,6 +314,83 @@ function sample_bugs(model, sampler, warmup, draws, chains, rng)
     end
 end
 
+# JuliaBUGS posterior prediction: condition the (target-blanked) model on the
+# posterior parameter columns, then evaluate!! ancestral-samples the remaining
+# latents once per posterior draw. No sampler or gradient runs.
+function predict_bugs(model, posterior, targets, rng)
+    model isa JuliaBUGS.BUGSModelWithGradient && (model = model.base_model)
+    APPL = JuliaBUGS.AbstractPPL
+    target_syms = Set(Symbol.(targets))
+    is_target(vn) = APPL.getsym(vn) in target_syms
+
+    sz = posterior["size"]
+    nIter, nCols, nChains = Int(sz[1]), Int(sz[2]), Int(sz[3])
+    flat = posterior["value_flat"]
+    col = Dict(n => i for (i, n) in enumerate(posterior["parameters"]))
+    posterior_names = Set(posterior["name_map"]["parameters"])
+    cell(i, p, c) = begin
+        v = flat[i + (p - 1) * nIter + (c - 1) * nIter * nCols]
+        v === nothing ? NaN : Float64(v)
+    end
+
+    # Nodes fully covered by posterior columns are conditioned; anything
+    # uncovered stays latent and is forward-sampled, like Turing.predict.
+    gd = model.graph_evaluation_data
+    conditioned = APPL.VarName[]
+    restore = Tuple{APPL.VarName,Int}[]
+    for (i, vn) in enumerate(gd.sorted_nodes)
+        (gd.is_stochastic_vals[i] && !gd.is_observed_vals[i] && !is_target(vn)) || continue
+        leaves = collect(APPL.varname_leaves(vn, APPL.getvalue(model.evaluation_env, vn)))
+        found = count(l -> string(l) in posterior_names, leaves)
+        if found == length(leaves)
+            push!(conditioned, vn)
+            append!(restore, [(l, col[string(l)]) for l in leaves])
+        elseif found > 0
+            error("the posterior samples cover $(vn) only partially; refit before predicting")
+        end
+    end
+    isempty(conditioned) &&
+        error("the posterior samples share no parameters with the model; were they produced by fitting this spec?")
+    cond = APPL.condition(model, conditioned)
+
+    any(is_target, cond.graph_evaluation_data.sorted_nodes) ||
+        error("no variables predicted; check that [predict].targets name model variables")
+
+    out_leaves = APPL.VarName[]
+    arr = Array{Float64,3}(undef, 0, 0, 0)
+    for c in 1:nChains, i in 1:nIter
+        env = cond.evaluation_env
+        for (leaf, p) in restore
+            env = JuliaBUGS.BangBang.setindex!!(env, cell(i, p, c), leaf)
+        end
+        cond = JuliaBUGS.BangBang.setproperty!!(cond, :evaluation_env, env)
+        drawn, _ = APPL.evaluate!!(rng, cond)
+        if isempty(out_leaves)
+            out_leaves = [
+                l for vn in cond.graph_evaluation_data.sorted_nodes if is_target(vn)
+                for l in APPL.varname_leaves(vn, APPL.getvalue(drawn, vn))
+            ]
+            arr = Array{Float64,3}(undef, nIter, length(out_leaves), nChains)
+        end
+        for (k, leaf) in enumerate(out_leaves)
+            arr[i, k, c] = Float64(APPL.getvalue(drawn, leaf))
+        end
+    end
+
+    pnames = string.(out_leaves)
+    n = length(pnames)
+    flat_out = Vector{Union{Float64,Nothing}}(undef, nIter * n * nChains)
+    for c in 1:nChains, p in 1:n, i in 1:nIter
+        flat_out[i + (p - 1) * nIter + (c - 1) * nIter * n] = arr[i, p, c]
+    end
+    return Dict(
+        "size" => [nIter, n, nChains],
+        "value_flat" => flat_out,
+        "parameters" => pnames,
+        "name_map" => Dict("parameters" => pnames, "internals" => String[]),
+    )
+end
+
 # Build the exact wire object parseMCMCChainsJson consumes: value_flat is indexed
 # i + p*nIter + c*nIter*nParams (column-major over [iteration, parameter, chain]).
 function chains_to_wire(chn)
@@ -375,15 +455,22 @@ function handle_request(request)
         entry = resolve_entry(Main, get(request["model"], "entry", nothing))
 
         wire = if mode == "predict"
-            backend == "turing" || error("predict is not yet supported for backend $backend")
-            model = Base.invokelatest(entry, ModelData(predict_namedtuple(request["data"])))
-            stage = "load_samples"
-            rchn = chains_from_wire(JSON.parsefile(request["samples"]), request["predict"]["targets"])
-            stage = "predict"
-            pp = Base.invokelatest(predict, rng, model, rchn)
-            isempty(names(pp)) &&
-                error("no variables predicted; check that [predict].targets name unconditioned outcomes")
-            chains_to_wire(pp)
+            if backend == "juliabugs"
+                model = Base.invokelatest(entry, bugs_predict_namedtuple(request["data"]))
+                stage = "load_samples"
+                posterior = JSON.parsefile(request["samples"])
+                stage = "predict"
+                Base.invokelatest(predict_bugs, model, posterior, request["predict"]["targets"], rng)
+            else
+                model = Base.invokelatest(entry, ModelData(predict_namedtuple(request["data"])))
+                stage = "load_samples"
+                rchn = chains_from_wire(JSON.parsefile(request["samples"]), request["predict"]["targets"])
+                stage = "predict"
+                pp = Base.invokelatest(predict, rng, model, rchn)
+                isempty(names(pp)) &&
+                    error("no variables predicted; check that [predict].targets name unconditioned outcomes")
+                chains_to_wire(pp)
+            end
         else
             data = backend == "juliabugs" ? bugs_namedtuple(request["data"]) : ModelData(to_namedtuple(request["data"]))
             sampler, warmup = build_sampler(request["sampler"], backend)

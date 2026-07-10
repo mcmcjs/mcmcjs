@@ -26,6 +26,7 @@ Which outcomes to predict is declared in a `[predict]` table in the spec.
 `targets` lists the variables to predict by base name, and what happens to them depends on the backend.
 
 - **Turing**: each target is blanked to missing, so the sampler draws it from the posterior predictive.
+- **JuliaBUGS**: each target is blanked to missing so it compiles to a latent node; the driver fixes the posterior parameters and forward-samples the targets once per posterior draw.
 - **Stan**: the model's `generated quantities` block is re-run for every posterior draw, and `targets` selects which generated variables to keep (for example `y_rep`); the model must declare them.
 
 You can optionally override the data used for the prediction.
@@ -41,4 +42,4 @@ x = [11, 12, 13, 14, 15]
 `predict.data` is merged on top of the spec's `[data]`, so you can predict at new covariate values without editing the rest of the spec.
 See [the Spec file reference](/docs/reference/spec/) for the full schema.
 
-<div class="callout note"><p><code>mcmc predict</code> is supported for the Turing and Stan backends today.</p></div>
+<div class="callout note"><p><code>mcmc predict</code> is supported for every backend: Turing, JuliaBUGS, and Stan.</p></div>

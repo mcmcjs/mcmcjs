@@ -1,0 +1,26 @@
+schema_version = "0"
+seed = 20260608
+data_file = "./data.csv"
+
+[backend]
+id = "juliabugs"
+runtime = "julia"
+version = "release"
+
+[sampler]
+algorithm = "NUTS"
+draws = 1000
+warmup = 1000
+chains = 4
+adapt_delta = 0.8
+
+[output]
+format = "mcmcchains-json"
+
+[model]
+kind = "file"
+path = "./normal.jl"
+entry = "build_model"
+
+[predict]
+targets = ["y"]

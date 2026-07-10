@@ -12,6 +12,7 @@ import { createFitRunner, createRunner, type DrawBatch } from "@mcmcjs/engine";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { detectJuliaup } from "../src/environment";
 import { runFit } from "../src/fit";
+import { runPredict } from "../src/predict";
 import { managedProjectDir, managedProjectReady } from "../src/project";
 import { resolveVersion } from "../src/versions";
 
@@ -231,4 +232,82 @@ d("julia e2e: an outcome read from the data table is observed, not sampled", () 
     // conditioned (observed) rather than sampled.
     expect(mean).toBeCloseTo(5.006, 0);
   }, 300_000);
+});
+
+const BUGS_MODEL = `import JuliaBUGS
+
+const model_def = JuliaBUGS.@bugs begin
+    mu ~ dnorm(0, 0.0001)
+    tau ~ dgamma(0.01, 0.01)
+    for i in 1:N
+        y[i] ~ dnorm(mu, tau)
+    end
+    sigma = 1 / sqrt(tau)
+end
+
+build_model(data) = model_def(data; adtype = JuliaBUGS.ADTypes.AutoMooncake(; config = nothing))
+`;
+
+d("julia e2e: juliabugs predict recovers the posterior predictive", () => {
+  it("forward-samples blanked targets per posterior draw, deterministically", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const bugsModelPath = join(dir, "normal_bugs.jl");
+    writeFileSync(bugsModelPath, BUGS_MODEL);
+    const bugsSpec: ResolvedSpec = {
+      ...spec(300, 2),
+      backend: { id: "juliabugs", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
+      model: { kind: "file", path: bugsModelPath, entry: "build_model" },
+      modelPath: bugsModelPath,
+      data: { N: TABLE_DATA.y.length, ...TABLE_DATA },
+      predict: { targets: ["y"] },
+    };
+    const outPath = join(dir, "bugs.samples.json");
+    const fit = await runFit(
+      bugsSpec,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        recordPath: join(dir, "bugs.run.json"),
+      },
+    );
+    expect(fit.status).toBe("ok");
+
+    const predictOnce = async (predictOut: string) =>
+      runPredict(
+        bugsSpec,
+        { command: env.command, args: env.args },
+        {
+          spawn: createFitRunner(),
+          projectDir: env.projectDir,
+          outPath: predictOut,
+          samplesPath: outPath,
+        },
+      );
+    const p1 = join(dir, "bugs.predict.json");
+    const result = await predictOnce(p1);
+    expect(result.status).toBe("ok");
+
+    const predictive: Samples = parseSamples(readFileSync(p1, "utf8"));
+    const n = TABLE_DATA.y.length;
+    expect([...predictive.variables].sort()).toEqual(
+      Array.from({ length: n }, (_, i) => `y[${i + 1}]`).sort(),
+    );
+    expect(predictive.nChains).toBe(2);
+    expect(predictive.nDraws).toBe(300);
+
+    // The predictive mean tracks the data mean (~5.006); the prior mean is 0,
+    // so this only passes if the posterior parameters were conditioned.
+    const all = Array.from(predictive.variables).flatMap((v) =>
+      [0, 1].flatMap((chain) => Array.from(chainView(predictive, v, chain))),
+    );
+    const mean = all.reduce((a, b) => a + b, 0) / all.length;
+    expect(mean).toBeCloseTo(5.006, 0);
+
+    // Same seed, same draws: the whole path is StableRNG-deterministic.
+    const p2 = join(dir, "bugs.predict2.json");
+    expect((await predictOnce(p2)).status).toBe("ok");
+    expect(readFileSync(p2, "utf8")).toBe(readFileSync(p1, "utf8"));
+  }, 600_000);
 });

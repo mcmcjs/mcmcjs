@@ -45,9 +45,6 @@ export function registerPredict(program: Command, ctx: EngineContext): void {
         if (!spec.predict) {
           throw new Error("spec has no [predict] block; add [predict].targets to predict");
         }
-        if (spec.backend.id === "juliabugs") {
-          throw new Error("predict is not yet supported for backend juliabugs");
-        }
         // Fail fast if the posterior samples are unreadable, before spawning anything.
         parseSamples(readFileSync(resolve(samplesPath), "utf8"));
 

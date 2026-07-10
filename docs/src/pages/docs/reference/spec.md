@@ -96,7 +96,7 @@ Optional; used by [`mcmc predict`](/docs/guides/predict/).
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `targets` | array of strings (at least one) | outcome variables to predict, by base name; Turing blanks each to missing, Stan keeps the matching generated quantities |
+| `targets` | array of strings (at least one) | outcome variables to predict, by base name; the Julia backends blank each to missing, Stan keeps the matching generated quantities |
 | `data` | table | optional data overrides applied on top of `[data]` for the prediction |
 
 ```toml
