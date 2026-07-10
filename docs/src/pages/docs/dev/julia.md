@@ -22,7 +22,7 @@ A channel is a moving target (`release`) or a concrete version (`1.10`); `mcmc j
 ## The managed project
 
 Inference does not run in your global Julia environment.
-The bridge provisions an isolated, per-user managed project (a `Project.toml` plus a resolved `Manifest.toml`) holding the packages a fit needs: Turing, FlexiChains, DimensionalData, MCMCChains, JuliaBUGS, AdvancedHMC, ForwardDiff, JSON, and StableRNGs.
+The bridge provisions an isolated, per-user managed project (a `Project.toml` plus a resolved `Manifest.toml`) holding the packages a fit needs: Turing, FlexiChains, DimensionalData, MCMCChains, JuliaBUGS, AdvancedHMC, ForwardDiff, Mooncake, JSON, and StableRNGs.
 `ensureProject` provisions and precompiles it.
 
 The managed project directory is keyed by the concrete Julia version and by any package pins, so each version resolves its own compatible Manifest and each distinct set of pins gets its own environment.

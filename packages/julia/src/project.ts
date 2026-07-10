@@ -13,6 +13,7 @@ const PACKAGES = [
   "JuliaBUGS",
   "AdvancedHMC",
   "ForwardDiff",
+  "Mooncake",
   "JSON",
   "StableRNGs",
   "StatsFuns",
