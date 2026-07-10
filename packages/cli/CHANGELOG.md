@@ -1,5 +1,17 @@
 # mcmcjs
 
+## 0.17.0
+
+### Minor Changes
+
+- 079b540: mcmc predict now supports the JuliaBUGS backend, completing predict coverage across all three backends.
+
+### Patch Changes
+
+- Updated dependencies [86a6841]
+- Updated dependencies [079b540]
+  - @mcmcjs/julia@0.10.0
+
 ## 0.16.0
 
 ### Minor Changes
