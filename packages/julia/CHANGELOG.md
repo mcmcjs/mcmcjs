@@ -1,5 +1,12 @@
 # @mcmcjs/julia
 
+## 0.10.0
+
+### Minor Changes
+
+- 86a6841: Upgrade the JuliaBUGS backend to JuliaBUGS 0.15: fits sample into FlexiChains (like the Turing backend) through the shared FlexiChains wire-writer, generated quantities are recovered via gen_chains, and the recommended AD backend is Mooncake, added to the managed project. The pinned Julia environment re-resolves to Turing 0.46, DynamicPPL 0.42, and AbstractPPL 0.15.
+- 079b540: JuliaBUGS posterior prediction in the driver: targets are blanked to latent nodes, the model is conditioned on the posterior parameter columns, and the targets are ancestral-sampled once per posterior draw with the run seed.
+
 ## 0.9.1
 
 ### Patch Changes
