@@ -501,11 +501,23 @@ end
 # Resolve the model entry function: use the requested name, falling back to the
 # conventional build_model. This lets a request leave the entry implicit, or name a
 # custom entry that a given model file does not define (then build_model is used).
+# Load the user's model file into a throwaway module. Isolation keeps repeated
+# requests in the persistent worker from colliding on names (e.g. two models each
+# defining `const model_def`), and confines the model's globals to their own scope.
+function load_model_module(path)
+    mod = Module(gensym(:UserModel))
+    Base.include(mod, abspath(path))
+    return mod
+end
+
 function resolve_entry(mod, requested)
     for name in (requested, "build_model")
         name === nothing && continue
         sym = Symbol(name)
-        isdefined(mod, sym) && return getfield(mod, sym)
+        # The model was just include'd, so its bindings live in a newer world than
+        # this frame; resolve them in the latest world to avoid a Julia 1.12
+        # world-age warning on the access.
+        Base.invokelatest(isdefined, mod, sym) && return Base.invokelatest(getfield, mod, sym)
     end
     error("model file defines no entry function (looked for $(requested) and build_model)")
 end
@@ -520,8 +532,8 @@ function handle_request(request)
     try
         Random.seed!(Int(request["seed"]))
         rng = StableRNG(Int(request["seed"]))
-        Base.include(Main, abspath(request["model"]["file"]))
-        entry = resolve_entry(Main, get(request["model"], "entry", nothing))
+        modelmod = load_model_module(request["model"]["file"])
+        entry = resolve_entry(modelmod, get(request["model"], "entry", nothing))
 
         wire = if mode == "predict"
             if backend == "juliabugs"
