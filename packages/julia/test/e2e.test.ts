@@ -312,6 +312,69 @@ d("julia e2e: juliabugs predict recovers the posterior predictive", () => {
   }, 600_000);
 });
 
+d("julia e2e: turing predict recovers the posterior predictive via FlexiChains", () => {
+  it("rebuilds the posterior VNChain and forward-samples blanked targets, deterministically", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const tableModelPath = join(dir, "normal_table.jl");
+    writeFileSync(tableModelPath, TABLE_MODEL);
+    const tableSpec: ResolvedSpec = {
+      ...spec(300, 2),
+      model: { kind: "file", path: tableModelPath, entry: "build_model" },
+      modelPath: tableModelPath,
+      data: TABLE_DATA,
+      predict: { targets: ["y"] },
+    };
+    const outPath = join(dir, "turing.samples.json");
+    const fit = await runFit(
+      tableSpec,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        recordPath: join(dir, "turing.run.json"),
+      },
+    );
+    expect(fit.status).toBe("ok");
+
+    const predictOnce = async (predictOut: string) =>
+      runPredict(
+        tableSpec,
+        { command: env.command, args: env.args },
+        {
+          spawn: createFitRunner(),
+          projectDir: env.projectDir,
+          outPath: predictOut,
+          samplesPath: outPath,
+        },
+      );
+    const p1 = join(dir, "turing.predict.json");
+    expect((await predictOnce(p1)).status).toBe("ok");
+
+    const predictive: Samples = parseSamples(readFileSync(p1, "utf8"));
+    const n = TABLE_DATA.y.length;
+    // include_all=false: the predictive holds only the blanked targets, not the
+    // conditioned latents the posterior VNChain was rebuilt from.
+    expect([...predictive.variables].sort()).toEqual(
+      Array.from({ length: n }, (_, i) => `y[${i + 1}]`).sort(),
+    );
+    expect(predictive.nChains).toBe(2);
+    expect(predictive.nDraws).toBe(300);
+
+    // The predictive mean tracks the data mean (~5.006), proving the rebuilt
+    // VNChain carried the posterior parameters into predict.
+    const all = Array.from(predictive.variables).flatMap((v) =>
+      [0, 1].flatMap((chain) => Array.from(chainView(predictive, v, chain))),
+    );
+    const mean = all.reduce((a, b) => a + b, 0) / all.length;
+    expect(mean).toBeCloseTo(5.006, 0);
+
+    const p2 = join(dir, "turing.predict2.json");
+    expect((await predictOnce(p2)).status).toBe("ok");
+    expect(readFileSync(p2, "utf8")).toBe(readFileSync(p1, "utf8"));
+  }, 600_000);
+});
+
 d("julia e2e: juliabugs streams draws that reconstruct the final samples", () => {
   it("streams named, constrained draws (parameters, generated quantities, stats)", async () => {
     const env = ENV as NonNullable<typeof ENV>;

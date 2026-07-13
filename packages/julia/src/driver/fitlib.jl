@@ -1,15 +1,14 @@
 # MCMC.js fit library, shared by the one-shot driver (driver.jl) and the
 # persistent worker (worker.jl). handle_request runs one fit or predict request
-# (Turing or JuliaBUGS) and writes the draws as MCMCChains-JSON (the
-# @mcmcjs/core samples artifact). This is the only place that touches the
-# backend chain types, so a chain-type change is contained here.
+# (Turing or JuliaBUGS) and writes the draws as the @mcmcjs/core samples
+# artifact (a flat JSON wire). This is the only place that touches the backend
+# chain type (FlexiChains), so a chain-type change is contained here.
 using JSON
 using Logging
 using Random
 using StableRNGs
 using Turing
 using Turing: VarName
-using MCMCChains
 using SHA
 using Pkg
 # Imported (not `using`) so they do not pull `@model` etc. into Main and clash
@@ -136,28 +135,59 @@ predict_namedtuple(data) = (; (Symbol(k) => to_missing(v) for (k, v) in data)...
 # A blanked target compiles to a latent node; JuliaBUGS drops scalar missings.
 bugs_predict_namedtuple(data) = (; (Symbol(k) => narrow(to_missing(v)) for (k, v) in data)...)
 
-# Rebuild a posterior Chains (latents only) from our MCMCChains-JSON wire object so
-# it can feed Turing.predict. The varname_to_symbol map is required for VarName
-# indexing; target outcome columns are excluded.
-function chains_from_wire(wire, targets)
+# Rebuild a posterior VNChain (latents only) from our samples wire so it can feed
+# Turing's predict. Scalar leaves are regrouped into their array-valued VarName
+# (theta[1..8] -> @varname(theta) holding an 8-vector), so predict matches the
+# model's parameters exactly instead of relying on leaf reconstruction. Target
+# outcome columns are excluded.
+function wire_to_vnchain(wire, targets)
     sz = wire["size"]
-    nIter, nParams, nChains = Int(sz[1]), Int(sz[2]), Int(sz[3])
+    nIter, total, nChains = Int(sz[1]), Int(sz[2]), Int(sz[3])
     flat = wire["value_flat"]
-    allnames = wire["parameters"]
+    index = Dict(n => i for (i, n) in enumerate(wire["parameters"]))
     is_target(n) = any(t -> n == t || startswith(n, t * "["), targets)
     keep = [n for n in wire["name_map"]["parameters"] if !is_target(n)]
-    index = Dict(n => i for (i, n) in enumerate(allnames))
-    arr = Array{Float64,3}(undef, nIter, length(keep), nChains)
-    for (newp, n) in enumerate(keep)
-        p = index[n]
-        for c in 1:nChains, i in 1:nIter
-            v = flat[i + (p - 1) * nIter + (c - 1) * nIter * nParams]
-            arr[i, newp, c] = v === nothing ? NaN : Float64(v)
+    cell(name, i, c) = begin
+        p = index[name]
+        v = flat[i + (p - 1) * nIter + (c - 1) * nIter * total]
+        v === nothing ? NaN : Float64(v)
+    end
+    base_of(n) = (b = findfirst('[', n); b === nothing ? n : n[1:prevind(n, b)])
+    idx_of(n) = begin
+        b = findfirst('[', n)
+        b === nothing && return Int[]
+        inner = n[nextind(n, b):prevind(n, findlast(']', n))]
+        parse.(Int, split(inner, ','))
+    end
+    groups = Dict{String,Vector{String}}()
+    for n in keep
+        push!(get!(groups, base_of(n), String[]), n)
+    end
+    dict = Dict{FlexiChains.ParameterOrExtra{<:VarName},Array}()
+    for (base, names) in groups
+        vn = eval(:(Turing.@varname($(Meta.parse(base)))))
+        if length(names) == 1 && isempty(idx_of(names[1]))
+            m = Matrix{Float64}(undef, nIter, nChains)
+            for c in 1:nChains, i in 1:nIter
+                m[i, c] = cell(names[1], i, c)
+            end
+            dict[FlexiChains.Parameter(vn)] = m
+        else
+            idxs = [idx_of(n) for n in names]
+            D = length(idxs[1])
+            dims = ntuple(d -> maximum(ix[d] for ix in idxs), D)
+            m = Matrix{Array{Float64,D}}(undef, nIter, nChains)
+            for c in 1:nChains, i in 1:nIter
+                a = Array{Float64,D}(undef, dims...)
+                for (n, ix) in zip(names, idxs)
+                    a[ix...] = cell(n, i, c)
+                end
+                m[i, c] = a
+            end
+            dict[FlexiChains.Parameter(vn)] = m
         end
     end
-    syms = Symbol.(keep)
-    vmap = Dict{VarName,Symbol}(eval(:(Turing.@varname($(Meta.parse(n))))) => Symbol(n) for n in keep)
-    return MCMCChains.Chains(arr, syms, Dict(:parameters => syms); info = (; varname_to_symbol = vmap))
+    return FlexiChains.FlexiChain{VarName}(nIter, nChains, dict)
 end
 
 # Expand one sampler transition to canonical scalar leaves (theta -> theta[1], ...),
@@ -268,8 +298,7 @@ end
 
 # FlexiChains-native wire writer. DimArray(chn) splits array-valued parameters
 # into scalar leaves (theta -> theta[1], theta[2]) in the (iter, chain, param)
-# orientation; Real-valued extras become the internals section, matching what
-# the MCMCChains bridge produced.
+# orientation; Real-valued extras become the internals section.
 function vnchain_to_wire(chn)
     da = DimensionalData.DimArray(chn)
     pnames = string.(collect(DimensionalData.lookup(da, :param)))
@@ -460,32 +489,11 @@ function predict_bugs(model, posterior, targets, rng)
     )
 end
 
-# Build the exact wire object parseMCMCChainsJson consumes: value_flat is indexed
-# i + p*nIter + c*nIter*nParams (column-major over [iteration, parameter, chain]).
-function chains_to_wire(chn)
-    arr = Array(chn.value)
-    nIter, nParams, nChains = size(arr)
-    flat = Vector{Union{Float64,Nothing}}(undef, nIter * nParams * nChains)
-    for c in 1:nChains, p in 1:nParams, i in 1:nIter
-        v = arr[i, p, c]
-        flat[i + (p - 1) * nIter + (c - 1) * nIter * nParams] = v === missing ? nothing : Float64(v)
-    end
-    return Dict(
-        "size" => [nIter, nParams, nChains],
-        "value_flat" => flat,
-        "parameters" => string.(names(chn)),
-        "name_map" => Dict(
-            "parameters" => string.(get(chn.name_map, :parameters, Symbol[])),
-            "internals" => string.(get(chn.name_map, :internals, Symbol[])),
-        ),
-    )
-end
-
 function provenance()
     packages = Dict{String,String}()
     for (_, info) in Pkg.dependencies()
         if info.name in
-           ("Turing", "FlexiChains", "MCMCChains", "DynamicPPL", "AbstractMCMC", "JuliaBUGS", "AdvancedHMC", "ForwardDiff", "Mooncake", "ADTypes") &&
+           ("Turing", "FlexiChains", "DynamicPPL", "AbstractMCMC", "JuliaBUGS", "AdvancedHMC", "ForwardDiff", "Mooncake", "ADTypes") &&
            info.version !== nothing
             packages[info.name] = string(info.version)
         end
@@ -545,12 +553,12 @@ function handle_request(request)
             else
                 model = Base.invokelatest(entry, ModelData(predict_namedtuple(request["data"])))
                 stage = "load_samples"
-                rchn = chains_from_wire(JSON.parsefile(request["samples"]), request["predict"]["targets"])
+                rchn = wire_to_vnchain(JSON.parsefile(request["samples"]), request["predict"]["targets"])
                 stage = "predict"
-                pp = Base.invokelatest(predict, rng, model, rchn)
-                isempty(names(pp)) &&
+                pp = Base.invokelatest(predict, rng, model, rchn; include_all = false)
+                isempty(FlexiChains.parameters(pp)) &&
                     error("no variables predicted; check that [predict].targets name unconditioned outcomes")
-                chains_to_wire(pp)
+                vnchain_to_wire(pp)
             end
         else
             data = backend == "juliabugs" ? bugs_namedtuple(request["data"]) : ModelData(to_namedtuple(request["data"]))
