@@ -1,5 +1,11 @@
 # @mcmcjs/julia
 
+## 0.11.1
+
+### Patch Changes
+
+- 5593cd1: Loading a model no longer emits a Julia 1.12 world-age binding warning: the model file is loaded into its own module and its entry is resolved in the latest world. Each run's model is isolated, so repeated runs in the persistent worker cannot collide on global names.
+
 ## 0.11.0
 
 ### Minor Changes
