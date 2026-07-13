@@ -17,7 +17,7 @@ import { resolveCmdStan, runFit as runStanFit, runMatrix as runStanMatrix } from
 import type { Command } from "commander";
 import pc from "picocolors";
 import { installRunner, juliaupBin } from "./julia";
-import { rendererFor } from "./progress";
+import { rendererFor, silentProgress } from "./progress";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
 
@@ -119,7 +119,10 @@ export function registerFit(program: Command, ctx: EngineContext): void {
       "run the spec across these versions of one managed package (e.g. Turing=0.44,0.45)",
     )
     .option("--keep-going", "with --versions/--package-versions, continue after a failure")
-    .option("--verbose", "show the full raw install/precompile output, not a collapsed spinner")
+    .option(
+      "--verbose",
+      "show the full raw install/precompile and sampler output, not a collapsed spinner",
+    )
     .option("--json", "print the result as JSON")
     .action(
       async (
@@ -330,7 +333,12 @@ export function registerFit(program: Command, ctx: EngineContext): void {
         );
 
         if (!opts.json) process.stdout.write(`Fitting ${spec.backend.id} on Julia ${channel}...\n`);
-        const progress = rendererFor(opts.json, backendLabel(spec.backend.id));
+        // --verbose streams the sampler's raw output instead of a progress bar,
+        // mirroring how it shows the raw install/precompile output.
+        const rawLogs = Boolean(opts.verbose) && !opts.json;
+        const progress = rawLogs
+          ? silentProgress
+          : rendererFor(opts.json, backendLabel(spec.backend.id));
         const controller = new AbortController();
         const onSigint = () => controller.abort();
         process.once("SIGINT", onSigint);
@@ -341,6 +349,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
             projectDir,
             outPath,
             onProgress: progress.onProgress,
+            onLog: rawLogs ? (line) => void process.stderr.write(`${line}\n`) : undefined,
             signal: controller.signal,
             daemon: opts.daemon ?? process.env.MCMC_DAEMON === "1",
             notify: (line) => {
