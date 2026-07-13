@@ -1,5 +1,17 @@
 # @mcmcjs/julia
 
+## 0.11.0
+
+### Minor Changes
+
+- 81fe2b2: JuliaBUGS now streams draws live during sampling, like the Turing backend. Each batch carries named, constrained parameters, generated quantities, and sampler statistics, reconstructed to match the final samples file exactly.
+- 84fd81b: runFit forwards an optional onLog callback through FitIo so callers can stream the sampler's raw output live.
+
+### Patch Changes
+
+- Updated dependencies [84fd81b]
+  - @mcmcjs/engine@0.6.0
+
 ## 0.10.0
 
 ### Minor Changes
