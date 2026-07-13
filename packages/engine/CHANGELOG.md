@@ -1,5 +1,11 @@
 # @mcmcjs/engine
 
+## 0.6.0
+
+### Minor Changes
+
+- 84fd81b: FitRunner gains an onLog callback that receives the sampler's raw console lines as they arrive, with the structured progress and draws lines filtered out.
+
 ## 0.5.0
 
 ### Minor Changes

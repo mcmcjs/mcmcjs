@@ -1,5 +1,20 @@
 # mcmcjs
 
+## 0.18.0
+
+### Minor Changes
+
+- 621aa32: mcmc fit --verbose now streams the sampler's raw output live instead of a progress bar, matching how it already shows raw install and precompile output.
+
+### Patch Changes
+
+- Updated dependencies [84fd81b]
+- Updated dependencies [81fe2b2]
+- Updated dependencies [84fd81b]
+  - @mcmcjs/engine@0.6.0
+  - @mcmcjs/julia@0.11.0
+  - @mcmcjs/stan@0.1.1
+
 ## 0.17.0
 
 ### Minor Changes
