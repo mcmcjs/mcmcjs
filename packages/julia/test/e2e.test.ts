@@ -311,3 +311,52 @@ d("julia e2e: juliabugs predict recovers the posterior predictive", () => {
     expect(readFileSync(p2, "utf8")).toBe(readFileSync(p1, "utf8"));
   }, 600_000);
 });
+
+d("julia e2e: juliabugs streams draws that reconstruct the final samples", () => {
+  it("streams named, constrained draws (parameters, generated quantities, stats)", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const bugsModelPath = join(dir, "normal_bugs_stream.jl");
+    writeFileSync(bugsModelPath, BUGS_MODEL);
+    const bugsSpec: ResolvedSpec = {
+      ...spec(150, 2),
+      backend: { id: "juliabugs", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
+      model: { kind: "file", path: bugsModelPath, entry: "build_model" },
+      modelPath: bugsModelPath,
+      data: { N: TABLE_DATA.y.length, ...TABLE_DATA },
+    };
+    const outPath = join(dir, "bugs.stream.samples.json");
+    const batches: DrawBatch[] = [];
+    const result = await runFit(
+      bugsSpec,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        recordPath: join(dir, "bugs.stream.run.json"),
+        onDraws: (b) => batches.push(b),
+      },
+    );
+
+    expect(result.status).toBe("ok");
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect(batches.length).toBeGreaterThan(0);
+    expect([...new Set(batches.map((b) => b.chain))].sort((a, c) => a - c)).toEqual([0, 1]);
+    // sigma is a deterministic generated quantity, reconstructed per draw, not a
+    // sampled parameter; it must still stream.
+    expect(samples.variables).toContain("sigma");
+
+    for (const chain of [0, 1]) {
+      const cols = reconstructChain(batches, chain);
+      for (const leaf of [...samples.variables, ...samples.sampleStats.keys()]) {
+        const truth = chainView(samples, leaf, chain);
+        const recon = cols[leaf];
+        if (!recon) throw new Error(`chain ${chain} leaf ${leaf} never appeared in the stream`);
+        expect(recon).toHaveLength(truth.length);
+        for (let i = 0; i < truth.length; i++) {
+          expect(recon[i]).toBeCloseTo(truth[i] ?? Number.NaN, 9);
+        }
+      }
+    }
+  }, 600_000);
+});

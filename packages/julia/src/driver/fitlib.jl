@@ -305,12 +305,81 @@ end
 # separate latest-world frames; merging them reintroduces a world-age error.
 # Returns a FlexiChain like the Turing path; gen_chains recovers generated
 # quantities (unobserved nodes with no observed descendants) after sampling.
-function sample_bugs(model, sampler, warmup, draws, chains, rng)
+# With a callback, draws stream (see bugs_draw_streamer).
+function sample_bugs(model, sampler, warmup, draws, chains, rng; callback = nothing)
+    kw = callback === nothing ? NamedTuple() : (; callback)
     return Logging.with_logger(JSONProgressLogger()) do
         JuliaBUGS.AbstractMCMC.sample(
             rng, model, sampler, JuliaBUGS.AbstractMCMC.MCMCSerial(), draws, chains;
-            chain_type = FlexiChains.VNChain, n_adapts = warmup, discard_initial = warmup, progress = true,
+            chain_type = FlexiChains.VNChain, n_adapts = warmup, discard_initial = warmup,
+            progress = true, kw...,
         )
+    end
+end
+
+# The JuliaBUGS counterpart to draw_streamer. A JuliaBUGS transition is a raw
+# AdvancedHMC.Transition whose params are an unconstrained vector, so (unlike the
+# Turing path) draws cannot be read off it directly. Per batch we rebuild a small
+# FlexiChain through the same gen_chains + vnchain_to_wire path the final file
+# uses, so the streamed leaf names (parameters, generated quantities, and sampler
+# stats) match the file exactly. Reconstruction runs on a copy of the model so it
+# never perturbs the sampler's state. AbstractMCMC passes the 1-based chain index
+# as chain_number; each chain's batches carry a per-chain monotonic seq.
+# TODO: once the pinned JuliaBUGS carries TuringLang/JuliaBUGS.jl#517 (with
+# AbstractMCMC#212 and AbstractPPL#178), a transition exposes named constrained
+# params (a VarNamedTuple) plus generated quantities, so this collapses to a
+# per-draw flatten like draw_streamer, dropping the deepcopy and reconstruction.
+function bugs_draw_streamer(model, draws_per_chain::Int, batch_size::Int)
+    recon = deepcopy(model)
+    side_rng = StableRNG(0)
+    chain = Ref(-1)
+    seq = Ref(0)
+    θs = Vector{Vector{Float64}}()
+    lps = Float64[]
+    stats = Any[]
+    function emit(iteration)
+        isempty(θs) && return
+        stats_names = collect(keys(merge((; lp = lps[1]), stats[1])))
+        stats_values = [vcat(lps[i], collect(values(stats[i]))) for i in eachindex(θs)]
+        chn = JuliaBUGS.gen_chains(FlexiChains.VNChain, recon, θs, stats_names, stats_values; rng = side_rng)
+        wire = vnchain_to_wire(chn)
+        nIter, total, _ = wire["size"]
+        flat = wire["value_flat"]
+        params = wire["parameters"]
+        cols = Dict(params[p] => [flat[i + (p - 1) * nIter] for i in 1:nIter] for p in 1:total)
+        println(
+            PROGRESS_IO[],
+            JSON.json(
+                Dict(
+                    "mcmcjs" => "draws",
+                    "chain" => chain[],
+                    "seq" => seq[],
+                    "iteration" => iteration,
+                    "draws" => cols,
+                ),
+            ),
+        )
+        flush(PROGRESS_IO[])
+        seq[] += 1
+        empty!(θs)
+        empty!(lps)
+        empty!(stats)
+    end
+    return function (_rng, _model, _sampler, transition, _state, iteration; chain_number = 1, _kwargs...)
+        c = Int(chain_number) - 1
+        if c != chain[]
+            chain[] = c
+            seq[] = 0
+            empty!(θs)
+            empty!(lps)
+            empty!(stats)
+        end
+        push!(θs, copy(transition.z.θ))
+        push!(lps, transition.z.ℓπ.value)
+        push!(stats, AdvancedHMC.stat(transition))
+        if length(θs) >= batch_size || iteration >= draws_per_chain
+            emit(iteration)
+        end
     end
 end
 
@@ -479,7 +548,13 @@ function handle_request(request)
             stage = "sample"
             if backend == "juliabugs"
                 model = Base.invokelatest(entry, data)
-                chn = Base.invokelatest(sample_bugs, model, sampler, warmup, draws, chains, rng)
+                # Reconstruction reads the plain BUGSModel; entry may return a gradient wrapper.
+                base = hasproperty(model, :base_model) ? model.base_model : model
+                cb = get(request, "stream_draws", false) ?
+                    bugs_draw_streamer(base, draws, Int(get(request, "draw_batch_size", 25))) : nothing
+                chn = Base.invokelatest(
+                    sample_bugs, model, sampler, warmup, draws, chains, rng; callback = cb,
+                )
                 vnchain_to_wire(chn)
             else
                 cb = get(request, "stream_draws", false) ?
