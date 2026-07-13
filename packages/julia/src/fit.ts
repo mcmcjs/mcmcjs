@@ -23,6 +23,9 @@ export interface FitIo {
   onProgress?: (progress: FitProgress) => void;
   /** Streamed draw batches as sampling proceeds. */
   onDraws?: (batch: DrawBatch) => void;
+  /** Raw console lines from the sampler as they arrive (structured progress/draws
+   * lines are filtered out), for surfacing solver logs live. */
+  onLog?: (line: string, stream: "stdout" | "stderr") => void;
   /** Draws per streamed batch (driver default 25); lower it when models have many leaves. */
   drawBatchSize?: number;
   /** Aborts an in-progress fit; the run then ends with a "cancelled" status. */
@@ -165,6 +168,7 @@ export async function runFit(
     ({ stdout, stderr, code, cancelled } = await io.spawn(resolved.command, args, {
       onProgress: io.onProgress,
       onDraws: io.onDraws,
+      onLog: io.onLog,
       signal: io.signal,
     }));
   } finally {

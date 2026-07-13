@@ -134,6 +134,9 @@ export type FitRunner = (
     timeoutMs?: number;
     onProgress?: (progress: FitProgress) => void;
     onDraws?: (batch: DrawBatch) => void;
+    /** Raw console lines from the sampler (the structured progress/draws lines
+     * are filtered out), as they arrive. For surfacing solver logs live. */
+    onLog?: (line: string, stream: "stdout" | "stderr") => void;
     /** Aborts the run: the child (and its group) is killed and `cancelled` is set. */
     signal?: AbortSignal;
   },
@@ -247,6 +250,7 @@ export function createFitRunner(timeoutMs = 30 * 60_000): FitRunner {
           opts?.onDraws?.(batch);
           return;
         }
+        opts?.onLog?.(line, "stderr");
         if (stderr.length < MAX_CAPTURE) stderr += `${line}\n`;
       };
 

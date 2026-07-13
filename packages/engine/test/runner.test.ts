@@ -155,6 +155,20 @@ describe("createFitRunner (streaming)", () => {
     expect(result.stderr).not.toContain('"mcmcjs"');
   });
 
+  it("forwards non-structured lines to onLog, filtering progress and draws", async () => {
+    const script = [
+      'process.stderr.write(\'{"mcmcjs":"progress","chain":1,"of":1,"fraction":0.5,"done":false}\\n\');',
+      "process.stderr.write('precompiling Turing\\n');",
+      'process.stderr.write(\'{"mcmcjs":"draws","chain":0,"seq":0,"iteration":2,"draws":{"mu":[0.1]}}\\n\');',
+      "process.stderr.write('sampler warning: low ESS\\n');",
+    ].join("");
+    const logs: string[] = [];
+    const run = createFitRunner();
+    await run(process.execPath, ["-e", script], { onLog: (line) => logs.push(line) });
+
+    expect(logs).toEqual(["precompiling Turing", "sampler warning: low ESS"]);
+  });
+
   it("flushes a final stderr line without a trailing newline", async () => {
     const run = createFitRunner();
     const result = await run(process.execPath, ["-e", "process.stderr.write('tail');"]);
