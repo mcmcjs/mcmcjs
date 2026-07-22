@@ -1,5 +1,17 @@
 # mcmcjs
 
+## 0.19.0
+
+### Minor Changes
+
+- b361256: mcmc plot gains --kind corner, a PairPlots.jl-style corner plot with sigma contours, layered marginals, quantile titles, and a --truth flag for reference lines.
+
+### Patch Changes
+
+- Updated dependencies [b361256]
+- Updated dependencies [8b3551f]
+  - @mcmcjs/plots@0.5.0
+
 ## 0.18.2
 
 ### Patch Changes
