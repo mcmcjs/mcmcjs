@@ -202,7 +202,7 @@ describe("cornerData", () => {
   it("applies the grayscale single-series tier", () => {
     const data = cornerData([{ samples: gaussianSamples }]);
     expect(data.vars).toEqual(["alpha", "beta"]);
-    expect(data.series[0]?.color).toBe("rgba(0,0,0,0.5)");
+    expect(data.series[0]?.color).toBe("var(--mcmc-fg-soft,rgba(0,0,0,0.5))");
     const cell = data.cells[0];
     expect(cell?.row).toBe(1);
     expect(cell?.col).toBe(0);

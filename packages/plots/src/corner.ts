@@ -74,6 +74,7 @@ export interface MarginDensityViz {
 export interface MarginQuantileTextViz {
   type: "marginquantiletext";
   quantiles?: [number, number, number];
+  color?: string;
 }
 export interface MarginQuantileLinesViz {
   type: "marginquantilelines";
@@ -152,7 +153,13 @@ export type CornerBodyLayer =
       weights: number[][];
       wmax: number;
     }
-  | { type: "contour"; seriesIndex: number; color: string; linewidth: number; curves: CornerRing[] }
+  | {
+      type: "contour";
+      seriesIndex: number;
+      color: string;
+      linewidth: number;
+      levels: { sigma: number; rings: CornerRing[] }[];
+    }
   | {
       type: "contourf";
       seriesIndex: number;
@@ -250,15 +257,15 @@ const DENSITY_N = 100;
 
 // PairPlots' tiered defaults: grayscale for one series, wong-colored overlays
 // for up to five, contour-only beyond that.
-const SINGLE_SERIES_COLOR = "rgba(0,0,0,0.5)";
+const SINGLE_SERIES_COLOR = "var(--mcmc-fg-soft,rgba(0,0,0,0.5))";
 const SINGLE_SERIES_VIZ: CornerViz[] = [
-  { type: "hexbin", color: "#333333" },
+  { type: "hexbin", color: "var(--mcmc-fg,#333333)" },
   { type: "scatter", filtersigma: 2 },
   { type: "contour", linewidth: 1.5 },
   { type: "marginhist", color: "rgba(102,102,102,0.15)" },
   { type: "marginstephist", color: "rgba(102,102,102,0.8)" },
-  { type: "margindensity", color: "#000000", linewidth: 1.5 },
-  { type: "marginquantiletext" },
+  { type: "margindensity", color: "var(--mcmc-fg,#000000)", linewidth: 1.5 },
+  { type: "marginquantiletext", color: "var(--mcmc-fg,#000000)" },
   { type: "marginquantilelines" },
 ];
 const MULTI_SERIES_VIZ: CornerViz[] = [
@@ -661,7 +668,7 @@ export function groupRings(rings: CornerRing[]): CornerPolygon[] {
 
 interface ContourSet {
   thresholds: number[];
-  levels: CornerRing[][];
+  levels: { sigma: number; rings: CornerRing[] }[];
 }
 
 /** KDE contours for one variable pair, on the zero-padded 100 x 100 grid. */
@@ -693,7 +700,11 @@ function prepContours(
       (padH[i + 1] as number[])[j + 1] = (h[i] as number[])[j] as number;
     }
   }
-  const levels = thresholds.map((t) => marchingSquares(padX, padY, padH, t));
+  const bySigma = [...sigmas].sort((a, b) => b - a);
+  const levels = thresholds.map((t, i) => ({
+    sigma: bySigma[i] ?? (bySigma[bySigma.length - 1] as number),
+    rings: marchingSquares(padX, padY, padH, t),
+  }));
   return { thresholds, levels };
 }
 
@@ -1012,7 +1023,7 @@ export function cornerData(seriesIn: CornerSeries[], opts: CornerOptions = {}): 
             const high = quantileT7(data, q[2]) - mid;
             titles.push({
               seriesIndex: si,
-              color: s.color,
+              color: layer.color ?? s.color,
               text: marginTitle(low, mid, high),
               low,
               mid,
@@ -1041,12 +1052,12 @@ export function cornerData(seriesIn: CornerSeries[], opts: CornerOptions = {}): 
       layers.push({
         type: "marginlines",
         seriesIndex: series.length + ti,
-        color: t.color ?? "#333333",
+        color: t.color ?? "var(--mcmc-fg,#333333)",
         values,
       });
       titles.push({
         seriesIndex: series.length + ti,
-        color: t.color ?? "#333333",
+        color: t.color ?? "var(--mcmc-fg,#333333)",
         text: [...new Set(values)].map((value) => marginTitle(0, value, 0)).join(", "),
         low: 0,
         mid: values[0] as number,
@@ -1059,7 +1070,7 @@ export function cornerData(seriesIn: CornerSeries[], opts: CornerOptions = {}): 
       layers.push({
         type: "marginbands",
         seriesIndex: series.length + truths.length + bi,
-        color: b.color ?? "#333333",
+        color: b.color ?? "var(--mcmc-fg,#333333)",
         alpha: b.alpha ?? 0.4,
         ranges: [r],
       });
@@ -1119,7 +1130,7 @@ export function cornerData(seriesIn: CornerSeries[], opts: CornerOptions = {}): 
                 seriesIndex: si,
                 color: layer.color ?? s.color,
                 linewidth: layer.linewidth ?? 1.5,
-                curves: levels.flat(),
+                levels,
               });
               break;
             }
@@ -1137,7 +1148,7 @@ export function cornerData(seriesIn: CornerSeries[], opts: CornerOptions = {}): 
                 seriesIndex: si,
                 color: layer.color ?? s.color,
                 alpha: layer.alpha ?? 1,
-                polygons: levels.flatMap((rings) => groupRings(rings)),
+                polygons: levels.flatMap((level) => groupRings(level.rings)),
               });
               break;
             }
@@ -1146,7 +1157,7 @@ export function cornerData(seriesIn: CornerSeries[], opts: CornerOptions = {}): 
               let y: number[];
               if (layer.filtersigma !== undefined) {
                 const { levels } = prepContours(xdat, ydat, [layer.filtersigma], essX, essY, 1);
-                ({ x, y } = filterScatter(xdat, ydat, (levels[0] ?? []) as CornerRing[]));
+                ({ x, y } = filterScatter(xdat, ydat, levels[0]?.rings ?? []));
               } else {
                 x = [...xdat];
                 y = [...ydat];
@@ -1196,7 +1207,7 @@ export function cornerData(seriesIn: CornerSeries[], opts: CornerOptions = {}): 
         layers.push({
           type: "bodylines",
           seriesIndex: series.length + ti,
-          color: t.color ?? "#333333",
+          color: t.color ?? "var(--mcmc-fg,#333333)",
           xs,
           ys,
         });
@@ -1208,7 +1219,7 @@ export function cornerData(seriesIn: CornerSeries[], opts: CornerOptions = {}): 
         layers.push({
           type: "bodybands",
           seriesIndex: series.length + truths.length + bi,
-          color: b.color ?? "#333333",
+          color: b.color ?? "var(--mcmc-fg,#333333)",
           alpha: b.alpha ?? 0.4,
           x: rx ? [rx] : [],
           y: ry ? [ry] : [],

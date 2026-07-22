@@ -59,48 +59,56 @@ export function svgFrame(opts: SvgFrameOptions): SvgFrame {
 
   const render = (content: string): string => {
     const p: string[] = [
-      `<rect x="0" y="0" width="${opts.width}" height="${opts.height}" fill="#ffffff"/>`,
+      `<rect x="0" y="0" width="${opts.width}" height="${opts.height}" fill="var(--mcmc-bg,#ffffff)"/>`,
     ];
     if (opts.title) {
       p.push(
-        `<text x="${midX}" y="18" text-anchor="middle" font-weight="bold" fill="#111">${esc(opts.title)}</text>`,
+        `<text x="${midX}" y="18" text-anchor="middle" font-weight="bold" fill="var(--mcmc-fg,#111)">${esc(opts.title)}</text>`,
       );
     }
-    p.push(`<line x1="${left}" y1="${bottom}" x2="${right}" y2="${bottom}" stroke="#333"/>`);
-    p.push(`<line x1="${left}" y1="${top}" x2="${left}" y2="${bottom}" stroke="#333"/>`);
+    p.push(
+      `<line x1="${left}" y1="${bottom}" x2="${right}" y2="${bottom}" stroke="var(--mcmc-fg,#333)"/>`,
+    );
+    p.push(
+      `<line x1="${left}" y1="${top}" x2="${left}" y2="${bottom}" stroke="var(--mcmc-fg,#333)"/>`,
+    );
     if (opts.yLabels) {
       opts.yLabels.forEach((label, i) => {
         const py = y.map(i + 0.5);
         p.push(
-          `<text x="${left - 7}" y="${py + 4}" text-anchor="end" fill="#333">${esc(label)}</text>`,
+          `<text x="${left - 7}" y="${py + 4}" text-anchor="end" fill="var(--mcmc-fg,#333)">${esc(label)}</text>`,
         );
       });
     } else {
       for (const t of ticks(opts.yDomain[0], opts.yDomain[1])) {
         const py = y.map(t);
         if (py < top - 0.5 || py > bottom + 0.5) continue;
-        p.push(`<line x1="${left - 4}" y1="${py}" x2="${left}" y2="${py}" stroke="#333"/>`);
         p.push(
-          `<text x="${left - 7}" y="${py + 4}" text-anchor="end" fill="#333">${esc(fmtNum(t))}</text>`,
+          `<line x1="${left - 4}" y1="${py}" x2="${left}" y2="${py}" stroke="var(--mcmc-fg,#333)"/>`,
+        );
+        p.push(
+          `<text x="${left - 7}" y="${py + 4}" text-anchor="end" fill="var(--mcmc-fg,#333)">${esc(fmtNum(t))}</text>`,
         );
       }
     }
     for (const t of ticks(opts.xDomain[0], opts.xDomain[1])) {
       const px = x.map(t);
       if (px < left - 0.5 || px > right + 0.5) continue;
-      p.push(`<line x1="${px}" y1="${bottom}" x2="${px}" y2="${bottom + 4}" stroke="#333"/>`);
       p.push(
-        `<text x="${px}" y="${bottom + 17}" text-anchor="middle" fill="#333">${esc(fmtNum(t))}</text>`,
+        `<line x1="${px}" y1="${bottom}" x2="${px}" y2="${bottom + 4}" stroke="var(--mcmc-fg,#333)"/>`,
+      );
+      p.push(
+        `<text x="${px}" y="${bottom + 17}" text-anchor="middle" fill="var(--mcmc-fg,#333)">${esc(fmtNum(t))}</text>`,
       );
     }
     if (opts.xLabel) {
       p.push(
-        `<text x="${midX}" y="${opts.height - 4}" text-anchor="middle" fill="#333">${esc(opts.xLabel)}</text>`,
+        `<text x="${midX}" y="${opts.height - 4}" text-anchor="middle" fill="var(--mcmc-fg,#333)">${esc(opts.xLabel)}</text>`,
       );
     }
     if (opts.yLabel) {
       p.push(
-        `<text x="14" y="${midY}" text-anchor="middle" fill="#333" transform="rotate(-90 14 ${midY})">${esc(opts.yLabel)}</text>`,
+        `<text x="14" y="${midY}" text-anchor="middle" fill="var(--mcmc-fg,#333)" transform="rotate(-90 14 ${midY})">${esc(opts.yLabel)}</text>`,
       );
     }
     p.push(content);
@@ -118,16 +126,33 @@ export function svgFrame(opts: SvgFrameOptions): SvgFrame {
 }
 
 /** A polyline path through pixel points. */
-export function svgPolyline(points: [number, number][], stroke: string, width = 1.25): string {
+export function svgPolyline(
+  points: [number, number][],
+  stroke: string,
+  width = 1.25,
+  tip?: string,
+): string {
   if (points.length === 0) return "";
   const d = points
     .map(([px, py], i) => `${i === 0 ? "M" : "L"}${px.toFixed(2)} ${py.toFixed(2)}`)
     .join(" ");
-  return `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${width}" stroke-opacity="0.85"/>`;
+  return `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${width}" stroke-opacity="0.85"${tipAttr(tip)}/>`;
 }
 
-export function svgRect(x: number, y: number, w: number, h: number, fill: string): string {
-  return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(0, w).toFixed(2)}" height="${Math.max(0, h).toFixed(2)}" fill="${fill}"/>`;
+/** A data-tip attribute fragment for hover tooltips ("" when absent). */
+export function tipAttr(tip?: string): string {
+  return tip ? ` data-tip="${esc(tip)}"` : "";
+}
+
+export function svgRect(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  fill: string,
+  tip?: string,
+): string {
+  return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(0, w).toFixed(2)}" height="${Math.max(0, h).toFixed(2)}" fill="${fill}"${tipAttr(tip)}/>`;
 }
 
 export interface SvgPathOptions {
@@ -138,6 +163,7 @@ export interface SvgPathOptions {
   stroke?: string;
   strokeWidth?: number;
   strokeDash?: string;
+  tip?: string;
 }
 
 /** A raw path from pre-built `d` data (polygons, hexagons, contour rings). */
@@ -149,6 +175,7 @@ export function svgPath(d: string, opts: SvgPathOptions = {}): string {
   if (opts.stroke) parts.push(`stroke="${opts.stroke}"`);
   if (opts.strokeWidth !== undefined) parts.push(`stroke-width="${opts.strokeWidth}"`);
   if (opts.strokeDash) parts.push(`stroke-dasharray="${opts.strokeDash}"`);
+  if (opts.tip) parts.push(`data-tip="${esc(opts.tip)}"`);
   return `${parts.join(" ")}/>`;
 }
 
@@ -168,12 +195,13 @@ export function svgLine(
   y2: number,
   stroke: string,
   width = 1,
+  tip?: string,
 ): string {
-  return `<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${stroke}" stroke-width="${width}"/>`;
+  return `<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${stroke}" stroke-width="${width}"${tipAttr(tip)}/>`;
 }
 
-export function svgCircle(cx: number, cy: number, r: number, fill: string): string {
-  return `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${r}" fill="${fill}"/>`;
+export function svgCircle(cx: number, cy: number, r: number, fill: string, tip?: string): string {
+  return `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${r}" fill="${fill}"${tipAttr(tip)}/>`;
 }
 
 export function svgText(
@@ -182,7 +210,7 @@ export function svgText(
   text: string,
   anchor: "start" | "middle" | "end" = "start",
 ): string {
-  return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" text-anchor="${anchor}" fill="#333">${esc(text)}</text>`;
+  return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" text-anchor="${anchor}" fill="var(--mcmc-fg,#333)">${esc(text)}</text>`;
 }
 
 /** Stacks standalone SVGs vertically into one document (each nested at a y offset). */

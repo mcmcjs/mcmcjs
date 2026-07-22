@@ -64,6 +64,8 @@ export function renderTraceSVG(data: TraceData, opts: SvgOptions = {}): string {
       svgPolyline(
         vals.map((v, i) => [frame.x.map(i), frame.y.map(v)] as [number, number]),
         seriesColor(chain),
+        1.25,
+        `chain ${chain + 1}`,
       ),
     )
     .join("");
@@ -90,6 +92,8 @@ export function renderDensitySVG(data: DensityData, opts: SvgOptions = {}): stri
       svgPolyline(
         curve.map((v, k) => [frame.x.map(data.x[k] ?? 0), frame.y.map(v)] as [number, number]),
         seriesColor(chain),
+        1.25,
+        `chain ${chain + 1}`,
       ),
     )
     .join("");
@@ -116,7 +120,14 @@ export function renderHistogramSVG(data: HistogramData, opts: SvgOptions = {}): 
       const x0 = frame.x.map(edges[b] ?? lo);
       const x1 = frame.x.map(edges[b + 1] ?? hi);
       const yTop = frame.y.map(c);
-      return svgRect(x0 + 0.5, yTop, x1 - x0 - 1, frame.area.bottom - yTop, seriesColor(0));
+      return svgRect(
+        x0 + 0.5,
+        yTop,
+        x1 - x0 - 1,
+        frame.area.bottom - yTop,
+        seriesColor(0),
+        `[${fmtNum(edges[b] ?? lo)}, ${fmtNum(edges[b + 1] ?? hi)}): ${c}`,
+      );
     })
     .join("");
   return frame.render(content);
@@ -135,12 +146,20 @@ export function renderAutocorrSVG(data: AutocorrData, opts: SvgOptions = {}): st
     xLabel: "lag",
     yLabel: "acf",
   });
-  const zero = svgLine(frame.area.left, frame.y.map(0), frame.area.right, frame.y.map(0), "#bbb");
+  const zero = svgLine(
+    frame.area.left,
+    frame.y.map(0),
+    frame.area.right,
+    frame.y.map(0),
+    "var(--mcmc-grid,#bbb)",
+  );
   const content = data.chains
     .map((acf, chain) =>
       svgPolyline(
         acf.map((v, k) => [frame.x.map(k), frame.y.map(v)] as [number, number]),
         seriesColor(chain),
+        1.25,
+        `chain ${chain + 1}`,
       ),
     )
     .join("");
@@ -165,7 +184,7 @@ export function renderRankSVG(data: RankData, opts: SvgOptions = {}): string {
     frame.y.map(data.expected),
     frame.area.right,
     frame.y.map(data.expected),
-    "#bbb",
+    "var(--mcmc-grid,#bbb)",
   );
   const content = data.counts
     .map((counts, chain) => {
@@ -174,7 +193,7 @@ export function renderRankSVG(data: RankData, opts: SvgOptions = {}): string {
         pts.push([frame.x.map(b), frame.y.map(c)]);
         pts.push([frame.x.map(b + 1), frame.y.map(c)]);
       });
-      return svgPolyline(pts, seriesColor(chain));
+      return svgPolyline(pts, seriesColor(chain), 1.25, `chain ${chain + 1}`);
     })
     .join("");
   return frame.render(expected + content);
@@ -197,12 +216,16 @@ export function renderEnergySVG(data: EnergyData, opts: SvgOptions = {}): string
     xLabel: "energy (centered)",
     yLabel: "count",
   });
-  const curve = (counts: number[], series: number): string =>
+  const curve = (counts: number[], series: number, label: string): string =>
     svgPolyline(
       counts.map((c, b) => [frame.x.map(centers[b] ?? 0), frame.y.map(c)] as [number, number]),
       seriesColor(series),
+      1.25,
+      label,
     );
-  return frame.render(curve(data.marginal, 0) + curve(data.transition, 1));
+  return frame.render(
+    curve(data.marginal, 0, "marginal") + curve(data.transition, 1, "transition"),
+  );
 }
 
 /** A horizontal viridis gradient legend bar with min/max labels and a caption. */
@@ -224,13 +247,13 @@ function viridisLegend(
     parts.push(svgRect(x0 + s * segW, y0, segW + 0.5, barH, viridisHex(t)));
   }
   parts.push(
-    `<text x="${x0.toFixed(2)}" y="${(y0 + barH + 11).toFixed(2)}" text-anchor="start" fill="#333">${escText(fmtNum(lo))}</text>`,
+    `<text x="${x0.toFixed(2)}" y="${(y0 + barH + 11).toFixed(2)}" text-anchor="start" fill="var(--mcmc-fg,#333)">${escText(fmtNum(lo))}</text>`,
   );
   parts.push(
-    `<text x="${(x0 + barW).toFixed(2)}" y="${(y0 + barH + 11).toFixed(2)}" text-anchor="end" fill="#333">${escText(fmtNum(hi))}</text>`,
+    `<text x="${(x0 + barW).toFixed(2)}" y="${(y0 + barH + 11).toFixed(2)}" text-anchor="end" fill="var(--mcmc-fg,#333)">${escText(fmtNum(hi))}</text>`,
   );
   parts.push(
-    `<text x="${(x0 + barW / 2).toFixed(2)}" y="${(y0 - 3).toFixed(2)}" text-anchor="middle" fill="#333">color: ${escText(label)}</text>`,
+    `<text x="${(x0 + barW / 2).toFixed(2)}" y="${(y0 - 3).toFixed(2)}" text-anchor="middle" fill="var(--mcmc-fg,#333)">color: ${escText(label)}</text>`,
   );
   return parts.join("");
 }
@@ -271,13 +294,24 @@ export function renderPairSVG(data: PairData, opts: SvgOptions = {}): string {
     return viridisHex(t < 0 ? 0 : t > 1 ? 1 : t);
   };
 
-  const dot = (i: number, r: number, fill: string): string =>
-    svgCircle(frame.x.map(data.x[i] ?? 0), frame.y.map(data.y[i] ?? 0), r, fill);
+  const tipFor = (i: number, divergent: boolean): string => {
+    const base = `${data.xVar} ${fmtNum(data.x[i] ?? 0)}, ${data.yVar} ${fmtNum(data.y[i] ?? 0)} · chain ${(data.chain[i] ?? 0) + 1}`;
+    const shade = color && data.colorVar ? ` · ${data.colorVar} ${fmtNum(color[i] ?? 0)}` : "";
+    return `${base}${shade}${divergent ? " · divergent" : ""}`;
+  };
+  const dot = (i: number, r: number, fill: string, divergent: boolean): string =>
+    svgCircle(
+      frame.x.map(data.x[i] ?? 0),
+      frame.y.map(data.y[i] ?? 0),
+      r,
+      fill,
+      tipFor(i, divergent),
+    );
   const normal = normalIdx
     .filter((_, k) => k % step === 0)
-    .map((i) => dot(i, 1.4, fillFor(i)))
+    .map((i) => dot(i, 1.4, fillFor(i), false))
     .join("");
-  const divergent = divergentIdx.map((i) => dot(i, 2.5, "#d62728")).join("");
+  const divergent = divergentIdx.map((i) => dot(i, 2.5, "#d62728", true)).join("");
   const legend =
     color && data.colorVar ? viridisLegend(frame, data.colorVar, colorMin, colorMax) : "";
   return frame.render(normal + divergent + legend);
@@ -300,6 +334,8 @@ export function renderEcdfSVG(data: EcdfData, opts: SvgOptions = {}): string {
       svgPolyline(
         s.x.map((xv, i) => [frame.x.map(xv), frame.y.map(s.y[i] ?? 0)] as [number, number]),
         seriesColor(chain),
+        1.25,
+        `chain ${chain + 1}`,
       ),
     )
     .join("");
@@ -325,6 +361,8 @@ export function renderCumulativeMeanSVG(data: CumulativeMeanData, opts: SvgOptio
       svgPolyline(
         vals.map((v, i) => [frame.x.map(i + 1), frame.y.map(v)] as [number, number]),
         seriesColor(chain),
+        1.25,
+        `chain ${chain + 1}`,
       ),
     )
     .join("");
@@ -404,10 +442,11 @@ function renderIntervalRows(
     .map((r, i) => {
       const yc = frame.y.map(i + 0.5);
       const col = perRowColor ? seriesColor(i) : seriesColor(0);
+      const tip = `${r.label}  median ${fmtNum(r.q50)}  50% [${fmtNum(r.q25)}, ${fmtNum(r.q75)}]  90% [${fmtNum(r.q5)}, ${fmtNum(r.q95)}]`;
       return [
-        svgLine(frame.x.map(r.q5), yc, frame.x.map(r.q95), yc, col, 1),
-        svgLine(frame.x.map(r.q25), yc, frame.x.map(r.q75), yc, col, 4),
-        svgCircle(frame.x.map(r.q50), yc, 3, "#111"),
+        svgLine(frame.x.map(r.q5), yc, frame.x.map(r.q95), yc, col, 1, tip),
+        svgLine(frame.x.map(r.q25), yc, frame.x.map(r.q75), yc, col, 4, tip),
+        svgCircle(frame.x.map(r.q50), yc, 3, "var(--mcmc-fg,#111)", tip),
       ].join("");
     })
     .join("");
@@ -466,13 +505,16 @@ export function renderViolinSVG(data: ViolinData, opts: SvgOptions = {}): string
         frame.x.map(xv),
         frame.y.map(center + (r.density[k] ?? 0) * half),
       ]);
-      const outline = svgPolyline([...top, ...bottom.reverse()], seriesColor(i));
+      const tip = `${r.label}  median ${fmtNum(r.q50)}`;
+      const outline = svgPolyline([...top, ...bottom.reverse()], seriesColor(i), 1.25, tip);
       const median = svgLine(
         frame.x.map(r.q50),
         frame.y.map(center - half),
         frame.x.map(r.q50),
         frame.y.map(center + half),
-        "#111",
+        "var(--mcmc-fg,#111)",
+        1,
+        tip,
       );
       return outline + median;
     })
@@ -511,10 +553,11 @@ export function renderForestSVG(data: ForestData, opts: SvgOptions = {}): string
     .map((r, i) => {
       const yc = frame.y.map(i + 0.5);
       const col = r.converged ? "#2ca02c" : "#d62728";
+      const tip = `${r.variable}  mean ${fmtNum(r.mean)}  HDI [${fmtNum(r.hdi[0])}, ${fmtNum(r.hdi[1])}]  R-hat ${Number.isFinite(r.rhat) ? r.rhat.toFixed(3) : "n/a"}  ESS ${Number.isFinite(r.essBulk) ? Math.round(r.essBulk) : "n/a"}`;
       return [
-        svgLine(frame.x.map(r.hdi[0]), yc, frame.x.map(r.hdi[1]), yc, col, 1),
-        svgLine(frame.x.map(r.iqr[0]), yc, frame.x.map(r.iqr[1]), yc, col, 4),
-        svgCircle(frame.x.map(r.mean), yc, 3, "#111"),
+        svgLine(frame.x.map(r.hdi[0]), yc, frame.x.map(r.hdi[1]), yc, col, 1, tip),
+        svgLine(frame.x.map(r.iqr[0]), yc, frame.x.map(r.iqr[1]), yc, col, 4, tip),
+        svgCircle(frame.x.map(r.mean), yc, 3, "var(--mcmc-fg,#111)", tip),
       ].join("");
     })
     .join("");
@@ -526,15 +569,15 @@ const TABLE_WARN = "#eab308";
 const TABLE_GOOD = "#22c55e";
 
 function essColor(v: number): string {
-  if (!Number.isFinite(v)) return "#888";
+  if (!Number.isFinite(v)) return "var(--mcmc-muted,#888)";
   return v > 400 ? TABLE_GOOD : v > 100 ? TABLE_WARN : TABLE_BAD;
 }
 function rhatColor(v: number): string {
-  if (!Number.isFinite(v)) return "#888";
+  if (!Number.isFinite(v)) return "var(--mcmc-muted,#888)";
   return v < 1.05 ? TABLE_GOOD : v < 1.1 ? TABLE_WARN : TABLE_BAD;
 }
 function gewekeColor(z: number): string {
-  if (!Number.isFinite(z)) return "#888";
+  if (!Number.isFinite(z)) return "var(--mcmc-muted,#888)";
   const a = Math.abs(z);
   return a < 1.96 ? TABLE_GOOD : a < 2.58 ? TABLE_WARN : TABLE_BAD;
 }
@@ -553,7 +596,7 @@ function svgTextEl(x: number, y: number, text: string, anchor: string, fill: str
 }
 
 function wrapSvg(width: number, height: number, body: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="${FONT}" font-size="12"><rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff"/>${body}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="${FONT}" font-size="12"><rect x="0" y="0" width="${width}" height="${height}" fill="var(--mcmc-bg,#ffffff)"/>${body}</svg>`;
 }
 
 /** Summary table as an SVG grid of right-aligned cells with traffic-light coloring. */
@@ -577,22 +620,22 @@ export function renderSummaryTableSVG(data: SummaryTableData, opts: SvgOptions =
     "HDI 90%",
   ];
   const cellsFor = (r: SummaryTableData["rows"][number]): { text: string; fill: string }[] => [
-    { text: r.variable, fill: "#111" },
-    { text: sNum4(r.mean), fill: "#333" },
-    { text: sNum4(r.std), fill: "#333" },
-    { text: sNum4(r.mcse), fill: "#333" },
-    { text: sNum4(r.q5), fill: "#333" },
-    { text: sNum4(r.q25), fill: "#333" },
-    { text: sNum4(r.q50), fill: "#333" },
-    { text: sNum4(r.q75), fill: "#333" },
-    { text: sNum4(r.q95), fill: "#333" },
+    { text: r.variable, fill: "var(--mcmc-fg,#111)" },
+    { text: sNum4(r.mean), fill: "var(--mcmc-fg,#333)" },
+    { text: sNum4(r.std), fill: "var(--mcmc-fg,#333)" },
+    { text: sNum4(r.mcse), fill: "var(--mcmc-fg,#333)" },
+    { text: sNum4(r.q5), fill: "var(--mcmc-fg,#333)" },
+    { text: sNum4(r.q25), fill: "var(--mcmc-fg,#333)" },
+    { text: sNum4(r.q50), fill: "var(--mcmc-fg,#333)" },
+    { text: sNum4(r.q75), fill: "var(--mcmc-fg,#333)" },
+    { text: sNum4(r.q95), fill: "var(--mcmc-fg,#333)" },
     { text: sInt(r.ess), fill: essColor(r.ess) },
     { text: sInt(r.essBulk), fill: essColor(r.essBulk) },
     { text: sInt(r.essTail), fill: essColor(r.essTail) },
     { text: sNum3(r.rhat), fill: rhatColor(r.rhat) },
     { text: sNum3(r.splitRhat), fill: rhatColor(r.splitRhat) },
     { text: sNum3(r.gewekeZ), fill: gewekeColor(r.gewekeZ) },
-    { text: `[${sNum3(r.hdi90[0])}, ${sNum3(r.hdi90[1])}]`, fill: "#333" },
+    { text: `[${sNum3(r.hdi90[0])}, ${sNum3(r.hdi90[1])}]`, fill: "var(--mcmc-fg,#333)" },
   ];
 
   const body = data.rows.map(cellsFor);
@@ -612,15 +655,15 @@ export function renderSummaryTableSVG(data: SummaryTableData, opts: SvgOptions =
   const height = opts.height ?? top + (body.length + 1) * rowH + 8;
 
   const parts: string[] = [];
-  parts.push(svgTextEl(12, 18, "summary", "start", "#111"));
+  parts.push(svgTextEl(12, 18, "summary", "start", "var(--mcmc-fg,#111)"));
   headers.forEach((h, c) => {
     const cx = (colX[c] ?? 0) + (c === 0 ? 0 : (widths[c] ?? 0) * charW);
-    parts.push(svgTextEl(cx, top, h, c === 0 ? "start" : "end", "#111"));
+    parts.push(svgTextEl(cx, top, h, c === 0 ? "start" : "end", "var(--mcmc-fg,#111)"));
   });
   body.forEach((cells, i) => {
     const y = top + (i + 1) * rowH;
     if (i % 2 === 1) {
-      parts.push(svgRect(0, y - 14, width, rowH, "#f3f4f6"));
+      parts.push(svgRect(0, y - 14, width, rowH, "var(--mcmc-grid,#f3f4f6)"));
     }
     cells.forEach((cell, c) => {
       const cx = (colX[c] ?? 0) + (c === 0 ? 0 : (widths[c] ?? 0) * charW);
@@ -644,18 +687,29 @@ export function renderDiagnosticsHeatmapSVG(
   const height = opts.height ?? top + headerH + data.rows.length * cellH + 8;
 
   const parts: string[] = [];
-  parts.push(svgTextEl(12, 18, "diagnostics", "start", "#111"));
+  parts.push(svgTextEl(12, 18, "diagnostics", "start", "var(--mcmc-fg,#111)"));
   data.metrics.forEach((m, c) => {
     const cx = labelW + c * cellW + cellW / 2;
-    parts.push(svgTextEl(cx, top + headerH - 8, m, "middle", "#111"));
+    parts.push(svgTextEl(cx, top + headerH - 8, m, "middle", "var(--mcmc-fg,#111)"));
   });
   data.rows.forEach((row, i) => {
     const y = top + headerH + i * cellH;
-    parts.push(svgTextEl(labelW - 6, y + cellH / 2 + 4, row.variable, "end", "#111"));
+    parts.push(
+      svgTextEl(labelW - 6, y + cellH / 2 + 4, row.variable, "end", "var(--mcmc-fg,#111)"),
+    );
     row.cells.forEach((cell, c) => {
       const cx = labelW + c * cellW;
       const [r, g, b] = cell.rgb;
-      parts.push(svgRect(cx, y, cellW - 2, cellH - 2, `rgb(${r},${g},${b})`));
+      parts.push(
+        svgRect(
+          cx,
+          y,
+          cellW - 2,
+          cellH - 2,
+          `rgb(${r},${g},${b})`,
+          `${row.variable}  ${data.metrics[c]}: ${cell.text}`,
+        ),
+      );
       parts.push(svgTextEl(cx + cellW / 2, y + cellH / 2 + 4, cell.text, "middle", "#fff"));
     });
   });
@@ -699,14 +753,14 @@ export function renderSplomSVG(data: SplomData, opts: SvgOptions = {}): string {
   for (const c of data.corr) corrAt.set(`${c.row}:${c.col}`, c);
 
   const parts: string[] = [
-    svgTextEl(pad, 16, `pairs (${n} vars, ${data.nChains} chains)`, "start", "#111"),
+    svgTextEl(pad, 16, `pairs (${n} vars, ${data.nChains} chains)`, "start", "var(--mcmc-fg,#111)"),
   ];
   for (let row = 0; row < n; row++) {
     for (let col = 0; col < n; col++) {
       const x0 = pad + col * cell;
       const y0 = top + row * cell;
       parts.push(
-        `<rect x="${x0}" y="${y0}" width="${cell - 2}" height="${cell - 2}" fill="none" stroke="#e5e7eb"/>`,
+        `<rect x="${x0}" y="${y0}" width="${cell - 2}" height="${cell - 2}" fill="none" stroke="var(--mcmc-grid,#e5e7eb)"/>`,
       );
       const rx = range[col] ?? { lo: 0, hi: 1, span: 1 };
       const ry = range[row] ?? { lo: 0, hi: 1, span: 1 };
@@ -720,8 +774,8 @@ export function renderSplomSVG(data: SplomData, opts: SvgOptions = {}): string {
             px(xv),
             y0 + (cell - 2) - (d.density[k] ?? 0) * (cell - 6),
           ]);
-          parts.push(svgPolyline(pts, seriesColor(0)));
-          parts.push(svgTextSized(x0 + 4, y0 + 12, d.variable, "start", "#111", 11));
+          parts.push(svgPolyline(pts, seriesColor(0), 1.25, d.variable));
+          parts.push(svgTextSized(x0 + 4, y0 + 12, d.variable, "start", "var(--mcmc-fg,#111)", 11));
         }
       } else if (row < col) {
         const c = corrAt.get(`${row}:${col}`);
@@ -730,20 +784,49 @@ export function renderSplomSVG(data: SplomData, opts: SvgOptions = {}): string {
         const alpha = Math.min(Math.abs(r) * 0.45, 0.42);
         const tint =
           r >= 0 ? `rgba(37,99,235,${alpha.toFixed(3)})` : `rgba(220,38,38,${alpha.toFixed(3)})`;
-        parts.push(svgRect(x0, y0, cell - 2, cell - 2, tint));
+        parts.push(
+          svgRect(
+            x0,
+            y0,
+            cell - 2,
+            cell - 2,
+            tint,
+            `${data.vars[row]} vs ${data.vars[col]}  Pearson r ${r.toFixed(3)}, Spearman rho ${rho.toFixed(3)}`,
+          ),
+        );
         const cx = x0 + (cell - 2) / 2;
         parts.push(
-          svgTextSized(cx, y0 + (cell - 2) / 2, `r ${r.toFixed(2)}`, "middle", "#111", 13),
+          svgTextSized(
+            cx,
+            y0 + (cell - 2) / 2,
+            `r ${r.toFixed(2)}`,
+            "middle",
+            "var(--mcmc-fg,#111)",
+            13,
+          ),
         );
         parts.push(
-          svgTextSized(cx, y0 + (cell - 2) / 2 + 14, `rho ${rho.toFixed(2)}`, "middle", "#555", 10),
+          svgTextSized(
+            cx,
+            y0 + (cell - 2) / 2 + 14,
+            `rho ${rho.toFixed(2)}`,
+            "middle",
+            "var(--mcmc-muted,#6b7280)",
+            10,
+          ),
         );
       } else {
         const c = data.cells.find((e) => e.row === row && e.col === col);
         if (c) {
           for (let i = 0; i < c.x.length; i++) {
             parts.push(
-              svgCircle(px(c.x[i] ?? 0), py(c.y[i] ?? 0), 1, seriesColor(c.chain[i] ?? 0)),
+              svgCircle(
+                px(c.x[i] ?? 0),
+                py(c.y[i] ?? 0),
+                1,
+                seriesColor(c.chain[i] ?? 0),
+                `${data.vars[col]} ${fmtNum(c.x[i] ?? 0)}, ${data.vars[row]} ${fmtNum(c.y[i] ?? 0)} · chain ${(c.chain[i] ?? 0) + 1}`,
+              ),
             );
           }
         }
@@ -785,23 +868,25 @@ export function renderParallelCoordsSVG(data: ParallelCoordsData, opts: SvgOptio
       18,
       `parallel coordinates (${n} vars, ${data.lines.length} draws)`,
       "start",
-      "#111",
+      "var(--mcmc-fg,#111)",
     ),
   ];
 
   // Lines first so axes and labels sit on top.
   for (const line of data.lines) {
     const pts: [number, number][] = line.values.map((v, vi) => [axisX(vi), yOf(vi, v)]);
-    parts.push(svgPolyline(pts, seriesColor(line.chain), 0.6));
+    parts.push(svgPolyline(pts, seriesColor(line.chain), 0.6, `chain ${line.chain + 1}`));
   }
 
   data.vars.forEach((variable, i) => {
     const x = axisX(i);
-    parts.push(svgLine(x, top, x, bottom, "#333"));
+    parts.push(svgLine(x, top, x, bottom, "var(--mcmc-fg,#333)"));
     const b = data.bounds[i] ?? { min: 0, max: 1 };
-    parts.push(svgTextSized(x, top - 6, variable, "middle", "#111", 11));
-    parts.push(svgTextSized(x, top - 18, fmtNum(b.max), "middle", "#555", 10));
-    parts.push(svgTextSized(x, bottom + 14, fmtNum(b.min), "middle", "#555", 10));
+    parts.push(svgTextSized(x, top - 6, variable, "middle", "var(--mcmc-fg,#111)", 11));
+    parts.push(svgTextSized(x, top - 18, fmtNum(b.max), "middle", "var(--mcmc-muted,#6b7280)", 10));
+    parts.push(
+      svgTextSized(x, bottom + 14, fmtNum(b.min), "middle", "var(--mcmc-muted,#6b7280)", 10),
+    );
   });
 
   return wrapSvg(width, height, parts.join(""));
@@ -834,7 +919,9 @@ function cornerBodyLayerSVG(layer: CornerBodyLayer, scale: CellScale, swap: bool
           [cx - hx, cy + hy / 2],
         ];
         const d = polygonPathD(verts.map(([x, y]) => [px(x, y), py(x, y)]));
-        parts.push(svgPath(d, { fill: layer.color, fillOpacity: w }));
+        parts.push(
+          svgPath(d, { fill: layer.color, fillOpacity: w, tip: `n = ${layer.weight[i] ?? 0}` }),
+        );
       }
       break;
     }
@@ -852,22 +939,30 @@ function cornerBodyLayerSVG(layer: CornerBodyLayer, scale: CellScale, swap: bool
           const x2 = px(cx + bw / 2, cy + bh / 2);
           const y2 = py(cx + bw / 2, cy - bh / 2);
           parts.push(
-            `<rect x="${Math.min(x1, x2).toFixed(2)}" y="${Math.min(y1, y2).toFixed(2)}" width="${Math.abs(x2 - x1).toFixed(2)}" height="${Math.abs(y2 - y1).toFixed(2)}" fill="${layer.color}" fill-opacity="${w.toFixed(3)}"/>`,
+            `<rect x="${Math.min(x1, x2).toFixed(2)}" y="${Math.min(y1, y2).toFixed(2)}" width="${Math.abs(x2 - x1).toFixed(2)}" height="${Math.abs(y2 - y1).toFixed(2)}" fill="${layer.color}" fill-opacity="${w.toFixed(3)}" data-tip="n = ${(layer.weights[i] as number[])[j] ?? 0}"/>`,
           );
         }
       }
       break;
     }
     case "contour": {
-      for (const ring of layer.curves) {
-        const pts: [number, number][] = ring.x.map((x, k) => [
-          px(x, ring.y[k] as number),
-          py(x, ring.y[k] as number),
-        ]);
-        const d = pts
-          .map(([x, y], k) => `${k === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`)
-          .join(" ");
-        parts.push(svgPath(d, { stroke: layer.color, strokeWidth: layer.linewidth }));
+      for (const level of layer.levels) {
+        for (const ring of level.rings) {
+          const pts: [number, number][] = ring.x.map((x, k) => [
+            px(x, ring.y[k] as number),
+            py(x, ring.y[k] as number),
+          ]);
+          const d = pts
+            .map(([x, y], k) => `${k === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`)
+            .join(" ");
+          parts.push(
+            svgPath(d, {
+              stroke: layer.color,
+              strokeWidth: layer.linewidth,
+              tip: `${level.sigma}σ`,
+            }),
+          );
+        }
       }
       break;
     }
@@ -896,6 +991,7 @@ function cornerBodyLayerSVG(layer: CornerBodyLayer, scale: CellScale, swap: bool
             py(layer.x[i] as number, layer.y[i] as number),
             r,
             layer.color,
+            `${fmtNum(layer.x[i] as number)}, ${fmtNum(layer.y[i] as number)}`,
           ),
         );
       }
@@ -966,7 +1062,7 @@ export function renderCornerSVG(data: CornerData, opts: SvgOptions = {}): string
   };
   const frame = (x0: number, y0: number): void => {
     parts.push(
-      `<rect x="${x0}" y="${y0}" width="${cell}" height="${cell}" fill="none" stroke="#d1d5db"/>`,
+      `<rect x="${x0}" y="${y0}" width="${cell}" height="${cell}" fill="none" stroke="var(--mcmc-grid,#d1d5db)"/>`,
     );
   };
 
@@ -1006,7 +1102,7 @@ export function renderCornerSVG(data: CornerData, opts: SvgOptions = {}): string
             y0 + (1 - (layer.position[1] ?? 1)) * cell + 11,
             `r = ${layer.value.toFixed(layer.digits)}`,
             "start",
-            "#111",
+            "var(--mcmc-fg,#111)",
             10,
           ),
         );
@@ -1109,6 +1205,7 @@ export function renderCornerSVG(data: CornerData, opts: SvgOptions = {}): string
                   stroke: layer.color,
                   strokeWidth: 1,
                   strokeDash: "4 3",
+                  tip: fmtNum(value),
                 }),
               );
             }
@@ -1116,7 +1213,17 @@ export function renderCornerSVG(data: CornerData, opts: SvgOptions = {}): string
           }
           case "marginlines": {
             for (const value of layer.values) {
-              painted.push(svgLine(px(value), y0, px(value), y0 + cell, layer.color, 1.25));
+              painted.push(
+                svgLine(
+                  px(value),
+                  y0,
+                  px(value),
+                  y0 + cell,
+                  layer.color,
+                  1.25,
+                  `truth ${fmtNum(value)}`,
+                ),
+              );
             }
             break;
           }
@@ -1157,16 +1264,34 @@ export function renderCornerSVG(data: CornerData, opts: SvgOptions = {}): string
       const x0 = cellX(v);
       const yEdge = pad + rows * rowPitch - gap - titleH;
       parts.push(
-        svgTextSized(x0 + cell / 2, yEdge + 16, data.labels[v] ?? "", "middle", "#111", 12),
+        svgTextSized(
+          x0 + cell / 2,
+          yEdge + 16,
+          data.labels[v] ?? "",
+          "middle",
+          "var(--mcmc-fg,#111)",
+          12,
+        ),
       );
       const dx = pads[v] ?? { lo: 0, span: 1 };
-      parts.push(svgTextSized(x0, yEdge + 30, fmtNum(dx.lo), "start", "#777", 9));
-      parts.push(svgTextSized(x0 + cell, yEdge + 30, fmtNum(dx.lo + dx.span), "end", "#777", 9));
+      parts.push(
+        svgTextSized(x0, yEdge + 30, fmtNum(dx.lo), "start", "var(--mcmc-muted,#6b7280)", 9),
+      );
+      parts.push(
+        svgTextSized(
+          x0 + cell,
+          yEdge + 30,
+          fmtNum(dx.lo + dx.span),
+          "end",
+          "var(--mcmc-muted,#6b7280)",
+          9,
+        ),
+      );
     }
     if (showDiag ? v > 0 : v > 0) {
       const y0 = cellY(v);
       parts.push(
-        `<text x="${left - 8}" y="${(y0 + cell / 2).toFixed(2)}" text-anchor="middle" font-size="12" fill="#111" transform="rotate(-90 ${left - 8} ${(y0 + cell / 2).toFixed(2)})">${escText(data.labels[v] ?? "")}</text>`,
+        `<text x="${left - 8}" y="${(y0 + cell / 2).toFixed(2)}" text-anchor="middle" font-size="12" fill="var(--mcmc-fg,#111)" transform="rotate(-90 ${left - 8} ${(y0 + cell / 2).toFixed(2)})">${escText(data.labels[v] ?? "")}</text>`,
       );
     }
   }
@@ -1176,7 +1301,7 @@ export function renderCornerSVG(data: CornerData, opts: SvgOptions = {}): string
   labeled.forEach((s, i) => {
     const ly = pad + 14 * i + 10;
     parts.push(svgRect(width - 130, ly - 8, 10, 10, s.color));
-    parts.push(svgTextSized(width - 116, ly, s.label ?? "", "start", "#111", 11));
+    parts.push(svgTextSized(width - 116, ly, s.label ?? "", "start", "var(--mcmc-fg,#111)", 11));
   });
 
   return wrapSvg(width, height, `<defs>${defs.join("")}</defs>${parts.join("")}`);

@@ -26,5 +26,6 @@ export {
   svgPolyline,
   svgRect,
   svgText,
+  tipAttr,
 } from "./svg";
 export { ticks } from "./ticks";

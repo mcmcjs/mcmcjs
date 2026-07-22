@@ -5,6 +5,7 @@
  * (pan/zoom, legend, and per-plot PNG/SVG export). It opens offline with no network.
  */
 
+import { attachSvgTips, SVG_TIPS_CSS } from "@mcmcjs/charts/dom";
 import { UPLOT_CSS, UPLOT_JS, UPLOT_VERSION } from "./uplot-assets.generated";
 import { type HtmlItem, htmlItemFor, type PlotData } from "./uplot-spec";
 
@@ -28,37 +29,51 @@ function embedJson(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
+const LIGHT_TOKENS = `
+  --mcmc-bg: #ffffff; --mcmc-fg: #111827; --mcmc-muted: #6b7280; --mcmc-grid: #e5e7eb;
+  --mcmc-tip-bg: #ffffff; --mcmc-tip-fg: #1a1a1a; --mcmc-tip-border: rgba(0,0,0,0.12);
+  --mcmc-axis: #111827; --mcmc-plot-grid: rgba(0,0,0,0.07); --mcmc-fg-soft: rgba(0,0,0,0.5);
+  --page-bg: #fafafa; --page-fg: #111; --card-bg: #ffffff; --card-border: #e5e7eb;
+  --btn-bg: #f3f4f6; --btn-fg: #111; --btn-border: #d1d5db; --btn-hover: #e5e7eb;
+`;
+const DARK_TOKENS = `
+  --mcmc-bg: #171a21; --mcmc-fg: #e6e6e6; --mcmc-muted: #9ca3af; --mcmc-grid: #2c3340;
+  --mcmc-tip-bg: #1c1e2b; --mcmc-tip-fg: #e8eaf0; --mcmc-tip-border: rgba(255,255,255,0.12);
+  --mcmc-axis: #e6e6e6; --mcmc-plot-grid: rgba(255,255,255,0.09); --mcmc-fg-soft: rgba(255,255,255,0.55);
+  --page-bg: #0f1115; --page-fg: #e6e6e6; --card-bg: #171a21; --card-border: #262b35;
+  --btn-bg: #232834; --btn-fg: #e6e6e6; --btn-border: #39414f; --btn-hover: #2c3340;
+`;
+const THEME_TOKENS = `
+:root { ${LIGHT_TOKENS} }
+@media (prefers-color-scheme: dark) { :root { ${DARK_TOKENS} } }
+:root[data-theme="light"] { ${LIGHT_TOKENS} }
+:root[data-theme="dark"] { ${DARK_TOKENS} }
+`;
+
 const STYLE = `
 :root { color-scheme: light dark; }
 * { box-sizing: border-box; }
 body {
   margin: 0; padding: 24px;
   font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  background: #fafafa; color: #111;
-}
-@media (prefers-color-scheme: dark) {
-  body { background: #0f1115; color: #e6e6e6; }
-  .card { background: #171a21; border-color: #262b35; }
-  .bar { border-color: #262b35; }
-  .btn { background: #232834; color: #e6e6e6; border-color: #39414f; }
-  .btn:hover { background: #2c3340; }
+  background: var(--page-bg); color: var(--page-fg);
 }
 header { max-width: 1100px; margin: 0 auto 20px; }
 header h1 { font-size: 20px; margin: 0 0 4px; }
-header p { margin: 0; color: #6b7280; }
+header p { margin: 0; color: var(--mcmc-muted); }
 main { max-width: 1100px; margin: 0 auto; display: grid; gap: 20px; }
-.card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+.card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 10px; overflow: hidden; }
 .bar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 12px; border-bottom: 1px solid #e5e7eb;
+  padding: 8px 12px; border-bottom: 1px solid var(--card-border);
 }
 .bar .label { font-weight: 600; font-size: 13px; }
 .btn {
   font: inherit; font-size: 12px; cursor: pointer;
-  background: #f3f4f6; color: #111; border: 1px solid #d1d5db;
+  background: var(--btn-bg); color: var(--btn-fg); border: 1px solid var(--btn-border);
   border-radius: 6px; padding: 4px 10px;
 }
-.btn:hover { background: #e5e7eb; }
+.btn:hover { background: var(--btn-hover); }
 .plot { padding: 12px; overflow-x: auto; }
 .plot svg { max-width: 100%; height: auto; }
 .u-title { font-weight: 600; }
@@ -120,7 +135,16 @@ const BOOTSTRAP = `
     } } };
   }
 
+  function themeColors() {
+    var cs = getComputedStyle(document.documentElement);
+    return {
+      axis: cs.getPropertyValue("--mcmc-axis").trim() || "#111827",
+      grid: cs.getPropertyValue("--mcmc-plot-grid").trim() || "rgba(0,0,0,0.07)"
+    };
+  }
+
   function mountUplot(host, spec) {
+    var t = themeColors();
     var series = [{}];
     for (var i = 0; i < spec.series.length; i++) {
       var s = spec.series[i];
@@ -137,7 +161,10 @@ const BOOTSTRAP = `
     var opts = {
       width: width(), height: 280,
       scales: { x: { time: false } },
-      axes: [{ label: spec.xLabel || "" }, { label: spec.yLabel || "" }],
+      axes: [
+        { label: spec.xLabel || "", stroke: t.axis, grid: { stroke: t.grid }, ticks: { stroke: t.grid } },
+        { label: spec.yLabel || "", stroke: t.axis, grid: { stroke: t.grid }, ticks: { stroke: t.grid } }
+      ],
       series: series,
       legend: { live: true },
       cursor: { drag: { x: true, y: true, uni: 12 } },
@@ -148,6 +175,7 @@ const BOOTSTRAP = `
     return u;
   }
 
+  var mounted = [];
   for (var i = 0; i < DATA.items.length; i++) {
     var item = DATA.items[i];
     var card = el("section", "card");
@@ -160,11 +188,12 @@ const BOOTSTRAP = `
     card.appendChild(bar); card.appendChild(plot); root.appendChild(card);
 
     if (item.mode === "uplot") {
-      var u = mountUplot(plot, item.spec);
+      var entry = { host: plot, spec: item.spec, u: mountUplot(plot, item.spec) };
+      mounted.push(entry);
       btn.textContent = "Save PNG";
-      (function (u, name) {
-        btn.addEventListener("click", function () { exportCanvas(u.ctx.canvas, name); });
-      })(u, "mcmc-" + item.kind + "-" + i + ".png");
+      (function (entry, name) {
+        btn.addEventListener("click", function () { exportCanvas(entry.u.ctx.canvas, name); });
+      })(entry, "mcmc-" + item.kind + "-" + i + ".png");
     } else {
       plot.innerHTML = item.svg;
       btn.textContent = "Save SVG";
@@ -172,6 +201,19 @@ const BOOTSTRAP = `
         btn.addEventListener("click", function () { exportSvg(svg, name); });
       })(item.svg, "mcmc-" + item.kind + "-" + i + ".svg");
     }
+  }
+
+  if (window.__mcmcAttachSvgTips) window.__mcmcAttachSvgTips(root);
+
+  var scheme = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+  if (scheme && scheme.addEventListener) {
+    scheme.addEventListener("change", function () {
+      for (var m = 0; m < mounted.length; m++) {
+        mounted[m].u.destroy();
+        mounted[m].host.innerHTML = "";
+        mounted[m].u = mountUplot(mounted[m].host, mounted[m].spec);
+      }
+    });
   }
 })();
 `;
@@ -196,7 +238,9 @@ export function buildHtmlDocument(data: PlotData[], opts: HtmlDocumentOptions = 
 <meta name="generator" content="mcmcjs">
 <title>${escapeHtml(title)}</title>
 <style>${UPLOT_CSS}</style>
+<style>${THEME_TOKENS}</style>
 <style>${STYLE}</style>
+<style>${SVG_TIPS_CSS}</style>
 </head>
 <body>
 <header>
@@ -206,6 +250,7 @@ ${subtitle}
 <main id="mcmc-plots"></main>
 <script type="application/json" id="mcmc-plot-data">${embedJson({ items })}</script>
 <script>${safeJs}</script>
+<script>window.__mcmcAttachSvgTips = ${attachSvgTips.toString()};</script>
 <script>${BOOTSTRAP}</script>
 </body>
 </html>

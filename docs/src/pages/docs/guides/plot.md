@@ -42,6 +42,20 @@ beta                                        ─●─  1.003   2.991  [2.918, 3.
 sigma     ─━●━─                                  1.002   0.344  [0.183, 0.528]
 ```
 
+## Hover and theming
+
+Every SVG-rendered kind annotates its marks with `data-tip` attributes, and HTML exports show them as hover tooltips (points, interval rows, correlation cells, hexagons, contour sigma levels).
+The SVG renderers draw text, frames, and backgrounds through CSS custom properties with light-theme fallbacks, so plots follow the page theme with no re-render: `--mcmc-bg`, `--mcmc-fg`, `--mcmc-fg-soft`, `--mcmc-muted`, `--mcmc-grid`, and `--mcmc-tip-bg`/`--mcmc-tip-fg`/`--mcmc-tip-border` for the tooltip.
+HTML exports define both palettes, follow the system color scheme, and honor a `data-theme="light"`/`"dark"` attribute on the root element as an override.
+Apps embedding the SVG kinds get the same behavior by defining those variables in their own theme CSS and attaching the shared tooltip runtime from `@mcmcjs/charts/dom`:
+
+```ts
+import { attachSvgTips, SVG_TIPS_CSS } from "@mcmcjs/charts/dom";
+
+el.innerHTML = item.svg;
+const detach = attachSvgTips(el);
+```
+
 ## Output formats
 
 `--format` chooses the renderer (default `terminal`):
