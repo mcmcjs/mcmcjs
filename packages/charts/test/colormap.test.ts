@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { VIRIDIS_STOPS, viridisCss, viridisHex, viridisRgb } from "../src/colormap";
+import {
+  VIRIDIS_STOPS,
+  viridisCss,
+  viridisHex,
+  viridisRgb,
+  WONG_COLORS,
+  wongColor,
+} from "../src/colormap";
 
 // Golden vectors produced by running the reference viridisRgb verbatim in Node.
 describe("viridisRgb", () => {
@@ -44,5 +51,14 @@ describe("VIRIDIS_STOPS", () => {
     expect(VIRIDIS_STOPS).toHaveLength(16);
     expect(VIRIDIS_STOPS[0]).toEqual([68, 1, 84]);
     expect(VIRIDIS_STOPS[15]).toEqual([253, 231, 37]);
+  });
+});
+
+describe("wongColor", () => {
+  it("cycles the seven-color Wong palette in Makie's order", () => {
+    expect(WONG_COLORS).toHaveLength(7);
+    expect(wongColor(0)).toBe("#0072b2");
+    expect(wongColor(1)).toBe("#e69f00");
+    expect(wongColor(7)).toBe("#0072b2");
   });
 });

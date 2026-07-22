@@ -130,6 +130,37 @@ export function svgRect(x: number, y: number, w: number, h: number, fill: string
   return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(0, w).toFixed(2)}" height="${Math.max(0, h).toFixed(2)}" fill="${fill}"/>`;
 }
 
+export interface SvgPathOptions {
+  fill?: string;
+  /** evenodd renders ring polygons with holes. */
+  fillRule?: "nonzero" | "evenodd";
+  fillOpacity?: number;
+  stroke?: string;
+  strokeWidth?: number;
+  strokeDash?: string;
+}
+
+/** A raw path from pre-built `d` data (polygons, hexagons, contour rings). */
+export function svgPath(d: string, opts: SvgPathOptions = {}): string {
+  if (!d) return "";
+  const parts = [`<path d="${d}"`, `fill="${opts.fill ?? "none"}"`];
+  if (opts.fillRule) parts.push(`fill-rule="${opts.fillRule}"`);
+  if (opts.fillOpacity !== undefined) parts.push(`fill-opacity="${opts.fillOpacity}"`);
+  if (opts.stroke) parts.push(`stroke="${opts.stroke}"`);
+  if (opts.strokeWidth !== undefined) parts.push(`stroke-width="${opts.strokeWidth}"`);
+  if (opts.strokeDash) parts.push(`stroke-dasharray="${opts.strokeDash}"`);
+  return `${parts.join(" ")}/>`;
+}
+
+/** Closed polygon path data from pixel points ("" for fewer than 3 points). */
+export function polygonPathD(points: [number, number][]): string {
+  if (points.length < 3) return "";
+  const d = points
+    .map(([px, py], i) => `${i === 0 ? "M" : "L"}${px.toFixed(2)} ${py.toFixed(2)}`)
+    .join(" ");
+  return `${d} Z`;
+}
+
 export function svgLine(
   x1: number,
   y1: number,

@@ -55,3 +55,22 @@ export function viridisCss(t: number): string {
   const [r, g, b] = viridisRgb(t);
   return `${r},${g},${b}`;
 }
+
+// Wong (2011) colorblind-safe palette in Makie's order: blue, orange, green,
+// reddish purple, sky blue, vermilion, yellow.
+export const WONG_COLORS = [
+  "#0072b2",
+  "#e69f00",
+  "#009e73",
+  "#cc79a7",
+  "#56b4e9",
+  "#d55e00",
+  "#f0e442",
+] as const;
+
+/** The Wong palette color for series `i`, cycling past the palette length. */
+export function wongColor(i: number): string {
+  return WONG_COLORS[
+    ((i % WONG_COLORS.length) + WONG_COLORS.length) % WONG_COLORS.length
+  ] as string;
+}

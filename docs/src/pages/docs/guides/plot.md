@@ -15,9 +15,23 @@ mcmc plot --kind forest --format html -o forest.html
 ## Plot kinds
 
 Choose one with `--kind` (default `forest`).
-There are 19 kinds:
+There are 20 kinds:
 
-`trace`, `density`, `histogram`, `rank`, `autocorr`, `pair`, `scatter`, `energy`, `forest`, `ecdf`, `cumulative-mean`, `running-rhat`, `violin`, `chain-intervals`, `chain-intervals-all`, `summary-table`, `diagnostics-heatmap`, `splom`, `parallel-coords`.
+`trace`, `density`, `histogram`, `rank`, `autocorr`, `pair`, `scatter`, `energy`, `forest`, `ecdf`, `cumulative-mean`, `running-rhat`, `violin`, `chain-intervals`, `chain-intervals-all`, `summary-table`, `diagnostics-heatmap`, `splom`, `parallel-coords`, `corner`.
+
+## Corner plots
+
+`--kind corner` renders a PairPlots.jl-style corner plot: an N x N grid with layered marginals on the diagonal (histogram, KDE, quantile lines, and a median with asymmetric quantile errors as the title) and layered joint views below it (hexbin density, sigma-mass KDE contours, and the scatter tail outside the outermost contour).
+
+```bash
+mcmc plot samples.json --kind corner --format svg -o corner.svg
+mcmc plot samples.json --kind corner --var mu tau --truth "mu=1.08" --format html -o corner.html
+```
+
+`--truth "name=value,..."` draws reference lines through every cell and marginal.
+Bandwidths and bin counts follow PairPlots' effective-sample-size rules, and contour levels enclose the sigma-mass fractions of the joint KDE.
+The library API (`cornerData` in `@mcmcjs/plots`) additionally supports multiple overlaid series with wong-palette cycling, filled contours, 2-D histogram and hexbin bodies, trend lines, correlation annotations, reference bands, and a full duplicated grid.
+In the terminal this kind degrades to the diagonal's quantile summary.
 
 A terminal `forest` plot looks like this:
 

@@ -7,6 +7,7 @@ import {
   niceDomain,
   sparkline,
 } from "@mcmcjs/charts";
+import type { CornerData } from "./corner";
 import type {
   AutocorrData,
   ChainIntervalsAllData,
@@ -738,6 +739,25 @@ export function renderParallelCoordsTerminal(
     lines.push(
       `${color(v.padEnd(labelW), vi)}  ${fmtNum(b.min).padStart(12)}  ${fmtNum(mean).padStart(12)}  ${fmtNum(b.max).padStart(12)}`,
     );
+  });
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * Corner plot in the terminal: the diagonal's quantile titles as a per-variable
+ * summary (the joint cells need SVG or HTML output).
+ */
+export function renderCornerTerminal(data: CornerData, opts: TerminalOptions = {}): string {
+  const color = opts.color ?? identity;
+  if (data.vars.length === 0) return "(no variables)\n";
+  const labelW = Math.max(4, ...data.labels.map((l) => l.length));
+  const lines: string[] = [
+    `corner (${data.vars.length} vars, ${data.series.length} series); use --format svg or html for the grid`,
+  ];
+  data.diags.forEach((diag, vi) => {
+    const label = (data.labels[vi] ?? "").padEnd(labelW);
+    const titles = diag.titles.map((t) => t.text).join("  |  ");
+    lines.push(`${color(label, vi)}  ${titles || "-"}`);
   });
   return `${lines.join("\n")}\n`;
 }

@@ -6,9 +6,12 @@ import {
   buildHtmlDocument,
   type ChainIntervalsAllData,
   type ChainIntervalsData,
+  type CornerData,
+  type CornerTruth,
   type CumulativeMeanData,
   chainIntervalsAllData,
   chainIntervalsData,
+  cornerData,
   cumulativeMeanData,
   type DensityData,
   type DiagnosticsHeatmapData,
@@ -36,6 +39,8 @@ import {
   renderChainIntervalsAllTerminal,
   renderChainIntervalsSVG,
   renderChainIntervalsTerminal,
+  renderCornerSVG,
+  renderCornerTerminal,
   renderCumulativeMeanSVG,
   renderCumulativeMeanTerminal,
   renderDensitySVG,
@@ -83,6 +88,20 @@ import pc from "picocolors";
 import { resolveSamplesText } from "./diagnose";
 import { parseFloatOption, parseIntOption } from "./options";
 
+function parseTruth(spec?: string): CornerTruth | undefined {
+  if (!spec) return undefined;
+  const values: Record<string, number> = {};
+  for (const part of spec.split(",")) {
+    const [name, raw] = part.split("=");
+    const value = Number(raw);
+    if (!name?.trim() || !Number.isFinite(value)) {
+      throw new Error(`--truth expects name=value pairs, got "${part}"`);
+    }
+    values[name.trim()] = value;
+  }
+  return { values };
+}
+
 const KINDS = [
   "trace",
   "density",
@@ -103,6 +122,7 @@ const KINDS = [
   "diagnostics-heatmap",
   "splom",
   "parallel-coords",
+  "corner",
 ] as const;
 type PlotKind = (typeof KINDS)[number];
 const FORMATS = ["terminal", "svg", "html"] as const;
@@ -122,6 +142,7 @@ interface PlotCliOptions {
   bins?: number;
   maxLag?: number;
   colorBy?: string;
+  truth?: string;
   out?: string;
   json?: boolean;
 }
@@ -164,6 +185,8 @@ function renderTerminal(kind: PlotKind, data: unknown, term: TerminalOptions): s
       return renderDiagnosticsHeatmapTerminal(data as DiagnosticsHeatmapData, term);
     case "splom":
       return renderSplomTerminal(data as SplomData, term);
+    case "corner":
+      return renderCornerTerminal(data as CornerData, term);
     case "parallel-coords":
       return renderParallelCoordsTerminal(data as ParallelCoordsData, term);
     default:
@@ -206,6 +229,8 @@ function renderSvg(kind: PlotKind, data: unknown): string {
       return renderDiagnosticsHeatmapSVG(data as DiagnosticsHeatmapData);
     case "splom":
       return renderSplomSVG(data as SplomData);
+    case "corner":
+      return renderCornerSVG(data as CornerData);
     case "parallel-coords":
       return renderParallelCoordsSVG(data as ParallelCoordsData);
     default:
@@ -223,7 +248,7 @@ export function registerPlot(program: Command): void {
       "samples file (MCMCChains JSON or ArviZ InferenceData JSON), or a run ref (latest, @N, id prefix); default: the latest store run",
     )
     .description(
-      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, scatter, energy, forest, ecdf, cumulative-mean, running-rhat, violin, chain-intervals, chain-intervals-all, summary-table, diagnostics-heatmap, splom, parallel-coords)",
+      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, scatter, energy, forest, ecdf, cumulative-mean, running-rhat, violin, chain-intervals, chain-intervals-all, summary-table, diagnostics-heatmap, splom, parallel-coords, corner)",
     )
     .option("--kind <kind>", `plot type: ${KINDS.join(" | ")}`, "forest")
     .option("--format <fmt>", `output format: ${FORMATS.join(" | ")}`, "terminal")
@@ -242,6 +267,7 @@ export function registerPlot(program: Command): void {
     .option("--bins <n>", "histogram/rank bins (default: Freedman-Diaconis / 20)", parseIntOption)
     .option("--max-lag <n>", "autocorrelation max lag (default 40)", parseIntOption)
     .option("--color-by <var>", "color scatter points by a third variable via viridis (svg/html)")
+    .option("--truth <pairs>", 'reference values on a corner plot, e.g. "mu=1.08,tau=4"')
     .option("-o, --out <file>", "write the rendered plot to a file instead of stdout")
     .option("--json", "print the underlying plot data as JSON instead of rendering")
     .action((target: string | undefined, opts: PlotCliOptions) => {
@@ -276,6 +302,14 @@ export function registerPlot(program: Command): void {
         items = [diagnosticsHeatmapData(samples, { variables })];
       } else if (kind === "splom") {
         items = [splomData(samples, [...variables])];
+      } else if (kind === "corner") {
+        const truth = parseTruth(opts.truth);
+        items = [
+          cornerData([{ samples }], {
+            vars: [...variables],
+            ...(truth ? { truth: [truth] } : {}),
+          }),
+        ];
       } else if (kind === "parallel-coords") {
         items = [parallelCoordsData(samples, [...variables])];
       } else if (kind === "pair" || kind === "scatter") {

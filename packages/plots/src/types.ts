@@ -29,7 +29,8 @@ export type PlotKind =
   | "diagnostics-heatmap"
   | "splom"
   | "parallel-coords"
-  | "scatter3d";
+  | "scatter3d"
+  | "corner";
 
 /** Per-variable trace: the raw draw sequence of each chain, plus its key diagnostics. */
 export interface TraceData {

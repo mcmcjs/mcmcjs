@@ -6,9 +6,11 @@
  * pair) are emitted as embedded SVG instead.
  */
 import { seriesColor } from "@mcmcjs/charts";
+import type { CornerData } from "../corner";
 import {
   renderChainIntervalsAllSVG,
   renderChainIntervalsSVG,
+  renderCornerSVG,
   renderDiagnosticsHeatmapSVG,
   renderForestSVG,
   renderPairSVG,
@@ -58,7 +60,8 @@ export type PlotData =
   | SummaryTableData
   | DiagnosticsHeatmapData
   | SplomData
-  | ParallelCoordsData;
+  | ParallelCoordsData
+  | CornerData;
 
 /** One uPlot series, described declaratively (no functions). */
 export interface UplotSeriesSpec {
@@ -299,6 +302,8 @@ export function htmlItemFor(d: PlotData): HtmlItem {
       };
     case "splom":
       return { mode: "svg", kind: d.kind, title: "pairs", svg: renderSplomSVG(d) };
+    case "corner":
+      return { mode: "svg", kind: d.kind, title: "corner", svg: renderCornerSVG(d) };
     case "parallel-coords":
       return {
         mode: "svg",

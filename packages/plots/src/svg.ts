@@ -2,14 +2,17 @@ import {
   extent,
   fmtNum,
   niceDomain,
+  polygonPathD,
   seriesColor,
   svgCircle,
   svgFrame,
   svgLine,
+  svgPath,
   svgPolyline,
   svgRect,
   viridisHex,
 } from "@mcmcjs/charts";
+import type { CornerBodyLayer, CornerData } from "./corner";
 import type {
   AutocorrData,
   ChainIntervalsAllData,
@@ -802,4 +805,379 @@ export function renderParallelCoordsSVG(data: ParallelCoordsData, opts: SvgOptio
   });
 
   return wrapSvg(width, height, parts.join(""));
+}
+
+interface CellScale {
+  px: (v: number) => number;
+  py: (v: number) => number;
+}
+
+function cornerBodyLayerSVG(layer: CornerBodyLayer, scale: CellScale, swap: boolean): string {
+  const px = (x: number, y: number): number => scale.px(swap ? y : x);
+  const py = (x: number, y: number): number => scale.py(swap ? x : y);
+  const parts: string[] = [];
+  switch (layer.type) {
+    case "hexbin": {
+      for (let i = 0; i < layer.cx.length; i++) {
+        const w = (layer.weight[i] ?? 0) / (layer.wmax || 1);
+        if (w <= 0) continue;
+        const cx = layer.cx[i] ?? 0;
+        const cy = layer.cy[i] ?? 0;
+        const hx = layer.hexX;
+        const hy = layer.hexY;
+        const verts: [number, number][] = [
+          [cx, cy + hy],
+          [cx + hx, cy + hy / 2],
+          [cx + hx, cy - hy / 2],
+          [cx, cy - hy],
+          [cx - hx, cy - hy / 2],
+          [cx - hx, cy + hy / 2],
+        ];
+        const d = polygonPathD(verts.map(([x, y]) => [px(x, y), py(x, y)]));
+        parts.push(svgPath(d, { fill: layer.color, fillOpacity: w }));
+      }
+      break;
+    }
+    case "hist2d": {
+      const bw = layer.x.length > 1 ? (layer.x[1] as number) - (layer.x[0] as number) : 1;
+      const bh = layer.y.length > 1 ? (layer.y[1] as number) - (layer.y[0] as number) : 1;
+      for (let i = 0; i < layer.x.length; i++) {
+        for (let j = 0; j < layer.y.length; j++) {
+          const w = ((layer.weights[i] as number[])[j] ?? 0) / (layer.wmax || 1);
+          if (w <= 0) continue;
+          const cx = layer.x[i] as number;
+          const cy = layer.y[j] as number;
+          const x1 = px(cx - bw / 2, cy - bh / 2);
+          const y1 = py(cx - bw / 2, cy + bh / 2);
+          const x2 = px(cx + bw / 2, cy + bh / 2);
+          const y2 = py(cx + bw / 2, cy - bh / 2);
+          parts.push(
+            `<rect x="${Math.min(x1, x2).toFixed(2)}" y="${Math.min(y1, y2).toFixed(2)}" width="${Math.abs(x2 - x1).toFixed(2)}" height="${Math.abs(y2 - y1).toFixed(2)}" fill="${layer.color}" fill-opacity="${w.toFixed(3)}"/>`,
+          );
+        }
+      }
+      break;
+    }
+    case "contour": {
+      for (const ring of layer.curves) {
+        const pts: [number, number][] = ring.x.map((x, k) => [
+          px(x, ring.y[k] as number),
+          py(x, ring.y[k] as number),
+        ]);
+        const d = pts
+          .map(([x, y], k) => `${k === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`)
+          .join(" ");
+        parts.push(svgPath(d, { stroke: layer.color, strokeWidth: layer.linewidth }));
+      }
+      break;
+    }
+    case "contourf": {
+      for (const poly of layer.polygons) {
+        const d = poly.rings
+          .map((ring) =>
+            polygonPathD(
+              ring.x.map((x, k) => [px(x, ring.y[k] as number), py(x, ring.y[k] as number)]),
+            ),
+          )
+          .filter(Boolean)
+          .join(" ");
+        parts.push(
+          svgPath(d, { fill: layer.color, fillRule: "evenodd", fillOpacity: layer.alpha }),
+        );
+      }
+      break;
+    }
+    case "scatter": {
+      const r = Math.max(0.8, layer.markersize);
+      for (let i = 0; i < layer.x.length; i++) {
+        parts.push(
+          svgCircle(
+            px(layer.x[i] as number, layer.y[i] as number),
+            py(layer.x[i] as number, layer.y[i] as number),
+            r,
+            layer.color,
+          ),
+        );
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  return parts.join("");
+}
+
+/**
+ * Corner (pair) plot: a PairPlots.jl-style N x N grid with layered body cells
+ * (hexbin, filtered scatter, sigma contours, filled contours, trend and truth
+ * lines) below the diagonal and layered marginals plus quantile titles on it.
+ */
+export function renderCornerSVG(data: CornerData, opts: SvgOptions = {}): string {
+  const n = data.vars.length;
+  if (n === 0) return wrapSvg(opts.width ?? W, opts.height ?? 80, "");
+  const showDiag = data.diagonal;
+  const maxTitles = showDiag ? Math.max(0, ...data.diags.map((d) => d.titles.length)) : 0;
+  const titleH = maxTitles > 0 ? 13 * maxTitles + 4 : 0;
+
+  const left = 56;
+  const pad = 10;
+  const bottom = 44;
+  const gap = 6;
+  const rows = showDiag ? n : n - 1;
+  const cols = showDiag || data.fullgrid ? n : n - 1;
+  const cell = opts.width
+    ? Math.max(80, Math.floor((opts.width - left - pad - gap * (cols - 1)) / Math.max(1, cols)))
+    : 150;
+  const width = opts.width ?? left + cols * cell + gap * (cols - 1) + pad;
+  const rowPitch = cell + titleH + gap;
+  const height = opts.height ?? pad + rows * rowPitch - gap - titleH + bottom;
+
+  // Grid geometry: variable v's column and row indices (diagonal-less grids
+  // drop the first row and last column of the full corner layout).
+  const colOf = (v: number): number => v;
+  const rowOf = (v: number): number => (showDiag ? v : v - 1);
+  const cellX = (v: number): number => left + colOf(v) * (cell + gap);
+  const cellY = (v: number): number => pad + rowOf(v) * rowPitch + titleH;
+
+  const pads = data.domains.map(([lo, hi]) => {
+    const span = hi - lo || 1;
+    return { lo: lo - 0.04 * span, span: span * 1.08 };
+  });
+  const scaleFor = (xVar: number, yVar: number, x0: number, y0: number): CellScale => {
+    const dx = pads[xVar] ?? { lo: 0, span: 1 };
+    const dy = pads[yVar] ?? { lo: 0, span: 1 };
+    return {
+      px: (v: number) => x0 + ((v - dx.lo) / dx.span) * cell,
+      py: (v: number) => y0 + cell - ((v - dy.lo) / dy.span) * cell,
+    };
+  };
+
+  const defs: string[] = [];
+  const parts: string[] = [];
+  let clipId = 0;
+  const clipped = (x0: number, y0: number, body: string): void => {
+    if (!body) return;
+    clipId += 1;
+    const id = `corner-clip-${clipId}`;
+    defs.push(
+      `<clipPath id="${id}"><rect x="${x0}" y="${y0}" width="${cell}" height="${cell}"/></clipPath>`,
+    );
+    parts.push(`<g clip-path="url(#${id})">${body}</g>`);
+  };
+  const frame = (x0: number, y0: number): void => {
+    parts.push(
+      `<rect x="${x0}" y="${y0}" width="${cell}" height="${cell}" fill="none" stroke="#d1d5db"/>`,
+    );
+  };
+
+  const bodyCell = (row: number, col: number, layers: CornerBodyLayer[], swap: boolean): void => {
+    const xVar = swap ? row : col;
+    const yVar = swap ? col : row;
+    const gx = swap ? colOf(row) : colOf(col);
+    const gy = swap ? rowOf(col) : rowOf(row);
+    const x0 = left + gx * (cell + gap);
+    const y0 = pad + gy * rowPitch + titleH;
+    frame(x0, y0);
+    const scale = scaleFor(xVar, yVar, x0, y0);
+    const painted: string[] = [];
+    for (const layer of layers) {
+      if (layer.type === "trendline") {
+        const dx = pads[xVar] ?? { lo: 0, span: 1 };
+        const xa = dx.lo;
+        const xb = dx.lo + dx.span;
+        const ya = layer.m * xa + layer.b;
+        const yb = layer.m * xb + layer.b;
+        const p1: [number, number] = swap ? [ya, xa] : [xa, ya];
+        const p2: [number, number] = swap ? [yb, xb] : [xb, yb];
+        painted.push(
+          svgLine(
+            scale.px(p1[0]),
+            scale.py(p1[1]),
+            scale.px(p2[0]),
+            scale.py(p2[1]),
+            layer.color,
+            1.25,
+          ),
+        );
+      } else if (layer.type === "correlation") {
+        parts.push(
+          svgTextSized(
+            x0 + (layer.position[0] ?? 0) * cell + 3,
+            y0 + (1 - (layer.position[1] ?? 1)) * cell + 11,
+            `r = ${layer.value.toFixed(layer.digits)}`,
+            "start",
+            "#111",
+            10,
+          ),
+        );
+      } else if (layer.type === "bodylines") {
+        const vs = swap ? layer.ys : layer.xs;
+        const hs = swap ? layer.xs : layer.ys;
+        for (const v of vs) {
+          painted.push(svgLine(scale.px(v), y0, scale.px(v), y0 + cell, layer.color, 1));
+        }
+        for (const h of hs) {
+          painted.push(svgLine(x0, scale.py(h), x0 + cell, scale.py(h), layer.color, 1));
+        }
+      } else if (layer.type === "bodybands") {
+        const vRanges = swap ? layer.y : layer.x;
+        const hRanges = swap ? layer.x : layer.y;
+        for (const [lo, hi] of vRanges) {
+          const xa = scale.px(lo);
+          const xb = scale.px(hi);
+          painted.push(
+            `<rect x="${Math.min(xa, xb).toFixed(2)}" y="${y0}" width="${Math.abs(xb - xa).toFixed(2)}" height="${cell}" fill="${layer.color}" fill-opacity="${layer.alpha}"/>`,
+          );
+        }
+        for (const [lo, hi] of hRanges) {
+          const ya = scale.py(hi);
+          const yb = scale.py(lo);
+          painted.push(
+            `<rect x="${x0}" y="${Math.min(ya, yb).toFixed(2)}" width="${cell}" height="${Math.abs(yb - ya).toFixed(2)}" fill="${layer.color}" fill-opacity="${layer.alpha}"/>`,
+          );
+        }
+      } else {
+        painted.push(cornerBodyLayerSVG(layer, scale, swap));
+      }
+    }
+    clipped(x0, y0, painted.join(""));
+  };
+
+  for (const c of data.cells) {
+    bodyCell(c.row, c.col, c.layers, false);
+    if (data.fullgrid) bodyCell(c.row, c.col, c.layers, true);
+  }
+
+  if (showDiag) {
+    for (const diag of data.diags) {
+      const v = diag.index;
+      const x0 = cellX(v);
+      const y0 = cellY(v);
+      frame(x0, y0);
+      const dx = pads[v] ?? { lo: 0, span: 1 };
+      const px = (value: number): number => x0 + ((value - dx.lo) / dx.span) * cell;
+      let ymax = 0;
+      for (const layer of diag.layers) {
+        if (layer.type === "marginhist" || layer.type === "marginstephist") {
+          for (const w of layer.weights) if (w > ymax) ymax = w;
+        } else if (layer.type === "margindensity") {
+          for (const w of layer.y) if (w > ymax) ymax = w;
+        }
+      }
+      if (ymax <= 0) ymax = 1;
+      const py = (w: number): number => y0 + cell - (w / ymax) * (cell - 8);
+      const painted: string[] = [];
+      for (const layer of diag.layers) {
+        switch (layer.type) {
+          case "marginhist": {
+            const bw = layer.x.length > 1 ? (layer.x[1] as number) - (layer.x[0] as number) : 1;
+            for (let i = 0; i < layer.x.length; i++) {
+              const c = layer.x[i] as number;
+              const x1 = px(c - bw / 2);
+              const x2 = px(c + bw / 2);
+              const yTop = py(layer.weights[i] as number);
+              painted.push(
+                `<rect x="${x1.toFixed(2)}" y="${yTop.toFixed(2)}" width="${(x2 - x1).toFixed(2)}" height="${(y0 + cell - yTop).toFixed(2)}" fill="${layer.color}"/>`,
+              );
+            }
+            break;
+          }
+          case "marginstephist": {
+            const bw = layer.x.length > 1 ? (layer.x[1] as number) - (layer.x[0] as number) : 1;
+            const pts: [number, number][] = [];
+            for (let i = 0; i < layer.x.length; i++) {
+              const c = layer.x[i] as number;
+              const w = layer.weights[i] as number;
+              pts.push([px(c - bw / 2), py(w)]);
+              pts.push([px(c + bw / 2), py(w)]);
+            }
+            painted.push(svgPolyline(pts, layer.color, 1.25));
+            break;
+          }
+          case "margindensity": {
+            const pts: [number, number][] = layer.x.map((c, k) => [
+              px(c),
+              py(layer.y[k] as number),
+            ]);
+            painted.push(svgPolyline(pts, layer.color, layer.linewidth));
+            break;
+          }
+          case "marginquantilelines": {
+            for (const value of layer.values) {
+              painted.push(
+                svgPath(`M${px(value).toFixed(2)} ${y0} L${px(value).toFixed(2)} ${y0 + cell}`, {
+                  stroke: layer.color,
+                  strokeWidth: 1,
+                  strokeDash: "4 3",
+                }),
+              );
+            }
+            break;
+          }
+          case "marginlines": {
+            for (const value of layer.values) {
+              painted.push(svgLine(px(value), y0, px(value), y0 + cell, layer.color, 1.25));
+            }
+            break;
+          }
+          case "marginbands": {
+            for (const [lo, hi] of layer.ranges) {
+              const x1 = px(lo);
+              const x2 = px(hi);
+              painted.push(
+                `<rect x="${Math.min(x1, x2).toFixed(2)}" y="${y0}" width="${Math.abs(x2 - x1).toFixed(2)}" height="${cell}" fill="${layer.color}" fill-opacity="${layer.alpha}"/>`,
+              );
+            }
+            break;
+          }
+          default:
+            break;
+        }
+      }
+      clipped(x0, y0, painted.join(""));
+      diag.titles.forEach((title, i) => {
+        parts.push(
+          svgTextSized(
+            x0 + cell / 2,
+            y0 - 6 - 13 * (diag.titles.length - 1 - i),
+            title.text,
+            "middle",
+            title.color,
+            10,
+          ),
+        );
+      });
+    }
+  }
+
+  // Edge labels: variable names below the bottom row and left of each row.
+  for (let v = 0; v < n; v++) {
+    const isBottomRow = showDiag || data.fullgrid ? true : v < n - 1;
+    if (isBottomRow) {
+      const x0 = cellX(v);
+      const yEdge = pad + rows * rowPitch - gap - titleH;
+      parts.push(
+        svgTextSized(x0 + cell / 2, yEdge + 16, data.labels[v] ?? "", "middle", "#111", 12),
+      );
+      const dx = pads[v] ?? { lo: 0, span: 1 };
+      parts.push(svgTextSized(x0, yEdge + 30, fmtNum(dx.lo), "start", "#777", 9));
+      parts.push(svgTextSized(x0 + cell, yEdge + 30, fmtNum(dx.lo + dx.span), "end", "#777", 9));
+    }
+    if (showDiag ? v > 0 : v > 0) {
+      const y0 = cellY(v);
+      parts.push(
+        `<text x="${left - 8}" y="${(y0 + cell / 2).toFixed(2)}" text-anchor="middle" font-size="12" fill="#111" transform="rotate(-90 ${left - 8} ${(y0 + cell / 2).toFixed(2)})">${escText(data.labels[v] ?? "")}</text>`,
+      );
+    }
+  }
+
+  // Legend from labeled series.
+  const labeled = data.series.filter((s) => s.label);
+  labeled.forEach((s, i) => {
+    const ly = pad + 14 * i + 10;
+    parts.push(svgRect(width - 130, ly - 8, 10, 10, s.color));
+    parts.push(svgTextSized(width - 116, ly, s.label ?? "", "start", "#111", 11));
+  });
+
+  return wrapSvg(width, height, `<defs>${defs.join("")}</defs>${parts.join("")}`);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { seriesColor, stackSvg, svgFrame, svgPolyline } from "../src/svg";
+import { polygonPathD, seriesColor, stackSvg, svgFrame, svgPath, svgPolyline } from "../src/svg";
 
 describe("svgFrame", () => {
   it("renders a standalone svg with a title and maps data to pixels", () => {
@@ -54,5 +54,29 @@ describe("stackSvg", () => {
   it("returns a single svg unchanged", () => {
     const one = svgFrame({ width: 100, height: 50, xDomain: [0, 1], yDomain: [0, 1] }).render("");
     expect(stackSvg([one])).toBe(one);
+  });
+});
+
+describe("svgPath and polygonPathD", () => {
+  it("builds a closed polygon path with fill options", () => {
+    const d = polygonPathD([
+      [0, 0],
+      [10, 0],
+      [10, 10],
+    ]);
+    expect(d).toBe("M0.00 0.00 L10.00 0.00 L10.00 10.00 Z");
+    const el = svgPath(d, { fill: "#123456", fillRule: "evenodd", fillOpacity: 0.5 });
+    expect(el).toContain('fill-rule="evenodd"');
+    expect(el).toContain('fill-opacity="0.5"');
+  });
+
+  it("returns nothing for degenerate input", () => {
+    expect(polygonPathD([[0, 0]])).toBe("");
+    expect(svgPath("")).toBe("");
+  });
+
+  it("strokes dashed paths", () => {
+    const el = svgPath("M0 0 L1 1", { stroke: "#000", strokeWidth: 1, strokeDash: "4 3" });
+    expect(el).toContain('stroke-dasharray="4 3"');
   });
 });
