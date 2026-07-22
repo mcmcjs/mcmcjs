@@ -1,5 +1,12 @@
 # @mcmcjs/charts
 
+## 0.6.0
+
+### Minor Changes
+
+- b361256: New primitives for layered plots: svgPath and polygonPathD (raw paths with fill rules for ring polygons) and the Wong colorblind-safe series palette (WONG_COLORS, wongColor).
+- 8b3551f: Hover and theming primitives for SVG plots: attachSvgTips (a delegated tooltip runtime matching the uPlot cursor tooltip) and SVG_TIPS_CSS in the dom entry, data-tip support across the SVG mark helpers, and frame text drawn through --mcmc theme variables with light fallbacks.
+
 ## 0.5.0
 
 ### Minor Changes
