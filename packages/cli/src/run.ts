@@ -50,6 +50,7 @@ import { backendLabel, formatFitResult } from "./fit";
 import { installRunner, juliaupBin } from "./julia";
 import { parseFloatOption, parseIntOption } from "./options";
 import { rendererFor } from "./progress";
+import { reportUrl, resolveAppUrl } from "./report";
 import { timeAgo } from "./store-cli";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
@@ -591,6 +592,8 @@ export function registerRun(program: Command, ctx: EngineContext): void {
           process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
         } else {
           humanOut.write(formatReportHuman(report));
+          say("");
+          say(`${pc.dim("report:")} ${reportUrl(resolveAppUrl(), storeDir, runId)}`);
         }
         process.exitCode = report.converged ? 0 : 2;
       };

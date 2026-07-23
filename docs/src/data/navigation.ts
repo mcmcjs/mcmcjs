@@ -13,6 +13,7 @@ export const navGroups = [
 			{ title: "Run inference", href: "/docs/guides/run/" },
 			{ title: "Diagnose convergence", href: "/docs/guides/diagnose/" },
 			{ title: "Plot", href: "/docs/guides/plot/" },
+			{ title: "Report", href: "/docs/guides/report/" },
 			{ title: "Predict", href: "/docs/guides/predict/" },
 			{ title: "The run store", href: "/docs/guides/run-store/" },
 			{ title: "Convert DoodleBUGS", href: "/docs/guides/convert/" },

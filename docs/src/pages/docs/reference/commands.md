@@ -29,7 +29,8 @@ See [Run inference](/docs/guides/run/) and [Predict](/docs/guides/predict/).
 | `summary [target]` | posterior summary statistics | `--var`, `--warmup`, `--stdin`, `--store` |
 | `samples [target]` | export the raw draws in a portable format | `--to`, `-o/--out`, `--warmup`, `--stdin`, `--store` |
 | `plot [target]` | diagnostic plots for a samples file | `--kind`, `--format`, `--var`, `-o/--out`, `--width`, `--height`, `--ascii`, `--hdi-prob`, `--bins`, `--max-lag`, `--color-by`, `--warmup`, `--stdin`, `--store` |
-| `export <what>` | copy a run's artifact (`samples`/`spec`/`record`) to a visible file | `--run`, `-o/--out`, `--force`, `--store` |
+| `export <what>` | copy a run's artifact (`samples`/`spec`/`record`/`bundle`) to a visible file | `--run`, `-o/--out`, `--force`, `--store` |
+| `report [ref]` | open a run in the report web app | `--store`, `--app-url`, `--no-open` |
 
 A `target` is a samples file (MCMCChains JSON or ArviZ InferenceData JSON) or a run ref (`latest`, `@N`, an id prefix); it defaults to the latest store run.
 See [Diagnose convergence](/docs/guides/diagnose/), [Plot](/docs/guides/plot/), and [The run store](/docs/guides/run-store/).

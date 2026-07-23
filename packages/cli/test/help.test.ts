@@ -26,6 +26,7 @@ const GROUPS: Record<string, string> = {
   samples: "Inspect runs:",
   plot: "Inspect runs:",
   export: "Inspect runs:",
+  report: "Inspect runs:",
   init: "Start a project:",
   sandbox: "Start a project:",
   convert: "Start a project:",

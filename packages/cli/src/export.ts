@@ -1,9 +1,13 @@
-import { copyFileSync, existsSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import {
   type LedgerEntry,
   parseSpec,
+  RUN_BUNDLE_KIND,
+  RUN_BUNDLE_SCHEMA_VERSION,
+  type RunBundle,
   readLedger,
+  resolveData,
   resolveRunRef,
   runDir,
   serializeSpecToml,
@@ -15,6 +19,7 @@ const KINDS = {
   samples: { file: "samples.json", suffix: ".samples.json" },
   spec: { file: "spec.toml", suffix: ".toml" },
   record: { file: "run.json", suffix: ".run.json" },
+  bundle: { file: "samples.json", suffix: ".mcmcrun.json" },
 } as const;
 
 export type ExportKind = keyof typeof KINDS;
@@ -30,6 +35,28 @@ export function defaultExportName(kind: ExportKind, entry: LedgerEntry): string 
 export function specRelativePath(fromDir: string, toFile: string): string {
   const rel = relative(fromDir, toFile).split(sep).join("/");
   return rel.startsWith(".") ? rel : `./${rel}`;
+}
+
+/** Assembles the portable single-file run: entry, resolved spec, model source, samples. */
+export function assembleBundle(storeDir: string, entry: LedgerEntry): RunBundle {
+  const dir = runDir(storeDir, entry.id);
+  const spec = parseSpec(join(dir, "spec.toml"));
+  const data = resolveData(spec.data, spec.dataFilePath).data;
+  const {
+    specPath: _specPath,
+    modelPath: _modelPath,
+    dataFilePath: _dataFilePath,
+    specHash: _specHash,
+    ...specJson
+  } = spec;
+  return {
+    kind: RUN_BUNDLE_KIND,
+    schema_version: RUN_BUNDLE_SCHEMA_VERSION,
+    entry,
+    spec: { ...specJson, data, data_file: undefined } as unknown as Record<string, unknown>,
+    model_source: readFileSync(join(dir, basename(entry.model_path)), "utf8"),
+    samples: JSON.parse(readFileSync(join(dir, "samples.json"), "utf8")) as Record<string, unknown>,
+  };
 }
 
 /** Rewrites the frozen spec so model.path points at the live model from `destDir`. */
@@ -52,7 +79,7 @@ export function registerExport(program: Command): void {
     .command("export")
     .summary("copy a run's artifact to a visible file")
     .helpGroup("Inspect runs:")
-    .argument("<what>", "what to materialize: samples, spec, or record")
+    .argument("<what>", "what to materialize: samples, spec, record, or bundle")
     .description("Copy a run's artifact out of the store into a visible file")
     .option("--run <ref>", "run ref: latest (default), @N, or a run-id prefix")
     .option("-o, --out <path>", "output path (default: derived from the model name)")
@@ -65,7 +92,7 @@ export function registerExport(program: Command): void {
         opts: { run?: string; out?: string; force?: boolean; store?: string; json?: boolean },
       ) => {
         if (!(what in KINDS)) {
-          throw new Error(`unknown export "${what}" (expected samples, spec, or record)`);
+          throw new Error(`unknown export "${what}" (expected samples, spec, record, or bundle)`);
         }
         const kind = what as ExportKind;
         const storeDir = locateStore(opts.store);
@@ -83,6 +110,8 @@ export function registerExport(program: Command): void {
         if (kind === "spec") {
           const liveModel = resolve(dirname(storeDir), entry.model_path);
           writeFileSync(dest, exportedSpecToml(source, dirname(dest), liveModel));
+        } else if (kind === "bundle") {
+          writeFileSync(dest, JSON.stringify(assembleBundle(storeDir, entry)));
         } else {
           copyFileSync(source, dest);
         }

@@ -11,6 +11,7 @@ import { registerInit } from "./init";
 import { registerJulia } from "./julia";
 import { registerPlot } from "./plot";
 import { registerPredict } from "./predict";
+import { registerReport } from "./report";
 import { registerRun } from "./run";
 import { registerRuns } from "./runs";
 import { registerSamples } from "./samples";
@@ -31,6 +32,7 @@ export function registerAll(program: Command, ctx: EngineContext, registry: Engi
   registerRun(program, ctx);
   registerFit(program, ctx);
   registerPredict(program, ctx);
+  registerReport(program);
   registerRuns(program);
   registerShow(program);
   registerDiagnose(program);

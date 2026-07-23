@@ -20,6 +20,12 @@ export {
 } from "./spec/schema";
 export { serializeSpecToml } from "./spec/serialize";
 export { RUN_RECORD_SCHEMA_VERSION, type RunRecord } from "./spec/sidecar";
+export {
+  parseRunBundle,
+  RUN_BUNDLE_KIND,
+  RUN_BUNDLE_SCHEMA_VERSION,
+  type RunBundle,
+} from "./store/bundle";
 export type {
   Ledger,
   LedgerDiagnostics,

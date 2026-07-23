@@ -1,0 +1,28 @@
+{
+  "name": "mcmcjs-report",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@mcmcjs/charts": "workspace:*",
+    "@mcmcjs/core": "workspace:*",
+    "@mcmcjs/plots": "workspace:*",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "smol-toml": "^1.6.1",
+    "uplot": "^1.6.32"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "typescript": "^5.9.2",
+    "vite": "^6.4.2"
+  }
+}

@@ -1,0 +1,36 @@
+name: Report publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "report/**"
+      - "packages/charts/**"
+      - "packages/core/**"
+      - "packages/plots/**"
+      - ".github/workflows/report-publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: report-publish-${{ github.ref }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+        with:
+          node-version: 22
+      - run: pnpm build
+
+      - name: Publish report app
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: report/dist
+          destination_dir: report
+          keep_files: true
