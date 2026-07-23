@@ -187,28 +187,16 @@ export function useEditorActions(
   ) => {
     if (!projectStore.currentProjectId) return
 
-    toast.add({
-      severity: 'info',
-      summary: 'Loading...',
-      detail: type === 'local' ? 'Loading model' : `Loading model: ${exampleIdOrUrl}`,
-      life: 2000,
-    })
-
     try {
       let modelData = null
       let modelName = 'Imported Model'
-      let sourceDescription = ''
 
       if (type === 'local') {
-        sourceDescription = 'Local File'
         const response = await fetch(exampleIdOrUrl)
         if (!response.ok) throw new Error(`Failed to load local file. Status: ${response.status}`)
         modelData = await response.json()
         modelName = modelData.name || exampleIdOrUrl
       } else if (isUrl(exampleIdOrUrl)) {
-        sourceDescription = exampleIdOrUrl.toLowerCase().includes('github')
-          ? 'GitHub Source'
-          : 'External URL'
         const response = await fetch(exampleIdOrUrl)
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`)
         modelData = await response.json()
@@ -224,7 +212,6 @@ export function useEditorActions(
             const response = await fetch(localUrl)
             if (response.ok) {
               modelData = await response.json()
-              sourceDescription = 'Local Path'
             }
           } catch {
             /* fallthrough */
@@ -235,9 +222,6 @@ export function useEditorActions(
               const response = await fetch(config.url)
               if (response.ok) {
                 modelData = await response.json()
-                sourceDescription = config.url.includes('github')
-                  ? 'GitHub Source'
-                  : 'Remote Source'
               }
             } catch {
               /* fallthrough */
@@ -251,7 +235,6 @@ export function useEditorActions(
             if (response.ok) {
               modelData = await response.json()
               modelName = modelData.name || exampleIdOrUrl
-              sourceDescription = 'Turing Repository'
             }
           } catch {
             /* fallthrough */
@@ -264,13 +247,8 @@ export function useEditorActions(
       }
 
       if (modelData) {
+        // The rendered graph is its own confirmation; only a failure needs a toast.
         await loadModelData(modelData, modelName, exampleIdOrUrl, sourceMap)
-        toast.add({
-          severity: 'success',
-          summary: 'Loaded',
-          detail: `${modelName} loaded from ${sourceDescription}`,
-          life: 3000,
-        })
       }
     } catch (error) {
       console.error('[DoodleBUGS] Load error:', error)
