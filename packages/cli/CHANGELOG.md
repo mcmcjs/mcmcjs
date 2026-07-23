@@ -1,5 +1,11 @@
 # mcmcjs
 
+## 0.19.2
+
+### Patch Changes
+
+- @mcmcjs/plots@0.6.1
+
 ## 0.19.1
 
 ### Patch Changes
