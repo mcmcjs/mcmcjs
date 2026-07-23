@@ -26,6 +26,7 @@ import {
 export interface DeepLink {
   runId: string;
   storePath?: string;
+  connect?: string;
 }
 
 function VerdictDot({ entry }: { entry: LedgerEntry }) {
@@ -94,6 +95,28 @@ export function Landing({
       else setNeedsGrant(true);
     });
   }, [refreshLibrary, listConnectedStore]);
+
+  // A freshly-run CLI serves the bundle on the loopback interface; fetching it
+  // opens the run with no file access at all.
+  useEffect(() => {
+    if (!deepLink?.connect) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(deepLink.connect as string);
+        if (!response.ok) throw new Error(`handoff returned ${response.status}`);
+        const bundle = parseRunBundle(await response.text());
+        if (cancelled) return;
+        await putRun(bundle);
+        onOpen(bundle.entry.id);
+      } catch {
+        // The one-shot server is gone; the store and bundle paths still work.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [deepLink, onOpen]);
 
   // A deep link resolves silently when a granted folder already reaches it.
   useEffect(() => {
@@ -167,7 +190,12 @@ export function Landing({
         await listConnectedStore(existing);
         return;
       }
-      const handle = await window.showDirectoryPicker({ id: "mcmc-store", mode: "read" });
+      const roots = await listRoots();
+      const handle = await window.showDirectoryPicker({
+        id: "mcmc-store",
+        mode: "read",
+        ...(roots[0] ? { startIn: roots[0] } : {}),
+      });
       await addRoot(handle);
       if (await verifyStoreHandle(handle)) {
         await setStoreHandle(handle);

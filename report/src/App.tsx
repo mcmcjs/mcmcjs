@@ -8,7 +8,11 @@ function parseHash(): DeepLink | null {
   const params = new URLSearchParams(window.location.hash.slice(1));
   const runId = params.get("run");
   if (!runId) return null;
-  return { runId, storePath: params.get("store") ?? undefined };
+  return {
+    runId,
+    storePath: params.get("store") ?? undefined,
+    connect: params.get("connect") ?? undefined,
+  };
 }
 
 export function App() {

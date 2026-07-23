@@ -1,6 +1,6 @@
 import { attachSvgTips, mountPlot, SVG_TIPS_CSS } from "@mcmcjs/charts/dom";
 import { htmlItemFor, type PlotData } from "@mcmcjs/plots";
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import type { ResolvedTheme } from "../lib/theme";
@@ -14,7 +14,7 @@ function injectTipsCss(): void {
   tipsCssInjected = true;
 }
 
-export function PlotCard({
+export const PlotCard = memo(function PlotCard({
   data,
   theme,
   height,
@@ -48,4 +48,4 @@ export function PlotCard({
   }, [data, theme, height]);
 
   return <div className="plot-card" ref={ref} />;
-}
+});

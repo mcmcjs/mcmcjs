@@ -80,12 +80,20 @@ export function startAmbient(canvas: HTMLCanvasElement, reducedMotion: boolean):
     draw();
     raf = requestAnimationFrame(tick);
   };
+  const onVisibility = (): void => {
+    cancelAnimationFrame(raf);
+    if (!document.hidden) raf = requestAnimationFrame(tick);
+  };
+  document.addEventListener("visibilitychange", onVisibility);
   raf = requestAnimationFrame(tick);
 
   return {
     setExcited: (on: boolean) => {
       excited = on;
     },
-    destroy: () => cancelAnimationFrame(raf),
+    destroy: () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      cancelAnimationFrame(raf);
+    },
   };
 }

@@ -50,6 +50,18 @@ export function RunView({
     () => cornerData([{ samples }], { vars: [...samples.variables].slice(0, CORNER_MAX_VARS) }),
     [samples],
   );
+  const summary = useMemo(() => summaryTableData(samples), [samples]);
+  const heatmap = useMemo(() => diagnosticsHeatmapData(samples), [samples]);
+  const forest = useMemo(() => forestData(samples), [samples]);
+  const perVariable = useMemo(() => {
+    if (!variable || !samples.variables.includes(variable)) return null;
+    return {
+      trace: traceData(samples, variable),
+      density: densityData(samples, variable),
+      rank: rankData(samples, variable),
+      autocorr: autocorrData(samples, variable),
+    };
+  }, [samples, variable]);
 
   const verdict = entry.diagnostics;
   const toggleChain = (i: number): void => {
@@ -120,14 +132,14 @@ export function RunView({
 
         <section className="block" style={{ marginTop: 0 }}>
           <p className="eyebrow">Summary</p>
-          <PlotCard data={summaryTableData(samples)} theme={theme} />
+          <PlotCard data={summary} theme={theme} />
         </section>
 
         <section className="block">
           <p className="eyebrow">Convergence</p>
           <div className="grid-2">
-            <PlotCard data={diagnosticsHeatmapData(samples)} theme={theme} />
-            <PlotCard data={forestData(samples)} theme={theme} />
+            <PlotCard data={heatmap} theme={theme} />
+            <PlotCard data={forest} theme={theme} />
           </div>
         </section>
 
@@ -156,12 +168,12 @@ export function RunView({
               </button>
             ))}
           </div>
-          {variable && samples.variables.includes(variable) && (
+          {perVariable && (
             <div className="grid-2">
-              <PlotCard data={traceData(samples, variable)} theme={theme} />
-              <PlotCard data={densityData(samples, variable)} theme={theme} />
-              <PlotCard data={rankData(samples, variable)} theme={theme} />
-              <PlotCard data={autocorrData(samples, variable)} theme={theme} />
+              <PlotCard data={perVariable.trace} theme={theme} />
+              <PlotCard data={perVariable.density} theme={theme} />
+              <PlotCard data={perVariable.rank} theme={theme} />
+              <PlotCard data={perVariable.autocorr} theme={theme} />
             </div>
           )}
         </section>
