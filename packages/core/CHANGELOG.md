@@ -1,5 +1,11 @@
 # @mcmcjs/core
 
+## 0.8.0
+
+### Minor Changes
+
+- 3376401: RunBundle: a self-contained single-file run format (ledger entry, resolved spec, model source, samples) with parseRunBundle validation, shared by the CLI exporter and the report web app.
+
 ## 0.7.0
 
 ### Minor Changes

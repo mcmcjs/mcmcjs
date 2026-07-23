@@ -1,5 +1,19 @@
 # mcmcjs
 
+## 0.20.0
+
+### Minor Changes
+
+- 3376401: mcmc report opens a run in the report web app, mcmc export gains a bundle kind that writes a portable single-file run, and every successful mcmc run prints its report link.
+
+### Patch Changes
+
+- Updated dependencies [3376401]
+  - @mcmcjs/core@0.8.0
+  - @mcmcjs/julia@0.11.3
+  - @mcmcjs/plots@0.6.2
+  - @mcmcjs/stan@0.1.2
+
 ## 0.19.2
 
 ### Patch Changes

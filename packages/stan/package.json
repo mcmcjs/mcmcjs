@@ -1,6 +1,6 @@
 {
   "name": "@mcmcjs/stan",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Stan runtime engine for MCMC.js: provisions CmdStan, compiles models, and runs NUTS with streamed progress and draws.",
   "keywords": [
     "mcmc",

@@ -1,6 +1,6 @@
 {
   "name": "@mcmcjs/plots-gl",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Interactive WebGL renderers for MCMC plots (3D scatter, scatter-plot matrix, parallel coordinates), backed by regl.",
   "keywords": [
     "mcmc",
