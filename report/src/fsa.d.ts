@@ -5,6 +5,7 @@ interface FileSystemHandlePermissionDescriptor {
 interface FileSystemHandle {
   queryPermission(descriptor?: FileSystemHandlePermissionDescriptor): Promise<PermissionState>;
   requestPermission(descriptor?: FileSystemHandlePermissionDescriptor): Promise<PermissionState>;
+  isSameEntry(other: FileSystemHandle): Promise<boolean>;
 }
 
 interface Window {

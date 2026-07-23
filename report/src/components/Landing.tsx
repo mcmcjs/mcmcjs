@@ -3,8 +3,10 @@ import { parseRunBundle } from "@mcmcjs/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type Ambient, startAmbient } from "../lib/ambient";
 import {
+  addRoot,
   deleteRun,
   getStoreHandle,
+  listRoots,
   listRuns,
   putRun,
   type StoredRun,
@@ -14,6 +16,7 @@ import {
   bundleTitle,
   downloadBundle,
   ensurePermission,
+  locateStore,
   readLedgerEntries,
   readStoreRun,
   timeAgo,
@@ -69,6 +72,19 @@ export function Landing({
     setNeedsGrant(false);
   }, []);
 
+  const openRunFromStore = useCallback(
+    async (store: FileSystemDirectoryHandle, runId: string) => {
+      const entries = await readLedgerEntries(store);
+      const entry = entries.find((e) => e.id.startsWith(runId));
+      if (!entry) throw new Error(`run ${runId} is not in this store`);
+      const bundle = await readStoreRun(store, entry);
+      await putRun(bundle);
+      await setStoreHandle(store);
+      onOpen(entry.id);
+    },
+    [onOpen],
+  );
+
   useEffect(() => {
     refreshLibrary();
     getStoreHandle().then(async (handle) => {
@@ -78,6 +94,15 @@ export function Landing({
       else setNeedsGrant(true);
     });
   }, [refreshLibrary, listConnectedStore]);
+
+  // A deep link resolves silently when a granted folder already reaches it.
+  useEffect(() => {
+    if (!deepLink?.storePath) return;
+    listRoots().then(async (roots) => {
+      const store = await locateStore(roots, deepLink.storePath as string, false);
+      if (store) await openRunFromStore(store, deepLink.runId).catch(() => {});
+    });
+  }, [deepLink, openRunFromStore]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -129,22 +154,44 @@ export function Landing({
   const connectStore = useCallback(async () => {
     setError(null);
     try {
+      if (deepLink?.storePath) {
+        const roots = await listRoots();
+        const located = await locateStore(roots, deepLink.storePath, true);
+        if (located) {
+          await openRunFromStore(located, deepLink.runId);
+          return;
+        }
+      }
       const existing = await getStoreHandle();
-      if (existing && (await ensurePermission(existing, true))) {
+      if (!deepLink && existing && (await ensurePermission(existing, true))) {
         await listConnectedStore(existing);
         return;
       }
       const handle = await window.showDirectoryPicker({ id: "mcmc-store", mode: "read" });
-      if (!(await verifyStoreHandle(handle))) {
-        setError(`"${handle.name}" has no index.json; pick the .mcmc store folder`);
+      await addRoot(handle);
+      if (await verifyStoreHandle(handle)) {
+        await setStoreHandle(handle);
+        await listConnectedStore(handle);
+        if (deepLink) await openRunFromStore(handle, deepLink.runId);
         return;
       }
-      await setStoreHandle(handle);
-      await listConnectedStore(handle);
+      if (deepLink?.storePath) {
+        const store = await locateStore([handle], deepLink.storePath, false);
+        if (store) {
+          await listConnectedStore(store);
+          await openRunFromStore(store, deepLink.runId);
+          return;
+        }
+        setError(
+          `"${handle.name}" does not contain that store; pick the .mcmc folder or one above it`,
+        );
+        return;
+      }
+      setError(`"${handle.name}" has no index.json; pick the .mcmc store folder or one above it`);
     } catch (err) {
       if ((err as Error).name !== "AbortError") setError((err as Error).message);
     }
-  }, [listConnectedStore]);
+  }, [deepLink, listConnectedStore, openRunFromStore]);
 
   const openFromStore = useCallback(
     async (entry: LedgerEntry) => {
@@ -206,7 +253,22 @@ export function Landing({
             <div>
               Run <code>{deepLink.runId}</code> was opened from the CLI.
             </div>
-            {deepLink.storePath && <div className="hint">store: {deepLink.storePath}</div>}
+            {deepLink.storePath && (
+              <div className="hint">
+                store: {deepLink.storePath}{" "}
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => navigator.clipboard.writeText(deepLink.storePath as string)}
+                >
+                  copy
+                </button>
+              </div>
+            )}
+            <div className="hint">
+              connect the store folder, or any folder above it to open future runs automatically
+              (Ctrl+L pastes a path in the picker)
+            </div>
           </div>
           {deepLinkEntry ? (
             <button type="button" className="btn" onClick={() => openFromStore(deepLinkEntry)}>

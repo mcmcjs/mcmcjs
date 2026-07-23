@@ -7,6 +7,7 @@ import {
   type Samples,
 } from "@mcmcjs/core";
 import { parse as parseToml } from "smol-toml";
+import { candidateDescents, descend, pathSegments } from "./locate";
 
 export function bundleTitle(bundle: RunBundle): string {
   const file = bundle.entry.model_path.split("/").pop() ?? bundle.entry.model_path;
@@ -90,6 +91,28 @@ export async function ensurePermission(
   if (state === "granted") return true;
   if (!prompt) return false;
   return (await handle.requestPermission({ mode: "read" })) === "granted";
+}
+
+/**
+ * Finds a granted folder that reaches the store path. The picker cannot start
+ * at a path, so grants are matched by folder name and walked down; a granted
+ * parent (home, a projects folder) therefore opens every store beneath it.
+ */
+export async function locateStore(
+  roots: FileSystemDirectoryHandle[],
+  storePath: string,
+  prompt: boolean,
+): Promise<FileSystemDirectoryHandle | null> {
+  const last = pathSegments(storePath).at(-1);
+  for (const root of roots) {
+    if (!(await ensurePermission(root, prompt))) continue;
+    if (root.name === last && (await verifyStoreHandle(root))) return root;
+    for (const segments of candidateDescents(root.name, storePath)) {
+      const dir = await descend(root, segments);
+      if (dir && (await verifyStoreHandle(dir))) return dir;
+    }
+  }
+  return null;
 }
 
 export function timeAgo(iso: string, nowMs = Date.now()): string {

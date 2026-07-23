@@ -18,7 +18,7 @@ Every successful `mcmc run` also prints the report link for that run.
 
 Nothing is uploaded anywhere; the app is a static page and your samples stay on this machine.
 
-- **Connected store** (Chromium browsers): the app asks once for read access to your `.mcmc` folder, remembers it, and from then on any `mcmc report` link opens instantly by reading the run from disk. The landing page also lists every run in the store.
+- **Connected store** (Chromium browsers): the app asks once for read access to your `.mcmc` folder, or any folder above it (grant your projects folder once and every store inside opens automatically), and from then on any `mcmc report` link opens instantly by reading the run from disk. The landing page also lists every run in the active store. Browsers never let a page point the folder picker at a path, so the first grant is a manual pick; Ctrl+L pastes the path shown in the app.
 - **Run bundles** (all browsers): `mcmc export bundle` writes a single self-contained file with the model, data, spec, and draws. Drop it on the app to open it anywhere.
 
 ```bash
