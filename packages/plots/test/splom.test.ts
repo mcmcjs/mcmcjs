@@ -33,6 +33,13 @@ const samples = makeSamples({
 });
 
 describe("splomData", () => {
+  it("keys cell point chains to chain identity when chainIds are present", () => {
+    const d = splomData(samples, undefined, { chainIds: [1, 3] });
+    const cell = d.cells[0];
+    expect(cell).toBeDefined();
+    expect(new Set(cell?.chain)).toEqual(new Set([1, 3]));
+  });
+
   const sd = splomData(samples);
 
   it("keeps the requested variables and chain count", () => {

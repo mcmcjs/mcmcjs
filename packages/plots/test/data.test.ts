@@ -121,6 +121,11 @@ describe("autocorrData", () => {
 });
 
 describe("pairData", () => {
+  it("keys point chains to chain identity when chainIds are present", () => {
+    const pd = pairData(samples, "mu", "theta", { chainIds: [0, 2, 4] });
+    expect(new Set(pd.chain)).toEqual(new Set([0, 2, 4]));
+  });
+
   it("pools two variables into aligned point arrays labeled by chain", () => {
     const pd = pairData(samples, "mu", "theta");
     expect(pd.kind).toBe("pair");

@@ -192,6 +192,8 @@ export interface RunningRhatData {
 /** One interval row: a 90% (q5..q95) and 50% (q25..q75) band around the median q50. */
 export interface IntervalRow {
   label: string;
+  /** 0-based chain identity, kept stable when chains are subset. */
+  chain?: number;
   q5: number;
   q25: number;
   q50: number;
@@ -215,6 +217,8 @@ export interface ChainIntervalsAllData {
 /** One violin row: a peak-normalized KDE band plus summary stats. */
 export interface ViolinRow {
   label: string;
+  /** 0-based chain identity, kept stable when chains are subset. */
+  chain?: number;
   /** KDE grid (length gridSize), ascending. */
   x: number[];
   /** Peak-normalized density in [0,1], aligned to `x`. */

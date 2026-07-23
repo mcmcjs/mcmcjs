@@ -441,7 +441,7 @@ function renderIntervalRows(
   const content = rows
     .map((r, i) => {
       const yc = frame.y.map(i + 0.5);
-      const col = perRowColor ? seriesColor(i) : seriesColor(0);
+      const col = perRowColor ? seriesColor(r.chain ?? i) : seriesColor(0);
       const tip = `${r.label}  median ${fmtNum(r.q50)}  50% [${fmtNum(r.q25)}, ${fmtNum(r.q75)}]  90% [${fmtNum(r.q5)}, ${fmtNum(r.q95)}]`;
       return [
         svgLine(frame.x.map(r.q5), yc, frame.x.map(r.q95), yc, col, 1, tip),
@@ -506,7 +506,12 @@ export function renderViolinSVG(data: ViolinData, opts: SvgOptions = {}): string
         frame.y.map(center + (r.density[k] ?? 0) * half),
       ]);
       const tip = `${r.label}  median ${fmtNum(r.q50)}`;
-      const outline = svgPolyline([...top, ...bottom.reverse()], seriesColor(i), 1.25, tip);
+      const outline = svgPolyline(
+        [...top, ...bottom.reverse()],
+        seriesColor(r.chain ?? i),
+        1.25,
+        tip,
+      );
       const median = svgLine(
         frame.x.map(r.q50),
         frame.y.map(center - half),

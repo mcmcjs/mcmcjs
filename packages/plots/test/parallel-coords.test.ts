@@ -33,6 +33,11 @@ const samples = makeSamples({
 });
 
 describe("parallelCoordsData", () => {
+  it("keys line chains to chain identity when chainIds are present", () => {
+    const d = parallelCoordsData(samples, undefined, { chainIds: [0, 2] });
+    expect(new Set(d.lines.map((l) => l.chain))).toEqual(new Set([0, 2]));
+  });
+
   const pc = parallelCoordsData(samples);
 
   it("keeps the variables and one bound per variable", () => {

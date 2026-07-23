@@ -27,6 +27,12 @@ const fixture = makeSamples({
 });
 
 describe("chainIntervalsData", () => {
+  it("keys chain labels to chain identity when chainIds are present", () => {
+    const d = chainIntervalsData(fixture, "x", { chainIds: [0, 2] });
+    expect(d.rows.map((r) => r.label)).toEqual(["chain 1", "chain 3"]);
+    expect(d.rows.map((r) => r.chain)).toEqual([0, 2]);
+  });
+
   it("computes per-chain quantiles", () => {
     const d = chainIntervalsData(fixture, "x");
     expect(d.rows).toHaveLength(2);
@@ -54,6 +60,12 @@ describe("chainIntervalsAllData", () => {
 });
 
 describe("violinData", () => {
+  it("keys chain labels to chain identity when chainIds are present", () => {
+    const d = violinData(fixture, "x", { chainIds: [1, 3] });
+    expect(d.rows.map((r) => r.label)).toEqual(["chain 2", "chain 4"]);
+    expect(d.rows.map((r) => r.chain)).toEqual([1, 3]);
+  });
+
   it("emits a peak-normalized density band per chain", () => {
     const d = violinData(fixture, "x", { gridSize: 64 });
     expect(d.rows).toHaveLength(2);

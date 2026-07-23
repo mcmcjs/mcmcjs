@@ -252,8 +252,9 @@ export function pairData(
   samples: Samples,
   xVar: string,
   yVar: string,
-  opts: { colorVar?: string } = {},
+  opts: { colorVar?: string; chainIds?: number[] } = {},
 ): PairData {
+  const ids = resolveChainIds(samples.nChains, opts.chainIds);
   const xs = samples.draws.get(xVar) ?? chainView(samples, xVar, 0);
   const ys = samples.draws.get(yVar) ?? chainView(samples, yVar, 0);
   const cs = opts.colorVar
@@ -269,7 +270,8 @@ export function pairData(
   for (let i = 0; i < n; i++) {
     x.push(xs[i] as number);
     y.push(ys[i] as number);
-    chain.push(Math.floor(i / samples.nDraws));
+    const pos = Math.floor(i / samples.nDraws);
+    chain.push(ids?.[pos] ?? pos);
     diverging.push(div[i] ?? false);
     if (color && cs) color.push(cs[i] ?? Number.NaN);
   }
@@ -459,11 +461,17 @@ function intervalRow(label: string, draws: Float64Array): IntervalRow {
 }
 
 /** Per-chain credible intervals (q5..q95, q25..q75, median) for one variable. */
-export function chainIntervalsData(samples: Samples, variable: string): ChainIntervalsData {
+export function chainIntervalsData(
+  samples: Samples,
+  variable: string,
+  opts: { chainIds?: number[] } = {},
+): ChainIntervalsData {
+  const ids = resolveChainIds(samples.nChains, opts.chainIds);
   const rows: IntervalRow[] = [];
   chainsOf(samples, variable).forEach((chain, i) => {
     if (chain.length === 0) return;
-    rows.push(intervalRow(`chain ${i + 1}`, chain));
+    const id = ids?.[i] ?? i;
+    rows.push({ ...intervalRow(`chain ${id + 1}`, chain), chain: id });
   });
   return { kind: "chain-intervals", variable, rows };
 }
@@ -510,12 +518,14 @@ function violinRow(label: string, values: Float64Array, gridSize: number): Violi
 export function violinData(
   samples: Samples,
   variable: string,
-  opts: { gridSize?: number } = {},
+  opts: { gridSize?: number; chainIds?: number[] } = {},
 ): ViolinData {
   const gridSize = Math.max(2, opts.gridSize ?? 256);
-  const rows = chainsOf(samples, variable).map((chain, i) =>
-    violinRow(`chain ${i + 1}`, chain, gridSize),
-  );
+  const ids = resolveChainIds(samples.nChains, opts.chainIds);
+  const rows = chainsOf(samples, variable).map((chain, i) => {
+    const id = ids?.[i] ?? i;
+    return { ...violinRow(`chain ${id + 1}`, chain, gridSize), chain: id };
+  });
   return { kind: "violin", variable, gridSize, rows };
 }
 
@@ -708,8 +718,9 @@ function splomDiagonal(variable: string, pooled: Float64Array, gridSize: number)
 export function splomData(
   samples: Samples,
   vars?: string[],
-  opts: { maxVars?: number } = {},
+  opts: { maxVars?: number; chainIds?: number[] } = {},
 ): SplomData {
+  const ids = resolveChainIds(samples.nChains, opts.chainIds);
   const maxVars = Math.max(1, opts.maxVars ?? 6);
   const all = vars ?? [...samples.variables];
   const used = all.slice(0, Math.min(maxVars, all.length));
@@ -739,7 +750,8 @@ export function splomData(
         for (let i = 0; i < n; i += step) {
           cx.push(xs[i] ?? 0);
           cy.push(ys[i] ?? 0);
-          chain.push(Math.floor(i / samples.nDraws));
+          const pos = Math.floor(i / samples.nDraws);
+          chain.push(ids?.[pos] ?? pos);
         }
         cells.push({ row, col, x: cx, y: cy, chain });
       }
@@ -771,8 +783,9 @@ function parallelCoordsBound(variable: string, pooled: Float64Array): ParallelCo
 export function parallelCoordsData(
   samples: Samples,
   vars?: string[],
-  opts: { maxSamples?: number } = {},
+  opts: { maxSamples?: number; chainIds?: number[] } = {},
 ): ParallelCoordsData {
+  const ids = resolveChainIds(samples.nChains, opts.chainIds);
   const maxSamples = Math.max(1, opts.maxSamples ?? 500);
   const used = vars ?? [...samples.variables];
   const { nChains, nDraws } = samples;
@@ -791,7 +804,7 @@ export function parallelCoordsData(
   for (let c = 0; c < nChains; c++) {
     for (let d = 0; d < nDraws; d += step) {
       const values = used.map((_, vi) => views[vi]?.[c]?.[d] ?? Number.NaN);
-      lines.push({ chain: c, values });
+      lines.push({ chain: ids?.[c] ?? c, values });
     }
   }
 
