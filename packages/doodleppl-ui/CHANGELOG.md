@@ -1,5 +1,11 @@
 # doodleppl
 
+## 0.5.3
+
+### Patch Changes
+
+- 5c8e8d3: Opening an example no longer fires "Loading" and "Loaded" toasts; the rendered graph is its own confirmation, and only a failed load surfaces a toast.
+
 ## 0.5.2
 
 ### Patch Changes
