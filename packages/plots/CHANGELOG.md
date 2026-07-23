@@ -1,5 +1,11 @@
 # @mcmcjs/plots
 
+## 0.6.0
+
+### Minor Changes
+
+- 7d83dc5: The violin, chain-intervals, pair, splom, and parallel-coordinates builders accept `chainIds`, keying chain labels and colors to chain identity rather than array position, so a plot over a chain subset keeps each chain's original number and color.
+
 ## 0.5.0
 
 ### Minor Changes
