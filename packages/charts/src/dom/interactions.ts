@@ -10,11 +10,20 @@
 import type uPlot from "uplot";
 
 /** Flags controlling which interaction plugins `mountPlot` wires up. */
+/** An extra modebar button: an inline SVG icon, a tooltip, and a click handler. */
+export interface ModebarButton {
+  icon: string;
+  title: string;
+  onClick: () => void;
+}
+
 export interface InteractionOptions {
   /** Preset: enable modebar + tooltip + wheel-zoom + pan at once (default false). */
   interactive?: boolean;
   /** Hover-reveal toolbar (pan, axis-zoom, zoom, reset, PNG). Defaults to `interactive`. */
   modebar?: boolean;
+  /** Extra buttons appended to the modebar, after the built-in ones. */
+  modebarButtons?: ModebarButton[];
   /** Custom hover tooltip with colored swatches. Defaults to `interactive`. */
   tooltip?: boolean;
   /** Ctrl/Cmd + wheel zoom centered at the cursor. Defaults to `interactive`. */
@@ -216,7 +225,12 @@ function sep(t: ChartTheme): HTMLDivElement {
   return s;
 }
 
-function modebarPlugin(t: ChartTheme, ctx: InteractionContext, background: string): uPlot.Plugin {
+function modebarPlugin(
+  t: ChartTheme,
+  ctx: InteractionContext,
+  background: string,
+  extraButtons: ModebarButton[],
+): uPlot.Plugin {
   return {
     hooks: {
       ready: (u: uPlot) => {
@@ -272,6 +286,7 @@ function modebarPlugin(t: ChartTheme, ctx: InteractionContext, background: strin
           triggerDownload(out.toDataURL("image/png"), name);
         });
 
+        const extras = extraButtons.map((btn) => iconBtn(btn.icon, btn.title, t, btn.onClick));
         bar.append(
           panBtn,
           sep(t),
@@ -283,6 +298,7 @@ function modebarPlugin(t: ChartTheme, ctx: InteractionContext, background: strin
           reset,
           sep(t),
           png,
+          ...(extras.length ? [sep(t), ...extras] : []),
         );
         parent.appendChild(bar);
         const show = (): void => {
@@ -472,7 +488,8 @@ export function attachInteractions(
     const t = resolveTheme(opts.theme ?? "light");
     if (tooltip) plugins.push(tooltipPlugin(t, ctx));
     if (wheelZoom || pan) plugins.push(interactionPlugin({ wheelZoom, pan }, teardowns));
-    if (modebar) plugins.push(modebarPlugin(t, ctx, ctx.background ?? "#ffffff"));
+    if (modebar)
+      plugins.push(modebarPlugin(t, ctx, ctx.background ?? "#ffffff", opts.modebarButtons ?? []));
   }
 
   return {

@@ -295,5 +295,5 @@ function exportPng(src: HTMLCanvasElement, background: string): Promise<Blob> {
   });
 }
 
-export type { InteractionOptions } from "./interactions";
+export type { InteractionOptions, ModebarButton } from "./interactions";
 export { attachSvgTips, SVG_TIPS_CSS } from "./svg-tips";
