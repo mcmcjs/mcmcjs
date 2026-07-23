@@ -1,23 +1,27 @@
 import { seriesColor } from "@mcmcjs/charts";
-import type { Samples } from "@mcmcjs/core";
-import {
-  autocorrData,
-  cornerData,
-  densityData,
-  diagnosticsHeatmapData,
-  energyData,
-  forestData,
-  rankData,
-  summaryTableData,
-  traceData,
+import type {
+  CornerData,
+  DiagnosticsHeatmapData,
+  EnergyData,
+  ForestData,
+  PlotData,
+  SummaryTableData,
 } from "@mcmcjs/plots";
 import { useMemo, useState } from "react";
+import { useComputed, useComputeSession } from "../lib/compute";
 import type { StoredRun } from "../lib/db";
-import { bundleTitle, downloadBundle, samplesOf, subsetChains } from "../lib/runs";
+import { bundleTitle, downloadBundle } from "../lib/runs";
 import type { ResolvedTheme } from "../lib/theme";
 import { PlotCard } from "./PlotCard";
 
 const CORNER_MAX_VARS = 8;
+
+interface PerVariable {
+  trace: PlotData;
+  density: PlotData;
+  rank: PlotData;
+  autocorr: PlotData;
+}
 
 export function RunView({
   run,
@@ -34,42 +38,30 @@ export function RunView({
 }) {
   const bundle = run.bundle;
   const entry = bundle.entry;
-  const full = useMemo(() => samplesOf(bundle), [bundle]);
-  const [keep, setKeep] = useState<boolean[]>(() => new Array(full.nChains).fill(true));
-  const samples: Samples = useMemo(() => subsetChains(full, keep), [full, keep]);
-  const [variable, setVariable] = useState<string>(() => full.variables[0] ?? "");
+  const samplesText = useMemo(() => JSON.stringify(bundle.samples), [bundle]);
+  const { compute, meta } = useComputeSession(samplesText);
 
-  const energy = useMemo(() => {
-    try {
-      return energyData(samples);
-    } catch {
-      return null;
-    }
-  }, [samples]);
-  const corner = useMemo(
-    () => cornerData([{ samples }], { vars: [...samples.variables].slice(0, CORNER_MAX_VARS) }),
-    [samples],
-  );
-  const summary = useMemo(() => summaryTableData(samples), [samples]);
-  const heatmap = useMemo(() => diagnosticsHeatmapData(samples), [samples]);
-  const forest = useMemo(() => forestData(samples), [samples]);
-  const perVariable = useMemo(() => {
-    if (!variable || !samples.variables.includes(variable)) return null;
-    return {
-      trace: traceData(samples, variable),
-      density: densityData(samples, variable),
-      rank: rankData(samples, variable),
-      autocorr: autocorrData(samples, variable),
-    };
-  }, [samples, variable]);
+  const [keepState, setKeep] = useState<boolean[] | null>(null);
+  const keep = keepState ?? new Array(meta?.nChains ?? 0).fill(true);
+  const keepArg = keep.every(Boolean) ? undefined : keep;
+  const [variableState, setVariable] = useState<string | null>(null);
+  const variable = variableState ?? meta?.variables[0] ?? "";
+
+  const summary = useComputed<SummaryTableData>(compute, "summary", { keep: keepArg });
+  const heatmap = useComputed<DiagnosticsHeatmapData>(compute, "heatmap", { keep: keepArg });
+  const forest = useComputed<ForestData>(compute, "forest", { keep: keepArg });
+  const perVariable = useComputed<PerVariable>(compute, "pervar", { variable, keep: keepArg });
+  const energy = useComputed<EnergyData | null>(compute, "energy", { keep: keepArg });
+  const corner = useComputed<CornerData>(compute, "corner", {
+    cornerMaxVars: CORNER_MAX_VARS,
+    keep: keepArg,
+  });
 
   const verdict = entry.diagnostics;
   const toggleChain = (i: number): void => {
-    setKeep((prev) => {
-      const next = [...prev];
-      next[i] = !next[i];
-      return next.some(Boolean) ? next : prev;
-    });
+    const next = [...keep];
+    next[i] = !next[i];
+    if (next.some(Boolean)) setKeep(next);
   };
 
   return (
@@ -117,7 +109,7 @@ export function RunView({
         </div>
 
         <div className="chipset" style={{ marginBottom: 28 }}>
-          {Array.from({ length: full.nChains }, (_, i) => (
+          {Array.from({ length: meta?.nChains ?? 0 }, (_, i) => (
             <button
               type="button"
               key={String(i)}
@@ -144,20 +136,9 @@ export function RunView({
         </section>
 
         <section className="block">
-          <p className="eyebrow">Joint posterior</p>
-          <PlotCard data={corner} theme={theme} />
-          {samples.variables.length > CORNER_MAX_VARS && (
-            <p className="tagline">
-              corner shows the first {CORNER_MAX_VARS} of {samples.variables.length} variables
-            </p>
-          )}
-          {energy && <PlotCard data={energy} theme={theme} />}
-        </section>
-
-        <section className="block">
           <p className="eyebrow">Per variable</p>
           <div className="varbar">
-            {samples.variables.map((v) => (
+            {(meta?.variables ?? []).map((v) => (
               <button
                 type="button"
                 key={v}
@@ -168,14 +149,23 @@ export function RunView({
               </button>
             ))}
           </div>
-          {perVariable && (
-            <div className="grid-2">
-              <PlotCard data={perVariable.trace} theme={theme} />
-              <PlotCard data={perVariable.density} theme={theme} />
-              <PlotCard data={perVariable.rank} theme={theme} />
-              <PlotCard data={perVariable.autocorr} theme={theme} />
-            </div>
+          <div className="grid-2">
+            <PlotCard data={perVariable?.trace ?? null} theme={theme} />
+            <PlotCard data={perVariable?.density ?? null} theme={theme} />
+            <PlotCard data={perVariable?.rank ?? null} theme={theme} />
+            <PlotCard data={perVariable?.autocorr ?? null} theme={theme} />
+          </div>
+        </section>
+
+        <section className="block">
+          <p className="eyebrow">Joint posterior</p>
+          <PlotCard data={corner} theme={theme} />
+          {meta && meta.variables.length > CORNER_MAX_VARS && (
+            <p className="tagline">
+              corner shows the first {CORNER_MAX_VARS} of {meta.variables.length} variables
+            </p>
           )}
+          {energy && <PlotCard data={energy} theme={theme} />}
         </section>
 
         <section className="block">

@@ -405,9 +405,51 @@ export function histPdf(data: Float64Array, nbins: number): { x: number[]; weigh
   };
 }
 
-const INV_2PI = 1 / (2 * Math.PI);
+function gaussianTaps(sigmaInSteps: number): number[] {
+  const radius = Math.max(1, Math.ceil(4 * sigmaInSteps));
+  const taps = new Array<number>(2 * radius + 1);
+  let total = 0;
+  for (let d = -radius; d <= radius; d++) {
+    const v = Math.exp(-0.5 * (d / sigmaInSteps) ** 2);
+    taps[d + radius] = v;
+    total += v;
+  }
+  return taps.map((v) => v / total);
+}
 
-/** Gaussian product-kernel 2-D KDE evaluated on an nx x ny grid. */
+function convolveAxis(grid: number[][], taps: number[], alongX: boolean): number[][] {
+  const nx = grid.length;
+  const ny = (grid[0] as number[]).length;
+  const radius = (taps.length - 1) / 2;
+  const out = Array.from({ length: nx }, () => new Array<number>(ny).fill(0));
+  for (let i = 0; i < nx; i++) {
+    for (let j = 0; j < ny; j++) {
+      const v = (grid[i] as number[])[j] as number;
+      if (v === 0) continue;
+      for (let d = -radius; d <= radius; d++) {
+        const t = (taps[d + radius] as number) * v;
+        const k = (alongX ? i : j) + d;
+        if (k < 0) continue;
+        if (alongX) {
+          if (k < nx) {
+            const row = out[k] as number[];
+            row[j] = (row[j] as number) + t;
+          }
+        } else if (k < ny) {
+          const row = out[i] as number[];
+          row[k] = (row[k] as number) + t;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Binned Gaussian-product 2-D KDE on an nx x ny grid: points are spread onto
+ * the grid by linear binning, then blurred by a separable truncated kernel,
+ * the same construction PairPlots' KDE library uses.
+ */
 export function kde2d(
   xdat: Float64Array,
   ydat: Float64Array,
@@ -418,21 +460,30 @@ export function kde2d(
 ): number[][] {
   const nx = xs.length;
   const ny = ys.length;
-  const h = Array.from({ length: nx }, () => new Array<number>(ny).fill(0));
-  if (hx <= 0 || hy <= 0 || xdat.length === 0) return h;
-  const norm = INV_2PI / (xdat.length * hx * hy);
-  for (let i = 0; i < nx; i++) {
-    const gx = xs[i] as number;
-    const row = h[i] as number[];
-    for (let j = 0; j < ny; j++) {
-      const gy = ys[j] as number;
-      let sum = 0;
-      for (let k = 0; k < xdat.length; k++) {
-        const zx = (gx - (xdat[k] as number)) / hx;
-        const zy = (gy - (ydat[k] as number)) / hy;
-        sum += Math.exp(-0.5 * (zx * zx + zy * zy));
-      }
-      row[j] = sum * norm;
+  let h = Array.from({ length: nx }, () => new Array<number>(ny).fill(0));
+  if (hx <= 0 || hy <= 0 || xdat.length === 0 || nx < 2 || ny < 2) return h;
+  const x0 = xs[0] as number;
+  const y0 = ys[0] as number;
+  const stepX = (xs[1] as number) - x0;
+  const stepY = (ys[1] as number) - y0;
+  for (let k = 0; k < xdat.length; k++) {
+    const gx = ((xdat[k] as number) - x0) / stepX;
+    const gy = ((ydat[k] as number) - y0) / stepY;
+    const i = Math.min(nx - 2, Math.max(0, Math.floor(gx)));
+    const j = Math.min(ny - 2, Math.max(0, Math.floor(gy)));
+    const fx = Math.min(1, Math.max(0, gx - i));
+    const fy = Math.min(1, Math.max(0, gy - j));
+    (h[i] as number[])[j] = ((h[i] as number[])[j] as number) + (1 - fx) * (1 - fy);
+    (h[i + 1] as number[])[j] = ((h[i + 1] as number[])[j] as number) + fx * (1 - fy);
+    (h[i] as number[])[j + 1] = ((h[i] as number[])[j + 1] as number) + (1 - fx) * fy;
+    (h[i + 1] as number[])[j + 1] = ((h[i + 1] as number[])[j + 1] as number) + fx * fy;
+  }
+  h = convolveAxis(h, gaussianTaps(hx / stepX), true);
+  h = convolveAxis(h, gaussianTaps(hy / stepY), false);
+  const norm = 1 / (xdat.length * stepX * stepY);
+  for (const row of h) {
+    for (let j = 0; j < row.length; j++) {
+      row[j] = (row[j] as number) * norm;
     }
   }
   return h;

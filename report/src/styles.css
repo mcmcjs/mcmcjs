@@ -395,3 +395,25 @@ pre.source {
     transition: none;
   }
 }
+
+.plot-card.loading {
+  min-height: 120px;
+  background: linear-gradient(100deg, var(--panel) 40%, var(--chip) 50%, var(--panel) 60%);
+  background-size: 300% 100%;
+  animation: card-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes card-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plot-card.loading {
+    animation: none;
+  }
+}

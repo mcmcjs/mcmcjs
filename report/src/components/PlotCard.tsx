@@ -19,7 +19,7 @@ export const PlotCard = memo(function PlotCard({
   theme,
   height,
 }: {
-  data: PlotData;
+  data: PlotData | null;
   theme: ResolvedTheme;
   height?: number;
 }) {
@@ -27,7 +27,7 @@ export const PlotCard = memo(function PlotCard({
 
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || !data) return;
     injectTipsCss();
     const item = htmlItemFor(data);
     if (item.mode === "uplot") {
@@ -47,5 +47,5 @@ export const PlotCard = memo(function PlotCard({
     };
   }, [data, theme, height]);
 
-  return <div className="plot-card" ref={ref} />;
+  return <div className={`plot-card${data ? "" : " loading"}`} ref={ref} />;
 });
