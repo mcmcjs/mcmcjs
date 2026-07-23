@@ -1,6 +1,6 @@
 {
   "name": "@mcmcjs/plots",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Diagnostic plots (trace, density, forest, rank, ...) for MCMC.js, rendered to the terminal, SVG, or a self-contained HTML page.",
   "keywords": [
     "mcmc",
