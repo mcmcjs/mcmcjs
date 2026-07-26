@@ -38,18 +38,40 @@ function openInBrowser(url: string): void {
   child.unref();
 }
 
+export interface StoreServerOptions {
+  /** Keep serving until the process is stopped instead of the default window. */
+  persistent?: boolean;
+}
+
 /**
- * Serves one run bundle exactly once on the loopback interface, then exits:
- * the app fetches it and opens without any file-picker interaction. CORS is
- * pinned to the app origin and the path carries a single-use token.
+ * Serves the run store on the loopback interface: the linked run at /<token>,
+ * the ledger at /<token>/ledger, and any run at /<token>/run/<id>. The app
+ * browses the store with no file-picker interaction; CORS is pinned to the app
+ * origin and every path carries the single-use session token.
  */
-export function serveBundleOnce(
-  payload: string,
+export function serveStore(
+  storeDir: string,
+  linkedRunId: string,
   appOrigin: string,
   onDone: () => void,
+  opts: StoreServerOptions = {},
 ): Promise<{ url: string; server: Server }> {
   const token = randomBytes(16).toString("hex");
-  let served = false;
+  const bundles = new Map<string, string>();
+  const bundleFor = (id: string): string | null => {
+    const cached = bundles.get(id);
+    if (cached) return cached;
+    const entry = readLedger(storeDir).runs.find((r) => r.id === id);
+    if (!entry) return null;
+    try {
+      const payload = JSON.stringify(assembleBundle(storeDir, entry));
+      bundles.set(id, payload);
+      return payload;
+    } catch {
+      return null;
+    }
+  };
+
   const server = createServer((req, res) => {
     const cors = {
       "Access-Control-Allow-Origin": appOrigin,
@@ -64,24 +86,50 @@ export function serveBundleOnce(
       res.end();
       return;
     }
-    if (req.method === "GET" && req.url === `/${token}` && !served) {
-      served = true;
+    const path = req.url ?? "";
+    if (req.method !== "GET" || !path.startsWith(`/${token}`)) {
+      res.writeHead(404, cors);
+      res.end();
+      return;
+    }
+    const rest = path.slice(token.length + 1);
+    const json = (body: string): void => {
       res.writeHead(200, { ...cors, "Content-Type": "application/json" });
-      res.end(payload);
-      setTimeout(() => {
-        server.close();
-        onDone();
-      }, 250);
+      res.end(body);
+    };
+    if (rest === "" || rest === "/") {
+      const payload = bundleFor(linkedRunId);
+      if (payload) json(payload);
+      else {
+        res.writeHead(404, cors);
+        res.end();
+      }
+      return;
+    }
+    if (rest === "/ledger") {
+      json(JSON.stringify([...readLedger(storeDir).runs].reverse()));
+      return;
+    }
+    if (rest.startsWith("/run/")) {
+      const payload = bundleFor(rest.slice(5));
+      if (payload) json(payload);
+      else {
+        res.writeHead(404, cors);
+        res.end();
+      }
       return;
     }
     res.writeHead(404, cors);
     res.end();
   });
-  const timeout = setTimeout(() => {
-    server.close();
-    onDone();
-  }, SERVE_TIMEOUT_MS);
-  timeout.unref();
+
+  if (!opts.persistent) {
+    const timeout = setTimeout(() => {
+      server.close();
+      onDone();
+    }, SERVE_TIMEOUT_MS);
+    timeout.unref();
+  }
   return new Promise((resolvePort) => {
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
@@ -103,11 +151,12 @@ export function registerReport(program: Command): void {
     .option("--store <dir>", "run store directory (default: nearest .mcmc above cwd)")
     .option("--app-url <url>", "report app URL (default: MCMC_REPORT_APP or the hosted app)")
     .option("--no-open", "print the URL without opening a browser")
-    .option("--no-serve", "print a store-only link without serving the run bundle")
+    .option("--no-serve", "print a store-only link without serving the store")
+    .option("--watch", "keep serving the store until stopped, for browsing every run")
     .action(
       async (
         ref: string | undefined,
-        opts: { store?: string; appUrl?: string; open: boolean; serve: boolean },
+        opts: { store?: string; appUrl?: string; open: boolean; serve: boolean; watch?: boolean },
       ) => {
         const storeDir = locateStore(opts.store);
         const entry = resolveRunRef(readLedger(storeDir), ref);
@@ -116,8 +165,9 @@ export function registerReport(program: Command): void {
         let connect: string | undefined;
         if (opts.serve) {
           try {
-            const payload = JSON.stringify(assembleBundle(storeDir, entry));
-            const handoff = await serveBundleOnce(payload, new URL(appUrl).origin, () => {});
+            const handoff = await serveStore(storeDir, entry.id, new URL(appUrl).origin, () => {}, {
+              persistent: opts.watch,
+            });
             connect = handoff.url;
           } catch (error) {
             process.stderr.write(
@@ -129,7 +179,11 @@ export function registerReport(program: Command): void {
         const url = reportUrl(appUrl, storeDir, entry.id, connect);
         process.stdout.write(`${url}\n`);
         if (connect && !process.env.MCMC_REPORT_QUIET) {
-          process.stderr.write("waiting for the report app to pick the run up (2 min)...\n");
+          process.stderr.write(
+            opts.watch
+              ? "serving the store to the report app until stopped (Ctrl+C)...\n"
+              : "serving the store to the report app for 2 min...\n",
+          );
         }
         if (opts.open) openInBrowser(url);
       },
