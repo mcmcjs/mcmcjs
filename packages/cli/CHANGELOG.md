@@ -1,5 +1,11 @@
 # mcmcjs
 
+## 0.21.0
+
+### Minor Changes
+
+- 0ad5194: `mcmc report` now serves the whole run store over the loopback handoff (the linked run, the ledger, and any run by id), and a new `--watch` flag keeps the server up so the report app can browse every run without file pickers.
+
 ## 0.20.1
 
 ### Patch Changes
