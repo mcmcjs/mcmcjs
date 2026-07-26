@@ -43,16 +43,19 @@ function VerdictDot({ entry }: { entry: LedgerEntry }) {
 
 export function Landing({
   deepLink,
+  connect,
   onOpen,
   onToggleTheme,
   themeLabel,
 }: {
   deepLink: DeepLink | null;
+  connect?: string;
   onOpen: (id: string) => void;
   onToggleTheme: () => void;
   themeLabel: string;
 }) {
   const [library, setLibrary] = useState<StoredRun[]>([]);
+  const [servedRuns, setServedRuns] = useState<LedgerEntry[] | null>(null);
   const [storeRuns, setStoreRuns] = useState<LedgerEntry[] | null>(null);
   const [storeName, setStoreName] = useState<string | null>(null);
   const [needsGrant, setNeedsGrant] = useState(false);
@@ -118,6 +121,41 @@ export function Landing({
     };
   }, [deepLink, onOpen]);
 
+  // While `mcmc report --watch` runs, the CLI serves the whole store; listing
+  // it needs no file access and works in every browser.
+  useEffect(() => {
+    if (!connect) return;
+    let cancelled = false;
+    fetch(`${connect}/ledger`)
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error())))
+      .then((entries: LedgerEntry[]) => {
+        if (!cancelled) setServedRuns(entries);
+      })
+      .catch(() => {
+        if (!cancelled) setServedRuns(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connect]);
+
+  const openServedRun = useCallback(
+    async (entry: LedgerEntry) => {
+      setError(null);
+      try {
+        const response = await fetch(`${connect}/run/${entry.id}`);
+        if (!response.ok) throw new Error(`the CLI server returned ${response.status}`);
+        const bundle = parseRunBundle(await response.text());
+        await putRun(bundle);
+        onOpen(bundle.entry.id);
+      } catch (err) {
+        setServedRuns(null);
+        setError(`${(err as Error).message}; the mcmc report server may have exited`);
+      }
+    },
+    [connect, onOpen],
+  );
+
   // A deep link resolves silently when a granted folder already reaches it.
   useEffect(() => {
     if (!deepLink?.storePath) return;
@@ -173,6 +211,26 @@ export function Landing({
     },
     [importBundle],
   );
+
+  // The native file picker can start inside a granted folder, so bundles
+  // sitting next to the store are one click away.
+  const browseBundle = useCallback(async () => {
+    if (!("showOpenFilePicker" in window)) {
+      fileRef.current?.click();
+      return;
+    }
+    try {
+      const roots = await listRoots();
+      const [picked] = await window.showOpenFilePicker({
+        id: "mcmc-bundle",
+        types: [{ description: "Run bundle", accept: { "application/json": [".json"] } }],
+        ...(roots[0] ? { startIn: roots[0] } : {}),
+      });
+      if (picked) await importBundle(await (await picked.getFile()).text());
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") setError((err as Error).message);
+    }
+  }, [importBundle]);
 
   const connectStore = useCallback(async () => {
     setError(null);
@@ -263,7 +321,7 @@ export function Landing({
         }}
         onDragLeave={() => setOver(false)}
         onDrop={onDrop}
-        onClick={() => fileRef.current?.click()}
+        onClick={browseBundle}
         aria-label="Drop or choose a run bundle"
       >
         <canvas ref={canvasRef} />
@@ -373,6 +431,41 @@ export function Landing({
           </table>
         )}
       </section>
+
+      {servedRuns && (
+        <section className="block">
+          <p className="eyebrow">Run store · served by the CLI</p>
+          <table className="ledger">
+            <thead>
+              <tr>
+                <th>run</th>
+                <th>model</th>
+                <th>backend</th>
+                <th>when</th>
+                <th aria-label="actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {servedRuns.map((entry) => (
+                <tr key={entry.id} className="row" onClick={() => openServedRun(entry)}>
+                  <td>
+                    <VerdictDot entry={entry} />
+                    {entry.id.slice(0, 15)}
+                  </td>
+                  <td>{(entry.model_path.split("/").pop() ?? "").replace(/\.[^.]+$/, "")}</td>
+                  <td>{entry.backend.id}</td>
+                  <td>{timeAgo(entry.started_at)}</td>
+                  <td>
+                    <button type="button" className="icon-btn">
+                      open
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       {fsaSupported && (
         <section className="block">

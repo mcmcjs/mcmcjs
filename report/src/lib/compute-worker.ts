@@ -1,14 +1,23 @@
 import { parseSamples, type Samples } from "@mcmcjs/core";
 import {
   autocorrData,
+  chainIntervalsAllData,
+  chainIntervalsData,
   cornerData,
+  cumulativeMeanData,
   densityData,
   diagnosticsHeatmapData,
+  ecdfData,
   energyData,
   forestData,
+  histogramData,
+  parallelCoordsData,
   rankData,
+  runningRhatData,
+  splomData,
   summaryTableData,
   traceData,
+  violinData,
 } from "@mcmcjs/plots";
 import { subsetChains } from "./runs";
 
@@ -62,14 +71,27 @@ function compute(request: ComputeRequest): unknown {
       return cornerData([{ samples }], {
         vars: [...samples.variables].slice(0, request.cornerMaxVars ?? 8),
       });
+    case "intervals-all":
+      return chainIntervalsAllData(samples);
+    case "joint":
+      return {
+        splom: splomData(samples),
+        parallel: parallelCoordsData(samples),
+      };
     case "pervar": {
       const variable = request.variable ?? "";
       if (!samples.variables.includes(variable)) return null;
       return {
         trace: traceData(samples, variable),
         density: densityData(samples, variable),
+        histogram: histogramData(samples, variable),
         rank: rankData(samples, variable),
         autocorr: autocorrData(samples, variable),
+        ecdf: ecdfData(samples, variable),
+        cumulative: cumulativeMeanData(samples, variable),
+        runningRhat: runningRhatData(samples, variable),
+        violin: violinData(samples, variable),
+        intervals: chainIntervalsData(samples, variable),
       };
     }
     default:

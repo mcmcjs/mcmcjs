@@ -7,6 +7,7 @@
   --rule: #e4e1d7;
   --chip: #f1efe8;
   --ok: #16a34a;
+  --warn: #d97706;
   --bad: #dc2626;
   --focus: #1f77b4;
 
@@ -33,6 +34,7 @@
   --rule: #262b35;
   --chip: #1f232d;
   --ok: #34d399;
+  --warn: #fbbf24;
   --bad: #f87171;
 
   --mcmc-fg-soft: rgba(255, 255, 255, 0.55);
@@ -271,6 +273,10 @@ section.block {
   background: var(--bad);
 }
 
+.dot.warn {
+  background: var(--warn);
+}
+
 .dot.na {
   background: var(--ink-soft);
 }
@@ -297,35 +303,197 @@ section.block {
   text-align: center;
 }
 
-.run-head {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  background: color-mix(in srgb, var(--paper) 92%, transparent);
-  backdrop-filter: blur(6px);
-  border-bottom: 1px solid var(--rule);
-  padding: 14px 0;
-  margin-bottom: 24px;
+.monitor {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
+  min-height: 100dvh;
 }
 
-.run-head .inner {
-  max-width: 920px;
-  margin: 0 auto;
-  padding: 0 24px;
+.side {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
   display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  background: var(--panel);
+  border-right: 1px solid var(--rule);
+}
+
+.side-head {
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .run-title {
-  font: 600 17px var(--mono);
+  font: 600 16px var(--mono);
   letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
 }
 
 .run-id {
-  font: 12px var(--mono);
+  font: 11px var(--mono);
   color: var(--ink-soft);
+}
+
+.side-nav {
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.side-nav button {
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  color: var(--ink-soft);
+  font: 13.5px var(--sans);
+}
+
+.side-nav button:hover {
+  background: var(--chip);
+}
+
+.side-nav button.on {
+  background: var(--chip);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.side-vars {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 8px 10px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.side-vars .eyebrow {
+  padding: 0 10px;
+  margin-bottom: 8px;
+}
+
+.var-search {
+  margin: 0 8px 8px;
+  padding: 5px 9px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 12.5px var(--mono);
+}
+
+.var-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.var-list button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  padding: 5px 10px;
+  cursor: pointer;
+  color: var(--ink);
+  font: 12.5px var(--mono);
+}
+
+.var-list button:hover {
+  background: var(--chip);
+}
+
+.var-list button.on {
+  background: var(--chip);
+  font-weight: 700;
+}
+
+.var-list .dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.var-list .var-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.var-list .rhat {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.side-chains {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.side-actions {
+  padding: 12px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.main {
+  min-width: 0;
+  padding: 28px 32px 80px;
+}
+
+.main > .block:first-of-type {
+  margin-top: 0;
+}
+
+.chip .dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.chip.mono-strong {
+  font-weight: 700;
+}
+
+@media (max-width: 860px) {
+  .monitor {
+    grid-template-columns: 1fr;
+  }
+  .side {
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--rule);
+  }
+  .var-list {
+    max-height: 200px;
+  }
+  .main {
+    padding: 24px 16px 60px;
+  }
 }
 
 .spacer {

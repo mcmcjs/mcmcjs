@@ -75,11 +75,12 @@ export function useComputed<T>(
   compute: Compute | null,
   op: string,
   extras: Partial<ComputeRequest> = {},
+  enabled = true,
 ): T | null {
   const [data, setData] = useState<T | null>(null);
   const key = JSON.stringify(extras);
   useEffect(() => {
-    if (!compute) return;
+    if (!compute || !enabled) return;
     let alive = true;
     setData(null);
     compute.run<T>(op, JSON.parse(key) as Partial<ComputeRequest>).then(
@@ -93,6 +94,6 @@ export function useComputed<T>(
     return () => {
       alive = false;
     };
-  }, [compute, op, key]);
+  }, [compute, op, key, enabled]);
   return data;
 }

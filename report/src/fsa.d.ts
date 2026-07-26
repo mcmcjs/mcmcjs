@@ -14,4 +14,10 @@ interface Window {
     mode?: "read" | "readwrite";
     startIn?: string | FileSystemHandle;
   }): Promise<FileSystemDirectoryHandle>;
+  showOpenFilePicker(options?: {
+    id?: string;
+    multiple?: boolean;
+    types?: { description?: string; accept: Record<string, string[]> }[];
+    startIn?: string | FileSystemHandle;
+  }): Promise<FileSystemFileHandle[]>;
 }
