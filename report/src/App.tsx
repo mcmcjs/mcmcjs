@@ -35,6 +35,7 @@ export function App() {
       const link = parseHash();
       setDeepLink(link);
       if (link?.connect) setConnect(link.connect);
+      setCurrent((current) => (link && current && current.id !== link.runId ? null : current));
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);

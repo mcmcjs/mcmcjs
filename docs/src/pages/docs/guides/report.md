@@ -18,7 +18,7 @@ Every successful `mcmc run` also prints the report link for that run.
 
 Nothing is uploaded anywhere; the app is a static page and your samples stay on this machine.
 
-- **Direct handoff** (the default for `mcmc report`): the CLI serves the run store on the loopback interface for up to two minutes with a single-use token, and the app picks the run up as soon as the link opens — no file access, no clicks. While the server is up the app also lists every run in the store, in any browser.
+- **Direct handoff** (the default for `mcmc report`): the CLI serves the run store on the loopback interface for up to two minutes with a single-use token, and the app picks the run up as soon as the link opens — no file access, no clicks. While the server is up the app also lists every run in the store, in any browser. The first time, the browser may ask to allow local network access; allow it once and later runs open instantly.
 
 - **Watch mode**: `mcmc report --watch` keeps that server running until you stop it, so the app browses the whole store — every run, one click each — with no file pickers at all.
 - **Connected store** (Chromium browsers): the app asks once for read access to your `.mcmc` folder, or any folder above it (grant your projects folder once and every store inside opens automatically), and from then on any `mcmc report` link opens instantly by reading the run from disk, with no CLI running. Browsers never let a page point the folder picker at a path, so the first grant is a manual pick; Ctrl+L pastes the path shown in the app.

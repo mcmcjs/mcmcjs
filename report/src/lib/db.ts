@@ -51,12 +51,6 @@ function tx<T>(
   );
 }
 
-export function listRuns(): Promise<StoredRun[]> {
-  return tx<StoredRun[]>(RUNS, "readonly", (s) => s.getAll() as IDBRequest<StoredRun[]>).then(
-    (runs) => runs.sort((a, b) => b.savedAt - a.savedAt),
-  );
-}
-
 export function getRun(id: string): Promise<StoredRun | undefined> {
   return tx<StoredRun | undefined>(
     RUNS,
@@ -68,22 +62,6 @@ export function getRun(id: string): Promise<StoredRun | undefined> {
 export function putRun(bundle: RunBundle): Promise<StoredRun> {
   const stored: StoredRun = { id: bundle.entry.id, savedAt: Date.now(), bundle };
   return tx(RUNS, "readwrite", (s) => s.put(stored)).then(() => stored);
-}
-
-export function deleteRun(id: string): Promise<void> {
-  return tx(RUNS, "readwrite", (s) => s.delete(id)).then(() => undefined);
-}
-
-export function getStoreHandle(): Promise<FileSystemDirectoryHandle | undefined> {
-  return tx<FileSystemDirectoryHandle | undefined>(
-    HANDLES,
-    "readonly",
-    (s) => s.get("store") as IDBRequest<FileSystemDirectoryHandle | undefined>,
-  );
-}
-
-export function setStoreHandle(handle: FileSystemDirectoryHandle): Promise<void> {
-  return tx(HANDLES, "readwrite", (s) => s.put(handle, "store")).then(() => undefined);
 }
 
 export function listRoots(): Promise<FileSystemDirectoryHandle[]> {
