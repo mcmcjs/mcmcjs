@@ -1,70 +1,34 @@
+import type { UnifiedModelData } from '@mcmcjs/doodleppl'
+
 export interface ExampleModelConfig {
   id: string
   name: string
-  url?: string
+  load: () => Promise<UnifiedModelData>
 }
 
+// Bundled portable model documents; the npm build splits each into its own
+// lazily loaded chunk, the CDN build inlines them.
+const modules = import.meta.glob('./examples/*.json', { import: 'default' })
+
+const example = (id: string, name: string): ExampleModelConfig => ({
+  id,
+  name,
+  load: () => modules[`./examples/${id}.json`]() as Promise<UnifiedModelData>,
+})
+
 export const examples: ExampleModelConfig[] = [
-  {
-    id: 'rats',
-    name: 'Rats Model',
-    url: 'https://raw.githubusercontent.com/TuringLang/JuliaBUGS.jl/refs/heads/main/DoodleBUGS/public/examples/rats/model.json',
-  },
-  {
-    id: 'pumps',
-    name: 'Pumps Model',
-    url: 'https://raw.githubusercontent.com/TuringLang/JuliaBUGS.jl/refs/heads/main/DoodleBUGS/public/examples/pumps/model.json',
-  },
-  {
-    id: 'seeds',
-    name: 'Seeds Model',
-    url: 'https://raw.githubusercontent.com/TuringLang/JuliaBUGS.jl/refs/heads/main/DoodleBUGS/public/examples/seeds/model.json',
-  },
-  {
-    id: 'surgical',
-    name: 'Surgical Model',
-    url: 'https://raw.githubusercontent.com/TuringLang/JuliaBUGS.jl/refs/heads/main/DoodleBUGS/public/examples/surgical/model.json',
-  },
-  {
-    id: 'dyes',
-    name: 'Dyes Model',
-    url: 'https://raw.githubusercontent.com/TuringLang/JuliaBUGS.jl/refs/heads/main/DoodleBUGS/public/examples/dyes/model.json',
-  },
-  {
-    id: 'blockers',
-    name: 'Blockers Model',
-    url: 'https://raw.githubusercontent.com/TuringLang/JuliaBUGS.jl/refs/heads/main/DoodleBUGS/public/examples/blockers/model.json',
-  },
-  {
-    id: 'salm',
-    name: 'Salm Model',
-    url: 'https://raw.githubusercontent.com/TuringLang/JuliaBUGS.jl/refs/heads/main/DoodleBUGS/public/examples/salm/model.json',
-  },
-  {
-    id: 'equiv',
-    name: 'Equiv Model',
-    url: 'https://raw.githubusercontent.com/TuringLang/JuliaBUGS.jl/refs/heads/main/DoodleBUGS/public/examples/equiv/model.json',
-  },
-  {
-    id: 'oxford',
-    name: 'Oxford Model',
-    url: 'https://raw.githubusercontent.com/TuringLang/JuliaBUGS.jl/refs/heads/main/DoodleBUGS/public/examples/oxford/model.json',
-  },
-  {
-    id: 'epil',
-    name: 'Epilepsy Model',
-    url: 'https://raw.githubusercontent.com/TuringLang/JuliaBUGS.jl/refs/heads/main/DoodleBUGS/public/examples/epil/model.json',
-  },
-  {
-    id: 'mice',
-    name: 'Mice Model',
-    url: 'https://raw.githubusercontent.com/TuringLang/JuliaBUGS.jl/refs/heads/main/DoodleBUGS/public/examples/mice/model.json',
-  },
-  {
-    id: 'kidney',
-    name: 'Kidney Model',
-    url: 'https://raw.githubusercontent.com/TuringLang/JuliaBUGS.jl/refs/heads/main/DoodleBUGS/public/examples/kidney/model.json',
-  },
+  example('rats', 'Rats Model'),
+  example('pumps', 'Pumps Model'),
+  example('seeds', 'Seeds Model'),
+  example('surgical', 'Surgical Model'),
+  example('dyes', 'Dyes Model'),
+  example('blockers', 'Blockers Model'),
+  example('salm', 'Salm Model'),
+  example('equiv', 'Equiv Model'),
+  example('oxford', 'Oxford Model'),
+  example('epil', 'Epilepsy Model'),
+  example('mice', 'Mice Model'),
+  example('kidney', 'Kidney Model'),
 ]
 
 // Helper to check if a string is a URL

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, type StyleValue } from 'vue'
+import type { StyleValue } from 'vue'
 import Accordion from 'primevue/accordion'
 import AccordionPanel from 'primevue/accordionpanel'
 import AccordionHeader from 'primevue/accordionheader'
@@ -59,16 +59,8 @@ const updateCanvasGridStyle = (val: string) => {
   canvasGridStyle.value = val as 'dots' | 'lines'
 }
 
-// Filter examples based on context
-const availableExamples = computed(() => {
-  // If we are in "Widget Mode" (indicated by enableDrag being true for floating sidebar),
-  // only show examples that have a valid URL (remote).
-  if (props.enableDrag) {
-    return examples.filter((e) => e.url)
-  }
-  // In "App Mode", show all examples (local lookups + remote)
-  return examples
-})
+// Every example is bundled, so the full list is available in any context.
+const availableExamples = examples
 
 const sidebarStyle = (isOpen: boolean): StyleValue => {
   if (!isOpen) {

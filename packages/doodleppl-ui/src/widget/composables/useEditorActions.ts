@@ -203,47 +203,11 @@ export function useEditorActions(
         modelName = modelData.name || 'Remote Model'
       } else {
         const config = examples.find((e) => e.id === exampleIdOrUrl)
-        const turingUrl = `https://turinglang.org/JuliaBUGS.jl/DoodleBUGS/examples/${exampleIdOrUrl}/model.json`
-
-        if (config) {
-          modelName = config.name
-          try {
-            const localUrl = `${import.meta.env.BASE_URL}examples/${config.id}/model.json`
-            const response = await fetch(localUrl)
-            if (response.ok) {
-              modelData = await response.json()
-            }
-          } catch {
-            /* fallthrough */
-          }
-
-          if (!modelData && config.url) {
-            try {
-              const response = await fetch(config.url)
-              if (response.ok) {
-                modelData = await response.json()
-              }
-            } catch {
-              /* fallthrough */
-            }
-          }
+        if (!config) {
+          throw new Error(`Model "${exampleIdOrUrl}" is not a bundled example.`)
         }
-
-        if (!modelData) {
-          try {
-            const response = await fetch(turingUrl)
-            if (response.ok) {
-              modelData = await response.json()
-              modelName = modelData.name || exampleIdOrUrl
-            }
-          } catch {
-            /* fallthrough */
-          }
-        }
-
-        if (!modelData) {
-          throw new Error(`Model "${exampleIdOrUrl}" not found in any source.`)
-        }
+        modelName = config.name
+        modelData = await config.load()
       }
 
       if (modelData) {
