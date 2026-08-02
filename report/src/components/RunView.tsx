@@ -210,7 +210,7 @@ export function RunView({
       <main className="main">
         {active === "overview" && (
           <>
-            <div className="chipset" style={{ marginBottom: 24 }}>
+            <div className="chipset run-meta">
               <span className="chip">
                 {entry.backend.id} {entry.backend.version}
               </span>
@@ -257,7 +257,7 @@ export function RunView({
 
         {active === "variables" && (
           <>
-            <div className="chipset" style={{ marginBottom: 24 }}>
+            <div className="chipset run-meta">
               <span className="chip mono-strong">{variable}</span>
               {rhatByVar.has(variable) && !Number.isNaN(rhatByVar.get(variable) as number) && (
                 <span className="chip">

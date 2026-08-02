@@ -6,7 +6,7 @@ interface Walker {
   trail: [number, number][];
 }
 
-const TRAIL = 140;
+const TRAIL = 240;
 
 // Two-mode Gaussian mixture log-density; the walkers explore it by Metropolis.
 function logDensity(x: number, y: number, tight: number): number {
@@ -24,9 +24,12 @@ export function startAmbient(canvas: HTMLCanvasElement, reducedMotion: boolean):
   const ctx = canvas.getContext("2d");
   if (!ctx) return { setExcited: () => {}, destroy: () => {} };
 
+  // Four walkers, one per chain colour: the landing shows what the tool shows.
   const walkers: Walker[] = [
-    { x: 0.3, y: 0.4, trail: [] },
-    { x: 0.7, y: 0.6, trail: [] },
+    { x: 0.28, y: 0.38, trail: [] },
+    { x: 0.36, y: 0.46, trail: [] },
+    { x: 0.64, y: 0.58, trail: [] },
+    { x: 0.72, y: 0.66, trail: [] },
   ];
   let excited = false;
   let frame = 0;
@@ -58,7 +61,7 @@ export function startAmbient(canvas: HTMLCanvasElement, reducedMotion: boolean):
       for (let k = 1; k < w.trail.length; k++) {
         const [x0, y0] = w.trail[k - 1] as [number, number];
         const [x1, y1] = w.trail[k] as [number, number];
-        ctx.globalAlpha = 0.08 + 0.72 * (k / w.trail.length);
+        ctx.globalAlpha = 0.05 + 0.55 * (k / w.trail.length);
         ctx.beginPath();
         ctx.moveTo(x0 * width, y0 * height);
         ctx.lineTo(x1 * width, y1 * height);

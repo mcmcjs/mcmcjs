@@ -271,10 +271,9 @@ export function Landing({
         aria-label="Drop or choose a run bundle"
       >
         <canvas ref={canvasRef} />
-        <span className="axes" />
         <span className="drop-copy">
           <strong>Drop a run bundle</strong>
-          <span>mcmc export bundle · or click to browse</span>
+          <span>or click to browse</span>
         </span>
       </button>
       <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={onPick} />
@@ -283,20 +282,18 @@ export function Landing({
         New here?{" "}
         <button type="button" className="link-btn" onClick={openDemo}>
           Open the demo run
-        </button>{" "}
-        to see a full report.
+        </button>
       </p>
 
       {deepLink && (
         <div className="banner">
           <div>
             <div>
-              Run <code>{deepLink.runId}</code> was opened from the CLI.
+              Opening <code>{deepLink.runId}</code>
             </div>
             {handoff === "pending" ? (
               <div className="hint">
-                opening it from the CLI... if the browser asks to allow local network access, allow
-                it
+                If the browser asks to allow local network access, allow it.
               </div>
             ) : (
               deepLink.storePath && (
@@ -335,7 +332,7 @@ export function Landing({
 
       {servedRuns && (
         <section className="block">
-          <p className="eyebrow">Run store · served by the CLI</p>
+          <p className="eyebrow">Runs from the CLI</p>
           <table className="ledger">
             <thead>
               <tr>
