@@ -121,6 +121,7 @@ export interface RunCliOptions {
   chains?: number;
   seed?: number;
   adaptDelta?: number;
+  prior?: boolean;
   backend?: string;
   entry?: string;
   refit?: boolean;
@@ -189,6 +190,7 @@ function applyOverrides(spec: Spec, opts: RunCliOptions): Spec {
     model: { ...spec.model, ...(opts.entry ? { entry: opts.entry } : {}) },
     sampler: {
       ...spec.sampler,
+      ...(opts.prior ? { algorithm: "Prior" } : {}),
       ...(opts.draws !== undefined ? { draws: opts.draws } : {}),
       ...(opts.warmup !== undefined ? { warmup: opts.warmup } : {}),
       ...(opts.chains !== undefined ? { chains: opts.chains } : {}),
@@ -321,7 +323,7 @@ export function buildRunConfig(inputPath: string, opts: RunCliOptions): RunConfi
       ...(opts.entry ? { entry: opts.entry } : {}),
     },
     sampler: {
-      algorithm: "NUTS",
+      algorithm: opts.prior ? "Prior" : "NUTS",
       draws: opts.draws ?? 1000,
       warmup: opts.warmup ?? 1000,
       chains: opts.chains ?? 4,
@@ -448,7 +450,8 @@ export function refitReasons(prev: LedgerEntry, next: RunInputs, seedPinned: boo
 function fitBanner(config: RunConfig, runtimeLabel: string): string {
   const s = config.spec.sampler;
   const backend = backendLabel(config.spec.backend.id);
-  return `Fitting ${basename(config.modelPath)} with ${backend} (${s.algorithm}, ${s.chains} chains x ${s.draws} draws + ${s.warmup} warmup, seed ${config.spec.seed}) on ${runtimeLabel}...`;
+  const warmup = s.algorithm === "Prior" ? "" : ` + ${s.warmup} warmup`;
+  return `Fitting ${basename(config.modelPath)} with ${backend} (${s.algorithm}, ${s.chains} chains x ${s.draws} draws${warmup}, seed ${config.spec.seed}) on ${runtimeLabel}...`;
 }
 
 function displayPath(path: string): string {
@@ -476,6 +479,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .option("--warmup <n>", "warmup iterations (default 1000)", parseIntOption)
     .option("--chains <n>", "number of chains (default 4)", parseIntOption)
     .option("--adapt-delta <x>", "NUTS target acceptance rate (default 0.8)", parseFloatOption)
+    .option("--prior", "draw from the prior instead of running MCMC (no warmup)")
     .option("--seed <n>", "random seed (default: drawn fresh and recorded)", parseIntOption)
     .option("--backend <id>", "backend (default: detected from the model)")
     .option("--entry <name>", "model entry function for Julia backends (default build_model)")

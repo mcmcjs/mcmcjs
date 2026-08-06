@@ -147,6 +147,15 @@ describe("buildRunConfig: model file with no spec", () => {
     expect(config.spec.data).toEqual({});
   });
 
+  it("switches to prior sampling with --prior", () => {
+    const dir = tmp();
+    const model = writeModel(dir);
+    const config = buildRunConfig(model, { prior: true, draws: 100 });
+    expect(config.spec.sampler.algorithm).toBe("Prior");
+    expect(config.spec.sampler.draws).toBe(100);
+    expect(buildRunConfig(model, {}).spec.sampler.algorithm).toBe("NUTS");
+  });
+
   it("auto-detects a sibling data.csv when no --data is given", () => {
     const dir = tmp();
     const model = writeModel(dir);
@@ -259,6 +268,7 @@ describe("buildRunConfig: spec input", () => {
     expect(config.specSource).toBe("input");
     expect(config.spec.sampler.chains).toBe(8);
     expect(config.spec.sampler.draws).toBe(10);
+    expect(buildRunConfig(specPath, { prior: true }).spec.sampler.algorithm).toBe("Prior");
   });
 
   it("uses --julia-version as the channel without persisting it", () => {

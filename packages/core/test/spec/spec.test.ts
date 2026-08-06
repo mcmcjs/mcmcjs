@@ -33,6 +33,25 @@ describe("SpecSchema", () => {
     ).toThrow();
   });
 
+  it("accepts the Prior algorithm and rejects an unknown one", () => {
+    const spec = SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "Prior" } });
+    expect(spec.sampler.algorithm).toBe("Prior");
+    expect(() =>
+      SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "HMC" } }),
+    ).toThrow();
+  });
+
+  it("rejects Prior on the stan backend", () => {
+    expect(() =>
+      SpecSchema.parse({
+        ...VALID,
+        backend: { id: "stan" },
+        model: { kind: "file", path: "./model.stan" },
+        sampler: { draws: 10, algorithm: "Prior" },
+      }),
+    ).toThrow(/stan backend does not support/);
+  });
+
   it("requires a seed", () => {
     const { seed, ...noSeed } = VALID;
     expect(() => SpecSchema.parse(noSeed)).toThrow();

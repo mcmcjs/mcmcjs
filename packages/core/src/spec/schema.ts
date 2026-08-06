@@ -58,7 +58,8 @@ const Backend = z
 
 const Sampler = z
   .object({
-    algorithm: z.literal("NUTS").default("NUTS"),
+    /** "Prior" draws from the prior instead of running MCMC (no warmup or adaptation). */
+    algorithm: z.enum(["NUTS", "Prior"]).default("NUTS"),
     draws: z.number().int().positive(),
     warmup: z.number().int().nonnegative().default(1000),
     chains: z.number().int().positive().default(4),
@@ -110,6 +111,10 @@ export const SpecSchema = z
   .refine((s) => !(s.data_file && Object.keys(s.data).length > 0), {
     message: "set either inline [data] or data_file, not both",
     path: ["data_file"],
+  })
+  .refine((s) => !(s.backend.id === "stan" && s.sampler.algorithm === "Prior"), {
+    message: 'the stan backend does not support algorithm = "Prior"',
+    path: ["sampler", "algorithm"],
   });
 
 export type Spec = z.infer<typeof SpecSchema>;

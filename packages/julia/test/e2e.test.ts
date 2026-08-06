@@ -423,3 +423,135 @@ d("julia e2e: juliabugs streams draws that reconstruct the final samples", () =>
     }
   }, 600_000);
 });
+
+d("julia e2e: prior sampling and the prior predictive", () => {
+  it("draws iid prior samples with the declared prior's moments", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const outPath = join(dir, "prior.samples.json");
+    const result = await runFit(
+      {
+        ...spec(400, 2),
+        sampler: { algorithm: "Prior", draws: 400, warmup: 0, chains: 2, adapt_delta: 0.8 },
+      },
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        recordPath: join(dir, "prior.run.json"),
+      },
+    );
+
+    expect(result.status).toBe("ok");
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect(samples.variables).toContain("mu");
+    expect(samples.variables).toContain("theta[1]");
+    const mu = [0, 1].flatMap((chain) => Array.from(chainView(samples, "mu", chain)));
+    const mean = mu.reduce((a, b) => a + b, 0) / mu.length;
+    const sd = Math.sqrt(mu.reduce((a, b) => a + (b - mean) ** 2, 0) / mu.length);
+    // mu ~ Normal(0, 5): with 800 iid draws the mean has se 0.18 and the sd
+    // concentrates near 5, so these bounds only pass for genuine prior draws.
+    expect(Math.abs(mean)).toBeLessThan(1);
+    expect(sd).toBeGreaterThan(4);
+    expect(sd).toBeLessThan(6);
+  }, 300_000);
+
+  it("feeds predict to produce the prior predictive", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const tableModelPath = join(dir, "prior_table.jl");
+    writeFileSync(tableModelPath, TABLE_MODEL);
+    const priorSpec: ResolvedSpec = {
+      ...spec(400, 2),
+      model: { kind: "file", path: tableModelPath, entry: "build_model" },
+      modelPath: tableModelPath,
+      data: TABLE_DATA,
+      sampler: { algorithm: "Prior", draws: 400, warmup: 0, chains: 2, adapt_delta: 0.8 },
+      predict: { targets: ["y"] },
+    };
+    const priorPath = join(dir, "prior.table.samples.json");
+    const fit = await runFit(
+      priorSpec,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath: priorPath,
+        recordPath: join(dir, "prior.table.run.json"),
+      },
+    );
+    expect(fit.status).toBe("ok");
+
+    const outPath = join(dir, "prior.predict.json");
+    const result = await runPredict(
+      priorSpec,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        samplesPath: priorPath,
+      },
+    );
+
+    expect(result.status).toBe("ok");
+    const predictive: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect(predictive.variables).toContain("y[1]");
+    const y1 = [0, 1]
+      .flatMap((chain) => Array.from(chainView(predictive, "y[1]", chain)))
+      .sort((a, b) => a - b);
+    // The prior predictive follows the prior (mu centered at 0), not the data
+    // (mean ~5), so the median sits near zero only if the posterior was never
+    // consulted.
+    const median = y1[Math.floor(y1.length / 2)] as number;
+    expect(Math.abs(median)).toBeLessThan(3);
+  }, 300_000);
+
+  it("samples the juliabugs prior ancestrally with deterministic nodes intact", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const bugsModelPath = join(dir, "normal_bugs_prior.jl");
+    writeFileSync(bugsModelPath, BUGS_MODEL);
+    const outPath = join(dir, "bugs.prior.samples.json");
+    const result = await runFit(
+      {
+        ...spec(300, 2),
+        backend: { id: "juliabugs", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
+        model: { kind: "file", path: bugsModelPath, entry: "build_model" },
+        modelPath: bugsModelPath,
+        data: { N: TABLE_DATA.y.length, ...TABLE_DATA },
+        sampler: { algorithm: "Prior", draws: 300, warmup: 0, chains: 2, adapt_delta: 0.8 },
+      },
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        recordPath: join(dir, "bugs.prior.run.json"),
+      },
+    );
+
+    expect(result.status).toBe("ok");
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect(samples.variables).toEqual(expect.arrayContaining(["mu", "tau", "sigma"]));
+    let checked = 0;
+    for (const chain of [0, 1]) {
+      const tau = Array.from(chainView(samples, "tau", chain));
+      const sigma = Array.from(chainView(samples, "sigma", chain));
+      for (let i = 0; i < tau.length; i++) {
+        // The diffuse dgamma(0.01, 0.01) prior draws tau ~ 0 often enough that
+        // sigma overflows; a non-finite draw is serialized as null (NaN here).
+        if (!Number.isFinite(sigma[i])) continue;
+        expect(sigma[i]).toBeCloseTo(1 / Math.sqrt(tau[i] as number), 6);
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
+    // Prior draws must ignore the data: mu ~ dnorm(0, 0.0001) has sd 100, so a
+    // posterior-like concentration at the data mean (~5) would fail this.
+    const mu = [0, 1].flatMap((chain) => Array.from(chainView(samples, "mu", chain)));
+    const sd = Math.sqrt(
+      mu.reduce((a, b) => a + b ** 2, 0) / mu.length -
+        (mu.reduce((a, b) => a + b, 0) / mu.length) ** 2,
+    );
+    expect(sd).toBeGreaterThan(50);
+  }, 300_000);
+});

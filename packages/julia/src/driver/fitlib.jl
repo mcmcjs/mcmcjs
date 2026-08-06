@@ -88,6 +88,9 @@ end
 
 function build_sampler(sampler, backend)
     algorithm = get(sampler, "algorithm", "NUTS")
+    # Prior draws are iid: no warmup, no adaptation. The JuliaBUGS path samples
+    # ancestrally (sample_bugs_prior) instead of going through a sampler object.
+    algorithm == "Prior" && return Turing.Prior(), 0
     algorithm == "NUTS" || error("unsupported sampler algorithm: $algorithm")
     warmup = Int(get(sampler, "warmup", 1000))
     adapt_delta = Float64(get(sampler, "adapt_delta", 0.8))
@@ -310,7 +313,9 @@ function vnchain_to_wire(chn)
     total = nParams + length(extras)
 
     flat = Vector{Union{Float64,Nothing}}(undef, nIter * total * nChains)
-    cell(v) = v === missing ? nothing : Float64(v)
+    # JSON has no Inf/NaN; a non-finite draw (e.g. 1/sqrt(tau) under a diffuse
+    # prior) becomes null, which the samples parser reads back as NaN.
+    cell(v) = v === missing || !isfinite(v) ? nothing : Float64(v)
     for c in 1:nChains, p in 1:nParams, i in 1:nIter
         flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(arr[i, c, p])
     end
@@ -344,6 +349,31 @@ function sample_bugs(model, sampler, warmup, draws, chains, rng; callback = noth
             progress = true, kw...,
         )
     end
+end
+
+# JuliaBUGS prior sampling: each draw is one ancestral pass (evaluate!! with an
+# rng samples every unobserved stochastic node from its prior and recomputes the
+# deterministic ones; observed data stays fixed). The collected variables are the
+# model parameters plus generated quantities, the same columns a posterior fit
+# produces through gen_chains.
+function sample_bugs_prior(model, draws, chains, rng)
+    model isa JuliaBUGS.BUGSModelWithGradient && (model = model.base_model)
+    APPL = JuliaBUGS.AbstractPPL
+    vars = vcat(JuliaBUGS.model_parameters(model), JuliaBUGS.generated_quantities(model))
+    isempty(vars) && error("the model has no parameters or generated quantities to sample")
+    grab(env, vn) = (v = APPL.getvalue(env, vn); v isa AbstractArray ? copy(v) : v)
+    columns = Dict(vn => Vector{Any}(undef, draws * chains) for vn in vars)
+    for c in 1:chains, i in 1:draws
+        env, _ = APPL.evaluate!!(rng, model)
+        for vn in vars
+            columns[vn][i + (c - 1) * draws] = grab(env, vn)
+        end
+    end
+    dict = Dict{FlexiChains.ParameterOrExtra{<:VarName},Array}(
+        FlexiChains.Parameter(vn) =>
+            [columns[vn][i + (c - 1) * draws] for i in 1:draws, c in 1:chains] for vn in vars
+    )
+    return FlexiChains.FlexiChain{VarName}(draws, chains, dict)
 end
 
 # The JuliaBUGS counterpart to draw_streamer. A JuliaBUGS transition is a raw
@@ -479,7 +509,8 @@ function predict_bugs(model, posterior, targets, rng)
     n = length(pnames)
     flat_out = Vector{Union{Float64,Nothing}}(undef, nIter * n * nChains)
     for c in 1:nChains, p in 1:n, i in 1:nIter
-        flat_out[i + (p - 1) * nIter + (c - 1) * nIter * n] = arr[i, p, c]
+        v = arr[i, p, c]
+        flat_out[i + (p - 1) * nIter + (c - 1) * nIter * n] = isfinite(v) ? v : nothing
     end
     return Dict(
         "size" => [nIter, n, nChains],
@@ -568,13 +599,17 @@ function handle_request(request)
             stage = "sample"
             if backend == "juliabugs"
                 model = Base.invokelatest(entry, data)
-                # Reconstruction reads the plain BUGSModel; entry may return a gradient wrapper.
-                base = hasproperty(model, :base_model) ? model.base_model : model
-                cb = get(request, "stream_draws", false) ?
-                    bugs_draw_streamer(base, draws, Int(get(request, "draw_batch_size", 25))) : nothing
-                chn = Base.invokelatest(
-                    sample_bugs, model, sampler, warmup, draws, chains, rng; callback = cb,
-                )
+                chn = if get(request["sampler"], "algorithm", "NUTS") == "Prior"
+                    Base.invokelatest(sample_bugs_prior, model, draws, chains, rng)
+                else
+                    # Reconstruction reads the plain BUGSModel; entry may return a gradient wrapper.
+                    base = hasproperty(model, :base_model) ? model.base_model : model
+                    cb = get(request, "stream_draws", false) ?
+                        bugs_draw_streamer(base, draws, Int(get(request, "draw_batch_size", 25))) : nothing
+                    Base.invokelatest(
+                        sample_bugs, model, sampler, warmup, draws, chains, rng; callback = cb,
+                    )
+                end
                 vnchain_to_wire(chn)
             else
                 cb = get(request, "stream_draws", false) ?
