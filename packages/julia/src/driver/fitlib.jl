@@ -442,6 +442,69 @@ function bugs_draw_streamer(model, draws_per_chain::Int, batch_size::Int)
     end
 end
 
+# JuliaBUGS pointwise log-likelihood: restore each posterior draw into the
+# evaluation environment, recompute the deterministic nodes in topological
+# order, and record logpdf per observed node. Every unobserved stochastic node
+# must be covered by the posterior columns, or log p(y | theta) would not be a
+# function of the draw.
+function loglik_bugs(model, posterior)
+    model isa JuliaBUGS.BUGSModelWithGradient && (model = model.base_model)
+    APPL = JuliaBUGS.AbstractPPL
+    gd = model.graph_evaluation_data
+
+    sz = posterior["size"]
+    nIter, nCols, nChains = Int(sz[1]), Int(sz[2]), Int(sz[3])
+    flat = posterior["value_flat"]
+    col = Dict(n => i for (i, n) in enumerate(posterior["parameters"]))
+    posterior_names = Set(posterior["name_map"]["parameters"])
+    cell(i, p, c) = begin
+        v = flat[i + (p - 1) * nIter + (c - 1) * nIter * nCols]
+        v === nothing ? NaN : Float64(v)
+    end
+
+    restore = Tuple{APPL.VarName,Int}[]
+    for vn in JuliaBUGS.model_parameters(model)
+        leaves = collect(APPL.varname_leaves(vn, APPL.getvalue(model.evaluation_env, vn)))
+        found = count(l -> string(l) in posterior_names, leaves)
+        found == length(leaves) ||
+            error("the posterior samples do not cover $(vn); were they produced by fitting this spec?")
+        append!(restore, [(l, col[string(l)]) for l in leaves])
+    end
+    observed = [
+        (vn, i) for (i, vn) in enumerate(gd.sorted_nodes) if
+        gd.is_stochastic_vals[i] && gd.is_observed_vals[i]
+    ]
+    isempty(observed) && error("the model has no observed variables to compute a log-likelihood for")
+
+    pnames = string.(first.(observed))
+    n = length(pnames)
+    flat_out = Vector{Union{Float64,Nothing}}(undef, nIter * n * nChains)
+    for c in 1:nChains, i in 1:nIter
+        env = model.evaluation_env
+        for (leaf, p) in restore
+            env = JuliaBUGS.BangBang.setindex!!(env, cell(i, p, c), leaf)
+        end
+        for (k, node) in enumerate(gd.sorted_nodes)
+            if !gd.is_stochastic_vals[k]
+                env = JuliaBUGS.BangBang.setindex!!(
+                    env, gd.node_function_vals[k](env, gd.loop_vars_vals[k]), node,
+                )
+            end
+        end
+        for (k, (vn, idx)) in enumerate(observed)
+            dist = gd.node_function_vals[idx](env, gd.loop_vars_vals[idx])
+            v = logpdf(dist, APPL.getvalue(env, vn))
+            flat_out[i + (k - 1) * nIter + (c - 1) * nIter * n] = isfinite(v) ? Float64(v) : nothing
+        end
+    end
+    return Dict(
+        "size" => [nIter, n, nChains],
+        "value_flat" => flat_out,
+        "parameters" => pnames,
+        "name_map" => Dict("parameters" => pnames, "internals" => String[]),
+    )
+end
+
 # JuliaBUGS posterior prediction: condition the (target-blanked) model on the
 # posterior parameter columns, then evaluate!! ancestral-samples the remaining
 # latents once per posterior draw. No sampler or gradient runs.
@@ -574,7 +637,26 @@ function handle_request(request)
         modelmod = load_model_module(request["model"]["file"])
         entry = resolve_entry(modelmod, get(request["model"], "entry", nothing))
 
-        wire = if mode == "predict"
+        wire = if mode == "loglik"
+            if backend == "juliabugs"
+                model = Base.invokelatest(entry, bugs_namedtuple(request["data"]))
+                stage = "load_samples"
+                posterior = JSON.parsefile(request["samples"])
+                stage = "loglik"
+                Base.invokelatest(loglik_bugs, model, posterior)
+            else
+                data = ModelData(to_namedtuple(request["data"]))
+                model = Base.invokelatest(entry, data)
+                model = Base.invokelatest(condition_on_data, model, data)
+                stage = "load_samples"
+                chn = wire_to_vnchain(JSON.parsefile(request["samples"]), String[])
+                stage = "loglik"
+                pll = Base.invokelatest(Turing.DynamicPPL.pointwise_loglikelihoods, model, chn)
+                isempty(FlexiChains.parameters(pll)) &&
+                    error("the model has no observed variables to compute a log-likelihood for")
+                vnchain_to_wire(pll)
+            end
+        elseif mode == "predict"
             if backend == "juliabugs"
                 model = Base.invokelatest(entry, bugs_predict_namedtuple(request["data"]))
                 stage = "load_samples"

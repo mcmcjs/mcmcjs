@@ -12,6 +12,7 @@ import { createFitRunner, createRunner, type DrawBatch } from "@mcmcjs/engine";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { detectJuliaup } from "../src/environment";
 import { runFit } from "../src/fit";
+import { runLogLik } from "../src/loglik";
 import { runPredict } from "../src/predict";
 import { managedProjectDir, managedProjectReady } from "../src/project";
 import { resolveVersion } from "../src/versions";
@@ -554,4 +555,120 @@ d("julia e2e: prior sampling and the prior predictive", () => {
     );
     expect(sd).toBeGreaterThan(50);
   }, 300_000);
+});
+
+d("julia e2e: pointwise log-likelihood", () => {
+  it("matches the chain's total loglikelihood, observation by observation", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const tableModelPath = join(dir, "loglik_table.jl");
+    writeFileSync(tableModelPath, TABLE_MODEL);
+    const llSpec: ResolvedSpec = {
+      ...spec(200, 2),
+      model: { kind: "file", path: tableModelPath, entry: "build_model" },
+      modelPath: tableModelPath,
+      data: TABLE_DATA,
+    };
+    const postPath = join(dir, "loglik.post.json");
+    const fit = await runFit(
+      llSpec,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath: postPath,
+        recordPath: join(dir, "loglik.post.run.json"),
+      },
+    );
+    expect(fit.status).toBe("ok");
+
+    const outPath = join(dir, "loglik.json");
+    const result = await runLogLik(
+      llSpec,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        samplesPath: postPath,
+      },
+    );
+    expect(result.status).toBe("ok");
+
+    const ll: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    const post: Samples = parseSamples(readFileSync(postPath, "utf8"));
+    const n = TABLE_DATA.y.length;
+    expect([...ll.variables].sort()).toEqual(
+      Array.from({ length: n }, (_, i) => `y[${i + 1}]`).sort(),
+    );
+    expect(ll.nDraws).toBe(200);
+    expect(ll.nChains).toBe(2);
+
+    // The pointwise columns must sum to the loglikelihood the sampler recorded,
+    // draw by draw: the strongest possible internal consistency check.
+    for (const chain of [0, 1]) {
+      const total = chainView(post, "loglikelihood", chain);
+      const cols = [...ll.variables].map((v) => chainView(ll, v, chain));
+      for (let i = 0; i < ll.nDraws; i++) {
+        const sum = cols.reduce((a, col) => a + (col[i] as number), 0);
+        expect(sum).toBeCloseTo(total[i] as number, 8);
+      }
+    }
+  }, 600_000);
+
+  it("computes the juliabugs pointwise log-likelihood to match the analytic logpdf", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const bugsModelPath = join(dir, "loglik_bugs.jl");
+    writeFileSync(bugsModelPath, BUGS_MODEL);
+    const bugsSpec: ResolvedSpec = {
+      ...spec(150, 2),
+      backend: { id: "juliabugs", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
+      model: { kind: "file", path: bugsModelPath, entry: "build_model" },
+      modelPath: bugsModelPath,
+      data: { N: TABLE_DATA.y.length, ...TABLE_DATA },
+    };
+    const postPath = join(dir, "bugs.loglik.post.json");
+    const fit = await runFit(
+      bugsSpec,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath: postPath,
+        recordPath: join(dir, "bugs.loglik.post.run.json"),
+      },
+    );
+    expect(fit.status).toBe("ok");
+
+    const outPath = join(dir, "bugs.loglik.json");
+    const result = await runLogLik(
+      bugsSpec,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        samplesPath: postPath,
+      },
+    );
+    expect(result.status).toBe("ok");
+
+    // dnorm(mu, tau) has logpdf 0.5 log(tau/2pi) - 0.5 tau (y - mu)^2; the
+    // driver's per-node walk must reproduce it at every posterior draw.
+    const ll: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    const post: Samples = parseSamples(readFileSync(postPath, "utf8"));
+    for (const chain of [0, 1]) {
+      const mu = chainView(post, "mu", chain);
+      const tau = chainView(post, "tau", chain);
+      TABLE_DATA.y.forEach((yk, k) => {
+        const col = chainView(ll, `y[${k + 1}]`, chain);
+        for (let i = 0; i < ll.nDraws; i++) {
+          const expected =
+            -0.5 * Math.log(2 * Math.PI) +
+            0.5 * Math.log(tau[i] as number) -
+            0.5 * (tau[i] as number) * (yk - (mu[i] as number)) ** 2;
+          expect(col[i]).toBeCloseTo(expected, 9);
+        }
+      });
+    }
+  }, 600_000);
 });

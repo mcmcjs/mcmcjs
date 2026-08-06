@@ -5,6 +5,7 @@ export type { CommandRunner, ToolInfo } from "./environment";
 export { detectJulia, detectJuliaup } from "./environment";
 export type { FitIo } from "./fit";
 export { runFit } from "./fit";
+export { type LogLikIo, runLogLik } from "./loglik";
 export type { PredictIo } from "./predict";
 export { predictData, runPredict } from "./predict";
 export type { PackagePins } from "./project";
