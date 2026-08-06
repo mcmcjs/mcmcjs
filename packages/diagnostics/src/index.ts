@@ -16,10 +16,22 @@ export {
 } from "./ess";
 export { type GewekeResult, geweke } from "./geweke";
 export {
+  compareLoo,
+  computeLoo,
+  computeWaic,
+  type LooComparison,
+  type LooPointwise,
+  type LooResult,
+  type PointwiseLogLik,
+  relativeEff,
+  type WaicResult,
+} from "./loo";
+export {
   computeMCSEMultiChain as mcseMean,
   computeMCSEQuantile as mcseQuantile,
   computeMCSEStd as mcseStd,
 } from "./mcse";
+export { gpdFit, logSumExp, type PsisResult, psisSmooth } from "./psis";
 export { computeRhat as rhat, type RhatKind } from "./rhat";
 export { splitRhat } from "./split-rhat";
 export {
