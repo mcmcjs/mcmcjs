@@ -9,6 +9,7 @@ import { registerExport } from "./export";
 import { registerFit } from "./fit";
 import { registerInit } from "./init";
 import { registerJulia } from "./julia";
+import { registerCompare, registerLoo } from "./loo";
 import { registerPlot } from "./plot";
 import { registerPredict } from "./predict";
 import { registerReport } from "./report";
@@ -37,6 +38,8 @@ export function registerAll(program: Command, ctx: EngineContext, registry: Engi
   registerShow(program);
   registerDiagnose(program);
   registerSummary(program);
+  registerLoo(program, ctx);
+  registerCompare(program, ctx);
   registerSamples(program);
   registerPlot(program);
   registerExport(program);
