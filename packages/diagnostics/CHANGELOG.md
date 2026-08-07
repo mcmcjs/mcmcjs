@@ -1,5 +1,11 @@
 # @mcmcjs/diagnostics
 
+## 0.6.0
+
+### Minor Changes
+
+- ce4801f: Add computeLooPit: leave-one-out probability integral transform values from the pointwise log-likelihood, predictive draws, and observed data, matching the arviz reference.
+
 ## 0.5.0
 
 ### Minor Changes

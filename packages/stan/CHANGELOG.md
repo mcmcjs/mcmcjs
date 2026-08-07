@@ -1,5 +1,13 @@
 # @mcmcjs/stan
 
+## 0.1.4
+
+### Patch Changes
+
+- ce4801f: The sampler's thin setting is passed through to CmdStan.
+- Updated dependencies [ce4801f]
+  - @mcmcjs/core@0.10.0
+
 ## 0.1.3
 
 ### Patch Changes

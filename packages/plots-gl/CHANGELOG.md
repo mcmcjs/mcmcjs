@@ -1,5 +1,16 @@
 # @mcmcjs/plots-gl
 
+## 0.2.9
+
+### Patch Changes
+
+- Updated dependencies [ce4801f]
+- Updated dependencies [ce4801f]
+- Updated dependencies [ce4801f]
+  - @mcmcjs/core@0.10.0
+  - @mcmcjs/diagnostics@0.6.0
+  - @mcmcjs/plots@0.8.0
+
 ## 0.2.8
 
 ### Patch Changes

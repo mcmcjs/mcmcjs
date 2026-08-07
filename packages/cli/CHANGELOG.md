@@ -1,5 +1,24 @@
 # mcmcjs
 
+## 0.23.0
+
+### Minor Changes
+
+- ce4801f: `mcmc run` gains `--algorithm` (NUTS, HMC, HMCDA, MH, Prior), --thin, and --adtype; mcmc export materializes the cached loglik.json; and mcmc plot gains the loo-pit calibration check via --loglik.
+
+### Patch Changes
+
+- Updated dependencies [ce4801f]
+- Updated dependencies [ce4801f]
+- Updated dependencies [ce4801f]
+- Updated dependencies [ce4801f]
+- Updated dependencies [ce4801f]
+  - @mcmcjs/core@0.10.0
+  - @mcmcjs/diagnostics@0.6.0
+  - @mcmcjs/julia@0.13.0
+  - @mcmcjs/plots@0.8.0
+  - @mcmcjs/stan@0.1.4
+
 ## 0.22.0
 
 ### Minor Changes

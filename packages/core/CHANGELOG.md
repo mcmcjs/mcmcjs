@@ -1,5 +1,11 @@
 # @mcmcjs/core
 
+## 0.10.0
+
+### Minor Changes
+
+- ce4801f: The spec's sampler covers the wider Turing surface: HMC, HMCDA, and MH alongside NUTS and Prior, with step_size, leapfrog_steps, lambda, thin, adtype, and named initial_params, all cross-validated per algorithm and backend at parse time.
+
 ## 0.9.0
 
 ### Minor Changes
