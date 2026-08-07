@@ -1,5 +1,18 @@
 # @mcmcjs/plots
 
+## 0.7.0
+
+### Minor Changes
+
+- c29759c: Add predictive-check plot kinds: ppc-density (replicate densities behind the observed density) and ppc-stat (a test statistic across replicates with the observed value and one-sided p-value), rendered to terminal, SVG, and HTML.
+
+### Patch Changes
+
+- Updated dependencies [c29759c]
+- Updated dependencies [c29759c]
+  - @mcmcjs/core@0.9.0
+  - @mcmcjs/diagnostics@0.5.0
+
 ## 0.6.3
 
 ### Patch Changes

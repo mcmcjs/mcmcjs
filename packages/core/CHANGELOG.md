@@ -1,5 +1,11 @@
 # @mcmcjs/core
 
+## 0.9.0
+
+### Minor Changes
+
+- c29759c: The spec's sampler accepts algorithm = "Prior" for drawing from the prior instead of running MCMC; the stan backend rejects it at parse time.
+
 ## 0.8.0
 
 ### Minor Changes
