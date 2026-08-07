@@ -17,7 +17,9 @@ mcmc plot --kind forest --format html -o forest.html
 Choose one with `--kind` (default `forest`).
 There are 20 kinds:
 
-`trace`, `density`, `histogram`, `rank`, `autocorr`, `pair`, `scatter`, `energy`, `forest`, `ecdf`, `cumulative-mean`, `running-rhat`, `violin`, `chain-intervals`, `chain-intervals-all`, `summary-table`, `diagnostics-heatmap`, `splom`, `parallel-coords`, `corner`.
+`trace`, `density`, `histogram`, `rank`, `autocorr`, `pair`, `scatter`, `energy`, `forest`, `ecdf`, `cumulative-mean`, `running-rhat`, `violin`, `chain-intervals`, `chain-intervals-all`, `summary-table`, `diagnostics-heatmap`, `splom`, `parallel-coords`, `corner`, `ppc-density`, `ppc-stat`.
+
+The two `ppc-*` kinds compare predictive draws against observed data (`--observed <file>`); see [Check and compare models](/docs/guides/checking/).
 
 ## Corner plots
 

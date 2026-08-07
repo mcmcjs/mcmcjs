@@ -16,7 +16,7 @@ A caller can branch on the exit code without parsing any text.
 | `2` | ran but a domain check failed, for example a fit that did not converge |
 
 Code `2` is the important one: it distinguishes "the tool worked, but the result did not meet the bar" from "the tool broke."
-`mcmc run` and `mcmc diagnose` use it for non-convergence; the verdict line and the table are still printed.
+`mcmc run` and `mcmc diagnose` use it for non-convergence, and `mcmc loo` and `mcmc compare` for Pareto k values above the reliability threshold; the report is still printed.
 
 ```bash
 if mcmc diagnose; then

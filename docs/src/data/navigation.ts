@@ -15,6 +15,7 @@ export const navGroups = [
 			{ title: "Plot", href: "/docs/guides/plot/" },
 			{ title: "Report", href: "/docs/guides/report/" },
 			{ title: "Predict", href: "/docs/guides/predict/" },
+			{ title: "Check and compare models", href: "/docs/guides/checking/" },
 			{ title: "The run store", href: "/docs/guides/run-store/" },
 			{ title: "Convert DoodleBUGS", href: "/docs/guides/convert/" },
 			{ title: "Manage Julia", href: "/docs/guides/julia/" },

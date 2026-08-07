@@ -11,7 +11,7 @@ Run `mcmc <command> --help` for the authoritative, current flags.
 
 | Command | Description | Key flags |
 | --- | --- | --- |
-| `run <input>` | full workflow: fit, diagnose, record a run | `--data`, `--draws`, `--warmup`, `--chains`, `--adapt-delta`, `--seed`, `--backend`, `--entry`, `-o/--out`, `--stream-out`, `--refit`, `--daemon`, `--julia-version`, `--package`, `--store` |
+| `run <input>` | full workflow: fit, diagnose, record a run | `--data`, `--draws`, `--warmup`, `--chains`, `--adapt-delta`, `--seed`, `--backend`, `--entry`, `-o/--out`, `--stream-out`, `--prior`, `--refit`, `--daemon`, `--julia-version`, `--package`, `--store` |
 | `fit <spec>` | run MCMC inference, write a samples file | `-o/--out`, `--julia-version`, `--versions`, `--package-versions`, `--keep-going`, `--daemon` |
 | `predict <spec> <samples>` | draw posterior-predictive samples | `-o/--out`, `--julia-version`, `--verbose` |
 
@@ -26,6 +26,8 @@ See [Run inference](/docs/guides/run/) and [Predict](/docs/guides/predict/).
 | `runs` | list and manage recorded runs (`runs list`, `runs prune --keep <n>`) | `--store` |
 | `show [ref]` | show one run's settings and artifacts | `--store` |
 | `diagnose [target]` | convergence diagnostics for a samples file | `--rhat-max`, `--ess-min`, `--hdi-prob`, `--max-divergences`, `--warmup`, `--stdin`, `--store` |
+| `loo [target]` | cross-validated model fit (PSIS-LOO, WAIC) | `--store`, `--verbose` |
+| `compare <targets...>` | rank runs by out-of-sample fit | `--store`, `--verbose` |
 | `summary [target]` | posterior summary statistics | `--var`, `--warmup`, `--stdin`, `--store` |
 | `samples [target]` | export the raw draws in a portable format | `--to`, `-o/--out`, `--warmup`, `--stdin`, `--store` |
 | `plot [target]` | diagnostic plots for a samples file | `--kind`, `--format`, `--var`, `-o/--out`, `--width`, `--height`, `--ascii`, `--hdi-prob`, `--bins`, `--max-lag`, `--color-by`, `--warmup`, `--stdin`, `--store` |

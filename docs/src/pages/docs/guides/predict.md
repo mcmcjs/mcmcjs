@@ -5,6 +5,7 @@ description: Draw posterior-predictive samples from a fitted model.
 ---
 
 `mcmc predict <spec> <samples>` draws posterior-predictive samples from a model you have already fitted.
+Fed prior samples (`mcmc run --prior`) instead, the same command produces the prior predictive; see [Check and compare models](/docs/guides/checking/).
 It takes the spec and the posterior samples file from a previous fit, and produces a new samples file of predicted outcomes.
 
 ```bash

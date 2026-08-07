@@ -33,6 +33,7 @@ Flags are always honored.
 | `--warmup <n>` | warmup iterations (default 1000) |
 | `--chains <n>` | number of chains (default 4) |
 | `--adapt-delta <x>` | NUTS target acceptance rate (default 0.8) |
+| `--prior` | draw from the prior instead of running MCMC (no warmup) |
 | `--seed <n>` | random seed (default: drawn fresh and recorded) |
 | `--backend <id>` | backend, default detected from the model |
 | `--entry <name>` | model entry function (default `build_model`) |
