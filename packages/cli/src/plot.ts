@@ -1,5 +1,6 @@
-import { writeFileSync } from "node:fs";
-import { dropWarmup, loadDataFile, parseSamples } from "@mcmcjs/core";
+import { readFileSync, writeFileSync } from "node:fs";
+import { chainView, dropWarmup, loadDataFile, parseSamples } from "@mcmcjs/core";
+import { computeLooPit } from "@mcmcjs/diagnostics";
 import {
   type AutocorrData,
   autocorrData,
@@ -25,6 +26,8 @@ import {
   forestData,
   type HistogramData,
   histogramData,
+  type LooPitData,
+  looPitData,
   type PairData,
   type ParallelCoordsData,
   type PlotData,
@@ -60,6 +63,8 @@ import {
   renderForestTerminal,
   renderHistogramSVG,
   renderHistogramTerminal,
+  renderLooPitSVG,
+  renderLooPitTerminal,
   renderPairSVG,
   renderPairTerminal,
   renderParallelCoordsSVG,
@@ -139,6 +144,7 @@ const KINDS = [
   "corner",
   "ppc-density",
   "ppc-stat",
+  "loo-pit",
 ] as const;
 type PlotKind = (typeof KINDS)[number];
 const FORMATS = ["terminal", "svg", "html"] as const;
@@ -161,6 +167,7 @@ interface PlotCliOptions {
   truth?: string;
   observed?: string;
   stat?: string;
+  loglik?: string;
   out?: string;
   json?: boolean;
 }
@@ -209,6 +216,8 @@ function renderTerminal(kind: PlotKind, data: unknown, term: TerminalOptions): s
       return renderParallelCoordsTerminal(data as ParallelCoordsData, term);
     case "ppc-density":
       return renderPpcDensityTerminal(data as PpcDensityData, term);
+    case "loo-pit":
+      return renderLooPitTerminal(data as LooPitData, term);
     case "ppc-stat":
       return renderPpcStatTerminal(data as PpcStatData, term);
     default:
@@ -257,6 +266,8 @@ function renderSvg(kind: PlotKind, data: unknown): string {
       return renderParallelCoordsSVG(data as ParallelCoordsData);
     case "ppc-density":
       return renderPpcDensitySVG(data as PpcDensityData);
+    case "loo-pit":
+      return renderLooPitSVG(data as LooPitData);
     case "ppc-stat":
       return renderPpcStatSVG(data as PpcStatData);
     default:
@@ -299,6 +310,10 @@ export function registerPlot(program: Command): void {
       "observed data file (.json object or .csv columns) for a predictive check (ppc-*)",
     )
     .option("--stat <name>", "test statistic for --kind ppc-stat: mean | sd | min | max", "mean")
+    .option(
+      "--loglik <file>",
+      "pointwise log-likelihood file for --kind loo-pit (mcmc export loglik)",
+    )
     .option("-o, --out <file>", "write the rendered plot to a file instead of stdout")
     .option("--json", "print the underlying plot data as JSON instead of rendering")
     .action((target: string | undefined, opts: PlotCliOptions) => {
@@ -343,6 +358,36 @@ export function registerPlot(program: Command): void {
         ];
       } else if (kind === "parallel-coords") {
         items = [parallelCoordsData(samples, [...variables])];
+      } else if (kind === "loo-pit") {
+        if (!opts.observed || !opts.loglik) {
+          throw new Error(
+            "--kind loo-pit needs the observed data and the pointwise log-likelihood; pass --observed <file> and --loglik <file> (mcmc export loglik)",
+          );
+        }
+        const data = loadDataFile(opts.observed);
+        const variable =
+          opts.var?.[0] ?? [...new Set(samples.variables.map(baseOf))].find(() => true);
+        const values = variable !== undefined ? data[variable] : undefined;
+        if (variable === undefined || !Array.isArray(values)) {
+          throw new Error(
+            `--observed ${opts.observed} has no numeric column "${variable ?? "?"}"; pass --var to name the outcome`,
+          );
+        }
+        const observed = (values as unknown[]).map(Number);
+        const ll = parseSamples(readFileSync(opts.loglik, "utf8"));
+        const perObs = (source: typeof samples, names: string[]) =>
+          names.map((v) =>
+            Array.from({ length: source.nChains }, (_, c) => chainView(source, v, c)),
+          );
+        const yrepNames = samples.variables.filter(
+          (v) => v === variable || v.startsWith(`${variable}[`),
+        );
+        const pit = computeLooPit(
+          perObs(ll, [...ll.variables]),
+          perObs(samples, yrepNames),
+          observed,
+        );
+        items = [looPitData(pit, { variable })];
       } else if (kind === "ppc-density" || kind === "ppc-stat") {
         if (!opts.observed) {
           throw new Error(

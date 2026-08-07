@@ -30,6 +30,7 @@ import {
   type HeatmapRow,
   type HistogramData,
   type IntervalRow,
+  type LooPitData,
   type PairData,
   type ParallelCoordsBound,
   type ParallelCoordsData,
@@ -230,6 +231,28 @@ export function ppcDensityData(
     observed: observedKde,
     nDraws: rows.length,
     nObservations: observed.length,
+  };
+}
+
+/**
+ * Packages LOO-PIT values (from `@mcmcjs/diagnostics` computeLooPit) for the
+ * calibration plot, with a Dvoretzky-Kiefer-Wolfowitz confidence band.
+ */
+export function looPitData(
+  pit: ArrayLike<number>,
+  opts: { variable?: string; alpha?: number } = {},
+): LooPitData {
+  const n = pit.length;
+  if (n === 0) throw new Error("loo-pit needs at least one observation");
+  const alpha = opts.alpha ?? 0.05;
+  const sorted = Array.from(pit as ArrayLike<number>).sort((a, b) => a - b);
+  return {
+    kind: "loo-pit",
+    variable: opts.variable ?? "y",
+    pit: sorted,
+    band: Math.sqrt(Math.log(2 / alpha) / (2 * n)),
+    alpha,
+    nObservations: n,
   };
 }
 

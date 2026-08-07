@@ -20,6 +20,7 @@ const KINDS = {
   spec: { file: "spec.toml", suffix: ".toml" },
   record: { file: "run.json", suffix: ".run.json" },
   bundle: { file: "samples.json", suffix: ".mcmcrun.json" },
+  loglik: { file: "loglik.json", suffix: ".loglik.json" },
 } as const;
 
 export type ExportKind = keyof typeof KINDS;
@@ -79,7 +80,7 @@ export function registerExport(program: Command): void {
     .command("export")
     .summary("copy a run's artifact to a visible file")
     .helpGroup("Inspect runs:")
-    .argument("<what>", "what to materialize: samples, spec, record, or bundle")
+    .argument("<what>", "what to materialize: samples, spec, record, bundle, or loglik")
     .description("Copy a run's artifact out of the store into a visible file")
     .option("--run <ref>", "run ref: latest (default), @N, or a run-id prefix")
     .option("-o, --out <path>", "output path (default: derived from the model name)")
@@ -92,7 +93,9 @@ export function registerExport(program: Command): void {
         opts: { run?: string; out?: string; force?: boolean; store?: string; json?: boolean },
       ) => {
         if (!(what in KINDS)) {
-          throw new Error(`unknown export "${what}" (expected samples, spec, record, or bundle)`);
+          throw new Error(
+            `unknown export "${what}" (expected samples, spec, record, bundle, or loglik)`,
+          );
         }
         const kind = what as ExportKind;
         const storeDir = locateStore(opts.store);

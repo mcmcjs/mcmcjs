@@ -67,11 +67,17 @@ Pinned packages provision into their own managed environment, so different pins 
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `algorithm` | `"NUTS"` | `"NUTS"` | the sampler |
+| `algorithm` | `"NUTS"`, `"HMC"`, `"HMCDA"`, `"MH"`, `"Prior"` | `"NUTS"` | the sampler; stan supports NUTS only, juliabugs NUTS and Prior |
 | `draws` | positive integer | required | posterior draws per chain |
-| `warmup` | non-negative integer | `1000` | warmup iterations |
+| `warmup` | non-negative integer | `1000` | NUTS/HMCDA adaptation; burn-in discarded for MH and HMC |
 | `chains` | positive integer | `4` | number of chains |
-| `adapt_delta` | number in (0, 1) | `0.8` | NUTS target acceptance rate |
+| `adapt_delta` | number in (0, 1) | `0.8` | NUTS/HMCDA target acceptance rate |
+| `step_size` | positive number | required for HMC | leapfrog integrator step size |
+| `leapfrog_steps` | positive integer | required for HMC | leapfrog steps per proposal |
+| `lambda` | positive number | required for HMCDA | target simulation length |
+| `thin` | positive integer | `1` | keep every thin-th draw |
+| `adtype` | `"forwarddiff"`, `"reversediff"`, `"mooncake"` | backend default | AD backend for gradient samplers (Turing only) |
+| `initial_params` | table of named values | - | starting values per variable, replicated across chains (Turing only) |
 
 ### Data
 

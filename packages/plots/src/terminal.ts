@@ -20,6 +20,7 @@ import type {
   ForestData,
   HistogramData,
   IntervalRow,
+  LooPitData,
   PairData,
   ParallelCoordsData,
   PpcDensityData,
@@ -159,6 +160,43 @@ export function renderHistogramTerminal(data: HistogramData, opts: TerminalOptio
     yMax: maxC,
     xLeft: fmtNum(edges[0] ?? 0),
     xRight: fmtNum(edges[edges.length - 1] ?? 1),
+    charset,
+    header,
+    gutter: GUTTER,
+  });
+}
+
+/** LOO-PIT calibration: the PIT ECDF (bright) against the uniform diagonal (dim). */
+export function renderLooPitTerminal(data: LooPitData, opts: TerminalOptions = {}): string {
+  const charset = opts.charset ?? "unicode";
+  const color = opts.color ?? identity;
+  const totalWidth = opts.width ?? 72;
+  const height = opts.height ?? 12;
+  const plotW = Math.max(8, totalWidth - GUTTER - 2);
+
+  const canvas = new DotCanvas(plotW, height);
+  const scaleX = linearScale([0, 1], [0, canvas.wDots - 1]);
+  const scaleY = linearScale([0, 1], [canvas.hDots - 1, 0]);
+  canvas.line(scaleX.map(0), scaleY.map(0), scaleX.map(1), scaleY.map(1), 1);
+
+  const n = data.nObservations;
+  let prevX = 0;
+  let prevY = 0;
+  data.pit.forEach((v, i) => {
+    canvas.line(scaleX.map(prevX), scaleY.map(prevY), scaleX.map(v), scaleY.map(prevY), 0);
+    canvas.line(scaleX.map(v), scaleY.map(prevY), scaleX.map(v), scaleY.map((i + 1) / n), 0);
+    prevX = v;
+    prevY = (i + 1) / n;
+  });
+  canvas.line(scaleX.map(prevX), scaleY.map(prevY), scaleX.map(1), scaleY.map(1), 0);
+
+  const header = `${data.variable}   LOO-PIT   (${n} observations, ${((1 - data.alpha) * 100).toFixed(0)}% band ±${data.band.toFixed(3)})`;
+  return axisFrame(canvas.rows(charset, color), {
+    width: plotW,
+    yMin: 0,
+    yMax: 1,
+    xLeft: "0",
+    xRight: "1",
     charset,
     header,
     gutter: GUTTER,

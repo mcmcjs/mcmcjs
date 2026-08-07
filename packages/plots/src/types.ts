@@ -32,6 +32,7 @@ export type PlotKind =
   | "scatter3d"
   | "ppc-density"
   | "ppc-stat"
+  | "loo-pit"
   | "corner";
 
 /** Per-variable trace: the raw draw sequence of each chain, plus its key diagnostics. */
@@ -104,6 +105,21 @@ export interface PpcStatData {
   observed: number;
   pValue: number;
   nDraws: number;
+}
+
+/**
+ * LOO-PIT calibration check: the empirical CDF of the PIT values against the
+ * uniform diagonal, with a simultaneous confidence band.
+ */
+export interface LooPitData {
+  kind: "loo-pit";
+  variable: string;
+  /** PIT values sorted ascending. */
+  pit: number[];
+  /** Half-width of the (1 - alpha) DKW band around the uniform ECDF. */
+  band: number;
+  alpha: number;
+  nObservations: number;
 }
 
 /** Rank plot: per-chain counts of rank-normalized draws across shared bins. */

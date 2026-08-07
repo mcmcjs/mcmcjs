@@ -18,6 +18,7 @@ export { type GewekeResult, geweke } from "./geweke";
 export {
   compareLoo,
   computeLoo,
+  computeLooPit,
   computeWaic,
   type LooComparison,
   type LooPointwise,

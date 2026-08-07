@@ -1,8 +1,12 @@
 import type { Samples } from "@mcmcjs/core";
 import { describe, expect, it } from "vitest";
-import { ppcDensityData, ppcStatData } from "../src/data";
-import { renderPpcDensitySVG, renderPpcStatSVG } from "../src/svg";
-import { renderPpcDensityTerminal, renderPpcStatTerminal } from "../src/terminal";
+import { looPitData, ppcDensityData, ppcStatData } from "../src/data";
+import { renderLooPitSVG, renderPpcDensitySVG, renderPpcStatSVG } from "../src/svg";
+import {
+  renderLooPitTerminal,
+  renderPpcDensityTerminal,
+  renderPpcStatTerminal,
+} from "../src/terminal";
 
 /** Builds a Samples set from per-variable, per-chain draw arrays (chain-major). */
 function makeSamples(perVar: Record<string, number[][]>): Samples {
@@ -132,5 +136,32 @@ describe("ppc renderers", () => {
     const statText = renderPpcStatTerminal(stat, { width: 60, height: 8 });
     expect(statText).toContain("T = mean");
     expect(statText).toContain("p = ");
+  });
+});
+
+describe("looPitData", () => {
+  it("sorts the values and sizes the DKW band by n", () => {
+    const data = looPitData([0.9, 0.1, 0.5, 0.3], { variable: "y" });
+    expect(data.kind).toBe("loo-pit");
+    expect(data.pit).toEqual([0.1, 0.3, 0.5, 0.9]);
+    expect(data.nObservations).toBe(4);
+    expect(data.band).toBeCloseTo(Math.sqrt(Math.log(2 / 0.05) / 8), 12);
+    // Quadrupling n halves the band.
+    const wide = looPitData(new Array(16).fill(0.5));
+    expect(wide.band).toBeCloseTo(data.band / 2, 12);
+  });
+
+  it("rejects an empty input", () => {
+    expect(() => looPitData([])).toThrow(/at least one/);
+  });
+
+  it("renders SVG and terminal output", () => {
+    const data = looPitData([0.05, 0.2, 0.4, 0.6, 0.8, 0.95]);
+    const svg = renderLooPitSVG(data);
+    expect(svg).toContain("LOO-PIT");
+    expect(svg).toContain("<polygon");
+    const text = renderLooPitTerminal(data, { width: 60, height: 8 });
+    expect(text).toContain("LOO-PIT");
+    expect(text).toContain("band");
   });
 });

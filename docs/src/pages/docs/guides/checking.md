@@ -36,6 +36,18 @@ mcmc plot yrep.json --kind ppc-stat --observed data.json --stat sd
 
 Both kinds render to the terminal, SVG, and HTML like every other plot.
 
+## LOO-PIT calibration
+
+LOO-PIT asks whether each observation looks like a typical draw from its own leave-one-out predictive: for a calibrated model the PIT values are uniform.
+It combines the predictive draws, the observed data, and the PSIS weights that `loo` computes.
+
+```bash
+mcmc export loglik           # materialize the cached loglik.json from the latest run
+mcmc plot yrep.json --kind loo-pit --observed data.json --loglik normal.loglik.json
+```
+
+The plot shows the PIT ECDF against the uniform diagonal with a 95% simultaneous band; an ECDF escaping the band flags miscalibration (an S-shape means over- or under-dispersion, a shifted curve means bias).
+
 ## Cross-validated fit: mcmc loo
 
 `mcmc loo [ref]` estimates a run's out-of-sample predictive fit with PSIS-LOO cross-validation (Vehtari, Gelman, Gabry 2017), alongside WAIC.

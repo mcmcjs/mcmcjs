@@ -25,6 +25,7 @@ import type {
   ForestData,
   HistogramData,
   IntervalRow,
+  LooPitData,
   PairData,
   ParallelCoordsData,
   PpcDensityData,
@@ -100,6 +101,44 @@ export function renderDensitySVG(data: DensityData, opts: SvgOptions = {}): stri
     )
     .join("");
   return frame.render(content);
+}
+
+/** LOO-PIT calibration: the PIT ECDF against the uniform diagonal with a DKW band. */
+export function renderLooPitSVG(data: LooPitData, opts: SvgOptions = {}): string {
+  const frame = svgFrame({
+    width: opts.width ?? W,
+    height: opts.height ?? H,
+    xDomain: [0, 1],
+    yDomain: [0, 1],
+    title: `${data.variable}  LOO-PIT  (${data.nObservations} observations)`,
+    xLabel: "PIT",
+    yLabel: "ECDF",
+  });
+  const clip = (v: number) => Math.min(1, Math.max(0, v));
+  const bandPoints: [number, number][] = [
+    [frame.x.map(0), frame.y.map(clip(data.band))],
+    [frame.x.map(1), frame.y.map(clip(1 + data.band))],
+    [frame.x.map(1), frame.y.map(clip(1 - data.band))],
+    [frame.x.map(0), frame.y.map(clip(-data.band))],
+  ];
+  const band = `<polygon points="${bandPoints.map(([px, py]) => `${px.toFixed(2)},${py.toFixed(2)}`).join(" ")}" fill="var(--mcmc-muted,#9aa3ad)" opacity="0.2"/>`;
+  const diagonal = svgLine(
+    frame.x.map(0),
+    frame.y.map(0),
+    frame.x.map(1),
+    frame.y.map(1),
+    "var(--mcmc-muted,#9aa3ad)",
+    1,
+  );
+  const n = data.nObservations;
+  const steps: [number, number][] = [[frame.x.map(0), frame.y.map(0)]];
+  data.pit.forEach((v, i) => {
+    steps.push([frame.x.map(v), frame.y.map(i / n)]);
+    steps.push([frame.x.map(v), frame.y.map((i + 1) / n)]);
+  });
+  steps.push([frame.x.map(1), frame.y.map(1)]);
+  const ecdf = svgPolyline(steps, seriesColor(0), 1.75, "PIT ECDF");
+  return frame.render(`${band}${diagonal}${ecdf}`);
 }
 
 /** Predictive density check: replicate curves in muted strokes, observed on top. */

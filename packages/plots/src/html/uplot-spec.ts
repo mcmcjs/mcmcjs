@@ -13,6 +13,7 @@ import {
   renderCornerSVG,
   renderDiagnosticsHeatmapSVG,
   renderForestSVG,
+  renderLooPitSVG,
   renderPairSVG,
   renderParallelCoordsSVG,
   renderPpcDensitySVG,
@@ -32,6 +33,7 @@ import type {
   EnergyData,
   ForestData,
   HistogramData,
+  LooPitData,
   PairData,
   ParallelCoordsData,
   PlotKind,
@@ -67,6 +69,7 @@ export type PlotData =
   | ParallelCoordsData
   | PpcDensityData
   | PpcStatData
+  | LooPitData
   | CornerData;
 
 /** One uPlot series, described declaratively (no functions). */
@@ -305,6 +308,13 @@ export function htmlItemFor(d: PlotData): HtmlItem {
         kind: d.kind,
         title: "diagnostics",
         svg: renderDiagnosticsHeatmapSVG(d),
+      };
+    case "loo-pit":
+      return {
+        mode: "svg",
+        kind: d.kind,
+        title: `${d.variable} LOO-PIT`,
+        svg: renderLooPitSVG(d),
       };
     case "ppc-density":
       return {

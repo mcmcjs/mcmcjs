@@ -207,3 +207,49 @@ export function compareLoo(models: { name: string; result: LooResult }[]): LooCo
     return { ...m, elpdDiff: -diffs.reduce((a, b) => a + b, 0), seDiff: seOfTotal(diffs) };
   });
 }
+
+/**
+ * LOO-PIT values: the probability that the leave-one-out predictive lies at or
+ * below the observation, one value per observation, computed with the same
+ * PSIS weights LOO uses. Ties get the mid-p treatment. For a well-calibrated
+ * model the values look uniform on [0, 1].
+ */
+export function computeLooPit(
+  logLik: PointwiseLogLik[],
+  yrep: PointwiseLogLik[],
+  observed: ArrayLike<number>,
+  opts: { reff?: number } = {},
+): Float64Array {
+  const n = logLik.length;
+  if (yrep.length !== n || observed.length !== n) {
+    throw new Error(
+      `loo-pit needs matching shapes: ${n} log-likelihood columns, ${yrep.length} predictive columns, ${observed.length} observations`,
+    );
+  }
+  const reff = opts.reff ?? relativeEff(logLik);
+  const pit = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const ll = pooled(logLik[i] as PointwiseLogLik);
+    const rep = pooled(yrep[i] as PointwiseLogLik);
+    if (rep.length !== ll.length) {
+      throw new Error(
+        `observation ${i}: ${ll.length} log-likelihood draws but ${rep.length} predictive draws; were they produced by the same fit?`,
+      );
+    }
+    const { logWeights } = psisSmooth(
+      Float64Array.from(ll, (v) => -v),
+      reff,
+    );
+    const y = observed[i] as number;
+    let lower = 0;
+    let at = 0;
+    for (let s = 0; s < rep.length; s++) {
+      const w = Math.exp(logWeights[s] as number);
+      const r = rep[s] as number;
+      if (r < y) lower += w;
+      else if (r === y) at += w;
+    }
+    pit[i] = lower + 0.5 * at;
+  }
+  return pit;
+}

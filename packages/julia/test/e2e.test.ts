@@ -87,7 +87,7 @@ function spec(draws: number, chains: number): ResolvedSpec {
     schema_version: "0",
     backend: { id: "turing", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
     model: { kind: "file", path: modelPath, entry: "build_model" },
-    sampler: { algorithm: "NUTS", draws, warmup: 200, chains, adapt_delta: 0.8 },
+    sampler: { algorithm: "NUTS", draws, warmup: 200, chains, adapt_delta: 0.8, thin: 1 },
     data: DATA,
     output: { format: "mcmcchains-json" },
     seed: 42,
@@ -432,7 +432,14 @@ d("julia e2e: prior sampling and the prior predictive", () => {
     const result = await runFit(
       {
         ...spec(400, 2),
-        sampler: { algorithm: "Prior", draws: 400, warmup: 0, chains: 2, adapt_delta: 0.8 },
+        sampler: {
+          algorithm: "Prior",
+          draws: 400,
+          warmup: 0,
+          chains: 2,
+          adapt_delta: 0.8,
+          thin: 1,
+        },
       },
       { command: env.command, args: env.args },
       {
@@ -466,7 +473,7 @@ d("julia e2e: prior sampling and the prior predictive", () => {
       model: { kind: "file", path: tableModelPath, entry: "build_model" },
       modelPath: tableModelPath,
       data: TABLE_DATA,
-      sampler: { algorithm: "Prior", draws: 400, warmup: 0, chains: 2, adapt_delta: 0.8 },
+      sampler: { algorithm: "Prior", draws: 400, warmup: 0, chains: 2, adapt_delta: 0.8, thin: 1 },
       predict: { targets: ["y"] },
     };
     const priorPath = join(dir, "prior.table.samples.json");
@@ -519,7 +526,14 @@ d("julia e2e: prior sampling and the prior predictive", () => {
         model: { kind: "file", path: bugsModelPath, entry: "build_model" },
         modelPath: bugsModelPath,
         data: { N: TABLE_DATA.y.length, ...TABLE_DATA },
-        sampler: { algorithm: "Prior", draws: 300, warmup: 0, chains: 2, adapt_delta: 0.8 },
+        sampler: {
+          algorithm: "Prior",
+          draws: 300,
+          warmup: 0,
+          chains: 2,
+          adapt_delta: 0.8,
+          thin: 1,
+        },
       },
       { command: env.command, args: env.args },
       {
@@ -732,6 +746,7 @@ d("julia e2e: the sampler matrix beyond NUTS", () => {
           warmup: 0,
           chains: 2,
           adapt_delta: 0.8,
+          thin: 1,
           initial_params: { mu: 42.0, sigma: 1.0 },
         },
       },

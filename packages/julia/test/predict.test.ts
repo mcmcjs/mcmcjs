@@ -19,7 +19,7 @@ function spec(): ResolvedSpec {
     schema_version: "0",
     backend: { id: "turing", runtime: "julia", version: "release" },
     model: { kind: "file", path: "./m.jl", entry: "build_model" },
-    sampler: { algorithm: "NUTS", draws: 1, warmup: 1, chains: 1, adapt_delta: 0.8 },
+    sampler: { algorithm: "NUTS", draws: 1, warmup: 1, chains: 1, adapt_delta: 0.8, thin: 1 },
     data: { J: 2, y: [1, 2], sigma: [1, 1] },
     output: { format: "mcmcchains-json" },
     predict: { targets: ["y"] },

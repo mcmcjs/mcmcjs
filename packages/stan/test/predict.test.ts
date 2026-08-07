@@ -17,7 +17,7 @@ function makeSpec(dir: string, targets: string[]): ResolvedSpec {
     schema_version: "0",
     backend: { id: "stan", runtime: "cmdstan", version: "installed" },
     model: { kind: "file", path: "./model.stan", entry: "build_model" },
-    sampler: { algorithm: "NUTS", draws: 3, warmup: 1, chains: 2, adapt_delta: 0.8 },
+    sampler: { algorithm: "NUTS", draws: 3, warmup: 1, chains: 2, adapt_delta: 0.8, thin: 1 },
     data: { N: 2 },
     output: { format: "mcmcchains-json" },
     seed: 7,
