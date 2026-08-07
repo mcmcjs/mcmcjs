@@ -59,13 +59,54 @@ const Backend = z
 const Sampler = z
   .object({
     /** "Prior" draws from the prior instead of running MCMC (no warmup or adaptation). */
-    algorithm: z.enum(["NUTS", "Prior"]).default("NUTS"),
+    algorithm: z.enum(["NUTS", "HMC", "HMCDA", "MH", "Prior"]).default("NUTS"),
     draws: z.number().int().positive(),
+    /** NUTS/HMCDA adaptation steps; burn-in discarded for MH and HMC. */
     warmup: z.number().int().nonnegative().default(1000),
     chains: z.number().int().positive().default(4),
     adapt_delta: z.number().gt(0).lt(1).default(0.8),
+    /** Leapfrog integrator step size (HMC only; NUTS and HMCDA adapt theirs). */
+    step_size: z.number().positive().optional(),
+    /** Leapfrog steps per proposal (HMC only). */
+    leapfrog_steps: z.number().int().positive().optional(),
+    /** Target simulation length (HMCDA only). */
+    lambda: z.number().positive().optional(),
+    /** Keep every thin-th draw. */
+    thin: z.number().int().positive().default(1),
+    /** AD backend for gradient-based samplers (default: the backend's own default). */
+    adtype: z.enum(["forwarddiff", "reversediff", "mooncake"]).optional(),
+    /** Named starting values per variable, replicated across chains. */
+    initial_params: z.record(z.string(), z.unknown()).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((s, ctx) => {
+    const gradient = s.algorithm === "NUTS" || s.algorithm === "HMC" || s.algorithm === "HMCDA";
+    const issue = (path: string, message: string) =>
+      ctx.addIssue({ code: "custom", path: [path], message });
+    if (s.algorithm === "HMC") {
+      if (s.step_size === undefined) issue("step_size", "HMC requires step_size");
+      if (s.leapfrog_steps === undefined) issue("leapfrog_steps", "HMC requires leapfrog_steps");
+    } else {
+      if (s.step_size !== undefined) issue("step_size", "step_size applies to HMC only");
+      if (s.leapfrog_steps !== undefined) {
+        issue("leapfrog_steps", "leapfrog_steps applies to HMC only");
+      }
+    }
+    if (s.algorithm === "HMCDA") {
+      if (s.lambda === undefined) issue("lambda", "HMCDA requires lambda");
+    } else if (s.lambda !== undefined) {
+      issue("lambda", "lambda applies to HMCDA only");
+    }
+    if (!gradient && s.adtype !== undefined) {
+      issue("adtype", `adtype does not apply to ${s.algorithm}: it has no gradient`);
+    }
+    if (s.algorithm === "Prior") {
+      if (s.thin !== 1) issue("thin", "prior draws are independent; thinning does not apply");
+      if (s.initial_params !== undefined) {
+        issue("initial_params", "prior draws are independent; initial_params does not apply");
+      }
+    }
+  });
 
 const ModelFile = z.object({
   kind: z.literal("file"),
@@ -112,9 +153,41 @@ export const SpecSchema = z
     message: "set either inline [data] or data_file, not both",
     path: ["data_file"],
   })
-  .refine((s) => !(s.backend.id === "stan" && s.sampler.algorithm === "Prior"), {
-    message: 'the stan backend does not support algorithm = "Prior"',
-    path: ["sampler", "algorithm"],
+  .superRefine((s, ctx) => {
+    const issue = (path: string[], message: string) =>
+      ctx.addIssue({ code: "custom", path, message });
+    const algorithm = s.sampler.algorithm;
+    if (s.backend.id === "stan") {
+      if (algorithm !== "NUTS") {
+        issue(["sampler", "algorithm"], `the stan backend supports NUTS only, not ${algorithm}`);
+      }
+      if (s.sampler.adtype !== undefined) {
+        issue(["sampler", "adtype"], "adtype is a Julia concern; Stan compiles its own gradients");
+      }
+      if (s.sampler.initial_params !== undefined) {
+        issue(
+          ["sampler", "initial_params"],
+          "initial_params is not supported for the stan backend",
+        );
+      }
+    }
+    if (s.backend.id === "juliabugs") {
+      if (algorithm !== "NUTS" && algorithm !== "Prior") {
+        issue(
+          ["sampler", "algorithm"],
+          `the juliabugs backend supports NUTS and Prior only, not ${algorithm}`,
+        );
+      }
+      if (s.sampler.adtype !== undefined) {
+        issue(["sampler", "adtype"], "a JuliaBUGS model chooses its adtype in the model file");
+      }
+      if (s.sampler.initial_params !== undefined) {
+        issue(
+          ["sampler", "initial_params"],
+          "initial_params is not supported for the juliabugs backend",
+        );
+      }
+    }
   });
 
 export type Spec = z.infer<typeof SpecSchema>;

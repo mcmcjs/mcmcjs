@@ -41,6 +41,102 @@ describe("SpecSchema", () => {
     ).toThrow();
   });
 
+  it("accepts HMC with its required parameters and rejects them elsewhere", () => {
+    const hmc = SpecSchema.parse({
+      ...VALID,
+      sampler: { draws: 10, algorithm: "HMC", step_size: 0.05, leapfrog_steps: 10 },
+    });
+    expect(hmc.sampler.step_size).toBe(0.05);
+    expect(() => SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "HMC" } })).toThrow(
+      /requires step_size/,
+    );
+    expect(() => SpecSchema.parse({ ...VALID, sampler: { draws: 10, step_size: 0.05 } })).toThrow(
+      /applies to HMC only/,
+    );
+  });
+
+  it("accepts HMCDA with lambda and rejects lambda elsewhere", () => {
+    const hmcda = SpecSchema.parse({
+      ...VALID,
+      sampler: { draws: 10, algorithm: "HMCDA", lambda: 0.5 },
+    });
+    expect(hmcda.sampler.lambda).toBe(0.5);
+    expect(() =>
+      SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "HMCDA" } }),
+    ).toThrow(/requires lambda/);
+    expect(() => SpecSchema.parse({ ...VALID, sampler: { draws: 10, lambda: 1 } })).toThrow(
+      /applies to HMCDA only/,
+    );
+  });
+
+  it("accepts MH and defaults thin to 1", () => {
+    const mh = SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "MH" } });
+    expect(mh.sampler.algorithm).toBe("MH");
+    expect(mh.sampler.thin).toBe(1);
+    const thinned = SpecSchema.parse({ ...VALID, sampler: { draws: 10, thin: 5 } });
+    expect(thinned.sampler.thin).toBe(5);
+  });
+
+  it("limits adtype to gradient samplers", () => {
+    const nuts = SpecSchema.parse({ ...VALID, sampler: { draws: 10, adtype: "mooncake" } });
+    expect(nuts.sampler.adtype).toBe("mooncake");
+    expect(() =>
+      SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "MH", adtype: "mooncake" } }),
+    ).toThrow(/no gradient/);
+    expect(() =>
+      SpecSchema.parse({ ...VALID, sampler: { draws: 10, adtype: "enzyme" } }),
+    ).toThrow();
+  });
+
+  it("rejects thinning and initial_params for prior draws", () => {
+    expect(() =>
+      SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "Prior", thin: 2 } }),
+    ).toThrow(/thinning does not apply/);
+    expect(() =>
+      SpecSchema.parse({
+        ...VALID,
+        sampler: { draws: 10, algorithm: "Prior", initial_params: { mu: 0 } },
+      }),
+    ).toThrow(/initial_params does not apply/);
+  });
+
+  it("parses named initial values", () => {
+    const spec = SpecSchema.parse({
+      ...VALID,
+      sampler: { draws: 10, initial_params: { mu: 0.5, theta: [1, 2, 3] } },
+    });
+    expect(spec.sampler.initial_params).toEqual({ mu: 0.5, theta: [1, 2, 3] });
+  });
+
+  it("limits the juliabugs backend to NUTS and Prior without adtype or inits", () => {
+    const bugs = { ...VALID, backend: { id: "juliabugs" } };
+    expect(SpecSchema.parse({ ...bugs, sampler: { draws: 10 } }).sampler.algorithm).toBe("NUTS");
+    expect(() => SpecSchema.parse({ ...bugs, sampler: { draws: 10, algorithm: "MH" } })).toThrow(
+      /NUTS and Prior only/,
+    );
+    expect(() => SpecSchema.parse({ ...bugs, sampler: { draws: 10, adtype: "mooncake" } })).toThrow(
+      /model file/,
+    );
+    expect(() =>
+      SpecSchema.parse({ ...bugs, sampler: { draws: 10, initial_params: { mu: 0 } } }),
+    ).toThrow(/not supported/);
+  });
+
+  it("limits the stan backend to plain NUTS", () => {
+    const stan = {
+      ...VALID,
+      backend: { id: "stan" },
+      model: { kind: "file", path: "./model.stan" },
+    };
+    expect(() => SpecSchema.parse({ ...stan, sampler: { draws: 10, algorithm: "MH" } })).toThrow(
+      /NUTS only/,
+    );
+    expect(() => SpecSchema.parse({ ...stan, sampler: { draws: 10, adtype: "mooncake" } })).toThrow(
+      /Stan compiles its own gradients/,
+    );
+    expect(SpecSchema.parse({ ...stan, sampler: { draws: 10, thin: 3 } }).sampler.thin).toBe(3);
+  });
+
   it("rejects Prior on the stan backend", () => {
     expect(() =>
       SpecSchema.parse({
@@ -49,7 +145,7 @@ describe("SpecSchema", () => {
         model: { kind: "file", path: "./model.stan" },
         sampler: { draws: 10, algorithm: "Prior" },
       }),
-    ).toThrow(/stan backend does not support/);
+    ).toThrow(/NUTS only/);
   });
 
   it("requires a seed", () => {

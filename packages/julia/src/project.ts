@@ -14,6 +14,7 @@ const PACKAGES = [
   "AdvancedHMC",
   "ForwardDiff",
   "Mooncake",
+  "ReverseDiff",
   "JSON",
   "StableRNGs",
   "StatsFuns",

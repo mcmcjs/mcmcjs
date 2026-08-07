@@ -156,6 +156,21 @@ describe("buildRunConfig: model file with no spec", () => {
     expect(buildRunConfig(model, {}).spec.sampler.algorithm).toBe("NUTS");
   });
 
+  it("selects the sampler, thinning, and AD backend from flags", () => {
+    const dir = tmp();
+    const model = writeModel(dir);
+    const mh = buildRunConfig(model, { algorithm: "MH", thin: 4 });
+    expect(mh.spec.sampler.algorithm).toBe("MH");
+    expect(mh.spec.sampler.thin).toBe(4);
+    const nuts = buildRunConfig(model, { adtype: "mooncake" });
+    expect(nuts.spec.sampler.adtype).toBe("mooncake");
+    // Invalid combinations fail at spec validation, before anything runs.
+    expect(() => buildRunConfig(model, { algorithm: "MH", adtype: "mooncake" })).toThrow(
+      /no gradient/,
+    );
+    expect(() => buildRunConfig(model, { algorithm: "Gibbs" })).toThrow();
+  });
+
   it("auto-detects a sibling data.csv when no --data is given", () => {
     const dir = tmp();
     const model = writeModel(dir);

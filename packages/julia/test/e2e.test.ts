@@ -672,3 +672,82 @@ d("julia e2e: pointwise log-likelihood", () => {
     }
   }, 600_000);
 });
+
+d("julia e2e: the sampler matrix beyond NUTS", () => {
+  it("runs HMC with an explicit adtype and thinning, recovering the data mean", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const tableModelPath = join(dir, "hmc_table.jl");
+    writeFileSync(tableModelPath, TABLE_MODEL);
+    const outPath = join(dir, "hmc.samples.json");
+    const result = await runFit(
+      {
+        ...spec(150, 2),
+        model: { kind: "file", path: tableModelPath, entry: "build_model" },
+        modelPath: tableModelPath,
+        data: TABLE_DATA,
+        sampler: {
+          algorithm: "HMC",
+          draws: 150,
+          warmup: 100,
+          chains: 2,
+          adapt_delta: 0.8,
+          step_size: 0.05,
+          leapfrog_steps: 10,
+          thin: 2,
+          adtype: "mooncake",
+        },
+      },
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        recordPath: join(dir, "hmc.run.json"),
+      },
+    );
+
+    expect(result.status).toBe("ok");
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect(samples.nDraws).toBe(150);
+    expect(samples.nChains).toBe(2);
+    const mu = [0, 1].flatMap((chain) => Array.from(chainView(samples, "mu", chain)));
+    const mean = mu.reduce((a, b) => a + b, 0) / mu.length;
+    expect(mean).toBeCloseTo(5.006, 0);
+  }, 600_000);
+
+  it("starts MH chains exactly at the named initial values", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const tableModelPath = join(dir, "mh_table.jl");
+    writeFileSync(tableModelPath, TABLE_MODEL);
+    const outPath = join(dir, "mh.samples.json");
+    const result = await runFit(
+      {
+        ...spec(50, 2),
+        model: { kind: "file", path: tableModelPath, entry: "build_model" },
+        modelPath: tableModelPath,
+        data: TABLE_DATA,
+        sampler: {
+          algorithm: "MH",
+          draws: 50,
+          warmup: 0,
+          chains: 2,
+          adapt_delta: 0.8,
+          initial_params: { mu: 42.0, sigma: 1.0 },
+        },
+      },
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        recordPath: join(dir, "mh.run.json"),
+      },
+    );
+
+    expect(result.status).toBe("ok");
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    // With no burn-in the first retained state is the initial value itself.
+    expect(chainView(samples, "mu", 0)[0]).toBe(42);
+    expect(chainView(samples, "mu", 1)[0]).toBe(42);
+  }, 600_000);
+});

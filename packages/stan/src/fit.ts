@@ -73,6 +73,7 @@ export function chainArgs(
     "sample",
     `num_samples=${s.draws}`,
     `num_warmup=${s.warmup}`,
+    ...(s.thin > 1 ? [`thin=${s.thin}`] : []),
     "adapt",
     `delta=${s.adapt_delta}`,
     "data",

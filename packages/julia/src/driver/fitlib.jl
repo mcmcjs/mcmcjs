@@ -18,6 +18,8 @@ import AdvancedHMC
 import ForwardDiff
 # Loading Mooncake activates AbstractPPL's native extension for AutoMooncake.
 import Mooncake
+# Loading ReverseDiff activates the DynamicPPL extension for AutoReverseDiff.
+import ReverseDiff
 import FlexiChains
 import DimensionalData
 
@@ -86,16 +88,50 @@ function Logging.handle_message(
     Logging.handle_message(logger.fallback, level, message, _module, group, id, file, line; kwargs...)
 end
 
+function build_adtype(name)
+    name == "forwarddiff" && return Turing.ADTypes.AutoForwardDiff()
+    name == "reversediff" && return Turing.ADTypes.AutoReverseDiff()
+    name == "mooncake" && return Turing.ADTypes.AutoMooncake(; config = nothing)
+    error("unsupported adtype: $name")
+end
+
 function build_sampler(sampler, backend)
     algorithm = get(sampler, "algorithm", "NUTS")
     # Prior draws are iid: no warmup, no adaptation. The JuliaBUGS path samples
     # ancestrally (sample_bugs_prior) instead of going through a sampler object.
     algorithm == "Prior" && return Turing.Prior(), 0
-    algorithm == "NUTS" || error("unsupported sampler algorithm: $algorithm")
     warmup = Int(get(sampler, "warmup", 1000))
     adapt_delta = Float64(get(sampler, "adapt_delta", 0.8))
-    nuts = backend == "juliabugs" ? AdvancedHMC.NUTS(adapt_delta) : Turing.NUTS(warmup, adapt_delta)
-    return nuts, warmup
+    if backend == "juliabugs"
+        algorithm == "NUTS" || error("the juliabugs backend supports NUTS and Prior only")
+        return AdvancedHMC.NUTS(adapt_delta), warmup
+    end
+    adkw = haskey(sampler, "adtype") ? (; adtype = build_adtype(sampler["adtype"])) : (;)
+    algorithm == "NUTS" && return Turing.NUTS(warmup, adapt_delta; adkw...), warmup
+    algorithm == "HMC" &&
+        return Turing.HMC(Float64(sampler["step_size"]), Int(sampler["leapfrog_steps"]); adkw...),
+        warmup
+    algorithm == "HMCDA" &&
+        return Turing.HMCDA(warmup, adapt_delta, Float64(sampler["lambda"]); adkw...), warmup
+    algorithm == "MH" && return Turing.MH(), warmup
+    error("unsupported sampler algorithm: $algorithm")
+end
+
+# Extra keyword arguments for AbstractMCMC.sample, from the request's sampler
+# table: thinning, burn-in for the non-adaptive samplers (NUTS and HMCDA discard
+# their own adaptation), and named starting values replicated across chains.
+function sampling_kwargs(sampler, warmup, chains)
+    kw = (;)
+    thin = Int(get(sampler, "thin", 1))
+    thin > 1 && (kw = merge(kw, (; thinning = thin)))
+    algorithm = get(sampler, "algorithm", "NUTS")
+    algorithm in ("MH", "HMC") && warmup > 0 && (kw = merge(kw, (; discard_initial = warmup)))
+    if haskey(sampler, "initial_params")
+        nt = (; (Symbol(k) => narrow(v) for (k, v) in sampler["initial_params"])...)
+        strategy = Turing.DynamicPPL.InitFromParams(nt)
+        kw = merge(kw, (; initial_params = fill(strategy, chains)))
+    end
+    return kw
 end
 
 to_namedtuple(data) = (; (Symbol(k) => v for (k, v) in data)...)
@@ -291,9 +327,9 @@ end
 # the model methods are defined by `include` at runtime, so a plain call from
 # this (older) world would fail with "method too new". invokelatest fixes that.
 # Returns Turing's default chain type, a FlexiChain. With a callback, draws stream.
-function build_and_sample(entry, data, sampler, draws, chains, rng; callback = nothing)
+function build_and_sample(entry, data, sampler, draws, chains, rng; callback = nothing, extra = (;))
     model = condition_on_data(entry(data), data)
-    kw = callback === nothing ? NamedTuple() : (; callback)
+    kw = callback === nothing ? extra : merge(extra, (; callback))
     return Logging.with_logger(JSONProgressLogger()) do
         sample(rng, model, sampler, MCMCSerial(), draws, chains; progress = true, kw...)
     end
@@ -340,8 +376,9 @@ end
 # Returns a FlexiChain like the Turing path; gen_chains recovers generated
 # quantities (unobserved nodes with no observed descendants) after sampling.
 # With a callback, draws stream (see bugs_draw_streamer).
-function sample_bugs(model, sampler, warmup, draws, chains, rng; callback = nothing)
-    kw = callback === nothing ? NamedTuple() : (; callback)
+function sample_bugs(model, sampler, warmup, draws, chains, rng; callback = nothing, thin = 1)
+    kw = callback === nothing ? (;) : (; callback)
+    thin > 1 && (kw = merge(kw, (; thinning = thin)))
     return Logging.with_logger(JSONProgressLogger()) do
         JuliaBUGS.AbstractMCMC.sample(
             rng, model, sampler, JuliaBUGS.AbstractMCMC.MCMCSerial(), draws, chains;
@@ -689,15 +726,18 @@ function handle_request(request)
                     cb = get(request, "stream_draws", false) ?
                         bugs_draw_streamer(base, draws, Int(get(request, "draw_batch_size", 25))) : nothing
                     Base.invokelatest(
-                        sample_bugs, model, sampler, warmup, draws, chains, rng; callback = cb,
+                        sample_bugs, model, sampler, warmup, draws, chains, rng;
+                        callback = cb, thin = Int(get(request["sampler"], "thin", 1)),
                     )
                 end
                 vnchain_to_wire(chn)
             else
                 cb = get(request, "stream_draws", false) ?
                     draw_streamer(draws, Int(get(request, "draw_batch_size", 25))) : nothing
+                extra = sampling_kwargs(request["sampler"], warmup, chains)
                 chn = Base.invokelatest(
-                    build_and_sample, entry, data, sampler, draws, chains, rng; callback = cb,
+                    build_and_sample, entry, data, sampler, draws, chains, rng;
+                    callback = cb, extra,
                 )
                 vnchain_to_wire(chn)
             end

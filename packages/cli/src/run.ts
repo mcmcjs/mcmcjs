@@ -122,6 +122,9 @@ export interface RunCliOptions {
   seed?: number;
   adaptDelta?: number;
   prior?: boolean;
+  algorithm?: string;
+  thin?: number;
+  adtype?: string;
   backend?: string;
   entry?: string;
   refit?: boolean;
@@ -190,7 +193,10 @@ function applyOverrides(spec: Spec, opts: RunCliOptions): Spec {
     model: { ...spec.model, ...(opts.entry ? { entry: opts.entry } : {}) },
     sampler: {
       ...spec.sampler,
+      ...(opts.algorithm ? { algorithm: opts.algorithm } : {}),
       ...(opts.prior ? { algorithm: "Prior" } : {}),
+      ...(opts.thin !== undefined ? { thin: opts.thin } : {}),
+      ...(opts.adtype ? { adtype: opts.adtype } : {}),
       ...(opts.draws !== undefined ? { draws: opts.draws } : {}),
       ...(opts.warmup !== undefined ? { warmup: opts.warmup } : {}),
       ...(opts.chains !== undefined ? { chains: opts.chains } : {}),
@@ -323,7 +329,9 @@ export function buildRunConfig(inputPath: string, opts: RunCliOptions): RunConfi
       ...(opts.entry ? { entry: opts.entry } : {}),
     },
     sampler: {
-      algorithm: opts.prior ? "Prior" : "NUTS",
+      algorithm: opts.prior ? "Prior" : (opts.algorithm ?? "NUTS"),
+      ...(opts.thin !== undefined ? { thin: opts.thin } : {}),
+      ...(opts.adtype ? { adtype: opts.adtype } : {}),
       draws: opts.draws ?? 1000,
       warmup: opts.warmup ?? 1000,
       chains: opts.chains ?? 4,
@@ -480,6 +488,12 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .option("--chains <n>", "number of chains (default 4)", parseIntOption)
     .option("--adapt-delta <x>", "NUTS target acceptance rate (default 0.8)", parseFloatOption)
     .option("--prior", "draw from the prior instead of running MCMC (no warmup)")
+    .option("--algorithm <name>", "sampler: NUTS | HMC | HMCDA | MH | Prior (default NUTS)")
+    .option("--thin <n>", "keep every thin-th draw", parseIntOption)
+    .option(
+      "--adtype <name>",
+      "AD backend for gradient samplers: forwarddiff | reversediff | mooncake",
+    )
     .option("--seed <n>", "random seed (default: drawn fresh and recorded)", parseIntOption)
     .option("--backend <id>", "backend (default: detected from the model)")
     .option("--entry <name>", "model entry function for Julia backends (default build_model)")
