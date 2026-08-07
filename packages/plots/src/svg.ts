@@ -27,6 +27,8 @@ import type {
   IntervalRow,
   PairData,
   ParallelCoordsData,
+  PpcDensityData,
+  PpcStatData,
   RankData,
   RunningRhatData,
   SplomData,
@@ -98,6 +100,76 @@ export function renderDensitySVG(data: DensityData, opts: SvgOptions = {}): stri
     )
     .join("");
   return frame.render(content);
+}
+
+/** Predictive density check: replicate curves in muted strokes, observed on top. */
+export function renderPpcDensitySVG(data: PpcDensityData, opts: SvgOptions = {}): string {
+  const xLo = data.x[0] ?? 0;
+  const xHi = data.x[data.x.length - 1] ?? 1;
+  let maxY = 0;
+  for (const curve of [...data.replicates, data.observed]) {
+    for (const v of curve) if (v > maxY) maxY = v;
+  }
+  const frame = svgFrame({
+    width: opts.width ?? W,
+    height: opts.height ?? H,
+    xDomain: [xLo, xHi],
+    yDomain: [0, maxY || 1],
+    title: `${data.variable}  predictive check (${data.replicates.length} of ${data.nDraws} draws)`,
+    xLabel: data.variable,
+    yLabel: "density",
+  });
+  const toPoints = (curve: number[]): [number, number][] =>
+    curve.map((v, k) => [frame.x.map(data.x[k] ?? 0), frame.y.map(v)] as [number, number]);
+  const replicates = data.replicates
+    .map((curve) => svgPolyline(toPoints(curve), "var(--mcmc-muted,#9aa3ad)", 0.6))
+    .join("");
+  const observed = svgPolyline(toPoints(data.observed), seriesColor(0), 2, "observed");
+  return frame.render(`<g opacity="0.35">${replicates}</g>${observed}`);
+}
+
+/** Predictive test-statistic check: T(y_rep) histogram with the observed T(y) marked. */
+export function renderPpcStatSVG(data: PpcStatData, opts: SvgOptions = {}): string {
+  const edges = data.binEdges;
+  const lo = Math.min(edges[0] ?? 0, data.observed);
+  const hi = Math.max(edges[edges.length - 1] ?? 1, data.observed);
+  const maxC = Math.max(1, ...data.counts);
+  const frame = svgFrame({
+    width: opts.width ?? W,
+    height: opts.height ?? H,
+    xDomain: [lo, hi],
+    yDomain: [0, maxC],
+    title: `${data.variable}  T = ${data.stat}  (p = ${data.pValue.toFixed(3)})`,
+    xLabel: `${data.stat}(${data.variable} rep)`,
+    yLabel: "draws",
+  });
+  const bars = data.counts
+    .map((count, b) => {
+      const x0 = frame.x.map(edges[b] ?? 0);
+      const x1 = frame.x.map(edges[b + 1] ?? 0);
+      const y = frame.y.map(count);
+      const y0 = frame.y.map(0);
+      return svgRect(
+        x0 + 0.5,
+        y,
+        Math.max(0.5, x1 - x0 - 1),
+        Math.max(0, y0 - y),
+        "var(--mcmc-muted,#9aa3ad)",
+        `${fmtNum(edges[b] ?? 0)} to ${fmtNum(edges[b + 1] ?? 0)}: ${count}`,
+      );
+    })
+    .join("");
+  const xObs = frame.x.map(data.observed);
+  const marker = svgLine(
+    xObs,
+    frame.y.map(maxC),
+    xObs,
+    frame.y.map(0),
+    seriesColor(3),
+    2,
+    `observed ${data.stat} = ${fmtNum(data.observed)}`,
+  );
+  return frame.render(`<g opacity="0.75">${bars}</g>${marker}`);
 }
 
 /** Histogram: filled bars over pooled bins. */

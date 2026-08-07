@@ -34,6 +34,9 @@ import {
   type ParallelCoordsBound,
   type ParallelCoordsData,
   type ParallelCoordsLine,
+  type PpcDensityData,
+  type PpcStat,
+  type PpcStatData,
   type RankData,
   type RunningRhatData,
   type Scatter3dBbox,
@@ -135,6 +138,159 @@ export function densityData(
     x,
     chains: curves,
     ...(chainIds ? { chainIds } : {}),
+  };
+}
+
+/** Strips a trailing index from a leaf name: "y[3]" -> "y". */
+function baseName(name: string): string {
+  const bracket = name.indexOf("[");
+  return bracket === -1 ? name : name.slice(0, bracket);
+}
+
+/**
+ * Reads predictive replicates out of a predict-output samples file: one row
+ * per pooled draw, one column per observation leaf of the target variable.
+ */
+function replicateMatrix(
+  samples: Samples,
+  variable: string | undefined,
+): { base: string; rows: Float64Array[] } {
+  const bases = [...new Set(samples.variables.map(baseName))];
+  const base = variable ?? (bases.length === 1 ? bases[0] : undefined);
+  if (base === undefined) {
+    throw new Error(`the samples hold several variables (${bases.join(", ")}); pick one`);
+  }
+  const columns = samples.variables.filter((v) => v === base || v.startsWith(`${base}[`));
+  if (columns.length === 0) {
+    throw new Error(`no predictive draws for "${base}" in the samples`);
+  }
+  const pooled = columns.map((v) => {
+    const flat = new Float64Array(samples.nDraws * samples.nChains);
+    for (let c = 0; c < samples.nChains; c++)
+      flat.set(chainView(samples, v, c), c * samples.nDraws);
+    return flat;
+  });
+  const total = samples.nDraws * samples.nChains;
+  const rows = Array.from({ length: total }, (_, sIdx) =>
+    Float64Array.from(columns, (_, j) => (pooled[j] as Float64Array)[sIdx] as number),
+  );
+  return { base, rows };
+}
+
+function checkObserved(observed: number[], width: number, base: string): void {
+  if (observed.length !== width) {
+    throw new Error(
+      `observed "${base}" has ${observed.length} values but the predictive draws have ${width}; do they come from the same data?`,
+    );
+  }
+}
+
+/**
+ * Predictive density check: KDE curves of evenly thinned replicates behind the
+ * KDE of the observed data. The grid clips the replicates' extreme tails so a
+ * heavy-tailed predictive cannot flatten the plot.
+ */
+export function ppcDensityData(
+  samples: Samples,
+  observed: number[],
+  opts: { variable?: string; maxReplicates?: number; gridSize?: number } = {},
+): PpcDensityData {
+  const { base, rows } = replicateMatrix(samples, opts.variable);
+  checkObserved(observed, rows[0]?.length ?? 0, base);
+  const maxReplicates = Math.max(1, opts.maxReplicates ?? 50);
+  const gridSize = Math.max(2, opts.gridSize ?? 256);
+
+  const kept: Float64Array[] = [];
+  const step = Math.max(1, Math.floor(rows.length / maxReplicates));
+  for (let sIdx = 0; sIdx < rows.length && kept.length < maxReplicates; sIdx += step) {
+    kept.push(rows[sIdx] as Float64Array);
+  }
+
+  const flatKept = new Float64Array(kept.length * observed.length);
+  kept.forEach((row, r) => {
+    flatKept.set(row, r * observed.length);
+  });
+  const sorted = Float64Array.from(flatKept).sort();
+  const clip = (q: number) =>
+    sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] as number;
+  const [obsLo, obsHi] = extent(Float64Array.from(observed));
+  const [lo, hi] = niceDomain(Math.min(clip(0.005), obsLo), Math.max(clip(0.995), obsHi));
+  const gridStep = (hi - lo) / (gridSize - 1);
+  const x = Array.from({ length: gridSize }, (_, k) => lo + k * gridStep);
+
+  const replicates = kept.map((row) => gaussianKde(row, x, bandwidth(row)));
+  const observedArr = Float64Array.from(observed);
+  const observedKde = gaussianKde(observedArr, x, bandwidth(observedArr));
+
+  return {
+    kind: "ppc-density",
+    variable: base,
+    x,
+    replicates,
+    observed: observedKde,
+    nDraws: rows.length,
+    nObservations: observed.length,
+  };
+}
+
+const PPC_STATS: Record<PpcStat, (values: Float64Array) => number> = {
+  mean: (v) => mean(v),
+  sd: (v) => stdev(v),
+  min: (v) => v.reduce((a, b) => Math.min(a, b), Number.POSITIVE_INFINITY),
+  max: (v) => v.reduce((a, b) => Math.max(a, b), Number.NEGATIVE_INFINITY),
+};
+
+/**
+ * Predictive test-statistic check: T(y_rep) per draw against T(y), with the
+ * one-sided posterior predictive p-value P(T(y_rep) >= T(y)).
+ */
+export function ppcStatData(
+  samples: Samples,
+  observed: number[],
+  opts: { variable?: string; stat?: PpcStat; bins?: number } = {},
+): PpcStatData {
+  const stat = opts.stat ?? "mean";
+  const statFn = PPC_STATS[stat];
+  if (!statFn) {
+    throw new Error(
+      `unknown ppc stat "${stat}"; expected one of: ${Object.keys(PPC_STATS).join(", ")}`,
+    );
+  }
+  const { base, rows } = replicateMatrix(samples, opts.variable);
+  checkObserved(observed, rows[0]?.length ?? 0, base);
+
+  const values = Float64Array.from(rows, (row) => statFn(row));
+  const observedStat = statFn(Float64Array.from(observed));
+  let atLeast = 0;
+  for (const v of values) if (v >= observedStat) atLeast += 1;
+
+  const [lo, hi] = extent(values);
+  const total = values.length;
+  let bins = opts.bins;
+  if (!bins || bins < 1) {
+    const q = quantiles(values);
+    const iqr = q.q75 - q.q25;
+    const fd = iqr > 0 && total > 0 ? 2 * iqr * total ** (-1 / 3) : 0;
+    bins = fd > 0 ? Math.ceil((hi - lo) / fd) : Math.ceil(Math.sqrt(Math.max(1, total)));
+    bins = Math.max(1, Math.min(120, bins));
+  }
+  const width = hi > lo ? (hi - lo) / bins : 1;
+  const counts = new Array<number>(bins).fill(0);
+  for (const v of values) {
+    const b = Math.min(bins - 1, Math.max(0, Math.floor((v - lo) / width)));
+    counts[b] = (counts[b] ?? 0) + 1;
+  }
+  const binEdges = Array.from({ length: bins + 1 }, (_, i) => lo + i * width);
+
+  return {
+    kind: "ppc-stat",
+    variable: base,
+    stat,
+    binEdges,
+    counts,
+    observed: observedStat,
+    pValue: atLeast / total,
+    nDraws: total,
   };
 }
 

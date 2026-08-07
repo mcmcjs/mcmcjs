@@ -1,5 +1,5 @@
 import { writeFileSync } from "node:fs";
-import { dropWarmup, parseSamples } from "@mcmcjs/core";
+import { dropWarmup, loadDataFile, parseSamples } from "@mcmcjs/core";
 import {
   type AutocorrData,
   autocorrData,
@@ -28,8 +28,13 @@ import {
   type PairData,
   type ParallelCoordsData,
   type PlotData,
+  type PpcDensityData,
+  type PpcStat,
+  type PpcStatData,
   pairData,
   parallelCoordsData,
+  ppcDensityData,
+  ppcStatData,
   type RankData,
   type RunningRhatData,
   rankData,
@@ -59,6 +64,10 @@ import {
   renderPairTerminal,
   renderParallelCoordsSVG,
   renderParallelCoordsTerminal,
+  renderPpcDensitySVG,
+  renderPpcDensityTerminal,
+  renderPpcStatSVG,
+  renderPpcStatTerminal,
   renderRankSVG,
   renderRankTerminal,
   renderRunningRhatSVG,
@@ -87,6 +96,11 @@ import type { Command } from "commander";
 import pc from "picocolors";
 import { resolveSamplesText } from "./diagnose";
 import { parseFloatOption, parseIntOption } from "./options";
+
+function baseOf(name: string): string {
+  const bracket = name.indexOf("[");
+  return bracket === -1 ? name : name.slice(0, bracket);
+}
 
 function parseTruth(spec?: string): CornerTruth | undefined {
   if (!spec) return undefined;
@@ -123,6 +137,8 @@ const KINDS = [
   "splom",
   "parallel-coords",
   "corner",
+  "ppc-density",
+  "ppc-stat",
 ] as const;
 type PlotKind = (typeof KINDS)[number];
 const FORMATS = ["terminal", "svg", "html"] as const;
@@ -143,6 +159,8 @@ interface PlotCliOptions {
   maxLag?: number;
   colorBy?: string;
   truth?: string;
+  observed?: string;
+  stat?: string;
   out?: string;
   json?: boolean;
 }
@@ -189,6 +207,10 @@ function renderTerminal(kind: PlotKind, data: unknown, term: TerminalOptions): s
       return renderCornerTerminal(data as CornerData, term);
     case "parallel-coords":
       return renderParallelCoordsTerminal(data as ParallelCoordsData, term);
+    case "ppc-density":
+      return renderPpcDensityTerminal(data as PpcDensityData, term);
+    case "ppc-stat":
+      return renderPpcStatTerminal(data as PpcStatData, term);
     default:
       return renderTraceTerminal(data as TraceData, term);
   }
@@ -233,6 +255,10 @@ function renderSvg(kind: PlotKind, data: unknown): string {
       return renderCornerSVG(data as CornerData);
     case "parallel-coords":
       return renderParallelCoordsSVG(data as ParallelCoordsData);
+    case "ppc-density":
+      return renderPpcDensitySVG(data as PpcDensityData);
+    case "ppc-stat":
+      return renderPpcStatSVG(data as PpcStatData);
     default:
       return renderTraceSVG(data as TraceData);
   }
@@ -248,7 +274,7 @@ export function registerPlot(program: Command): void {
       "samples file (MCMCChains JSON or ArviZ InferenceData JSON), or a run ref (latest, @N, id prefix); default: the latest store run",
     )
     .description(
-      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, scatter, energy, forest, ecdf, cumulative-mean, running-rhat, violin, chain-intervals, chain-intervals-all, summary-table, diagnostics-heatmap, splom, parallel-coords, corner)",
+      "Render MCMC diagnostic plots (trace, density, histogram, rank, autocorr, pair, scatter, energy, forest, ecdf, cumulative-mean, running-rhat, violin, chain-intervals, chain-intervals-all, summary-table, diagnostics-heatmap, splom, parallel-coords, corner, ppc-density, ppc-stat)",
     )
     .option("--kind <kind>", `plot type: ${KINDS.join(" | ")}`, "forest")
     .option("--format <fmt>", `output format: ${FORMATS.join(" | ")}`, "terminal")
@@ -268,6 +294,11 @@ export function registerPlot(program: Command): void {
     .option("--max-lag <n>", "autocorrelation max lag (default 40)", parseIntOption)
     .option("--color-by <var>", "color scatter points by a third variable via viridis (svg/html)")
     .option("--truth <pairs>", 'reference values on a corner plot, e.g. "mu=1.08,tau=4"')
+    .option(
+      "--observed <file>",
+      "observed data file (.json object or .csv columns) for a predictive check (ppc-*)",
+    )
+    .option("--stat <name>", "test statistic for --kind ppc-stat: mean | sd | min | max", "mean")
     .option("-o, --out <file>", "write the rendered plot to a file instead of stdout")
     .option("--json", "print the underlying plot data as JSON instead of rendering")
     .action((target: string | undefined, opts: PlotCliOptions) => {
@@ -312,6 +343,32 @@ export function registerPlot(program: Command): void {
         ];
       } else if (kind === "parallel-coords") {
         items = [parallelCoordsData(samples, [...variables])];
+      } else if (kind === "ppc-density" || kind === "ppc-stat") {
+        if (!opts.observed) {
+          throw new Error(
+            `--kind ${kind} compares predictive draws to data; pass --observed <file>`,
+          );
+        }
+        const data = loadDataFile(opts.observed);
+        const variable =
+          opts.var?.[0] ?? [...new Set(samples.variables.map(baseOf))].find(() => true);
+        const values = variable !== undefined ? data[variable] : undefined;
+        if (variable === undefined || !Array.isArray(values)) {
+          throw new Error(
+            `--observed ${opts.observed} has no numeric column "${variable ?? "?"}"; pass --var to name the outcome`,
+          );
+        }
+        const observed = (values as unknown[]).map(Number);
+        items =
+          kind === "ppc-density"
+            ? [ppcDensityData(samples, observed, { variable })]
+            : [
+                ppcStatData(samples, observed, {
+                  variable,
+                  stat: opts.stat as PpcStat,
+                  bins: opts.bins,
+                }),
+              ];
       } else if (kind === "pair" || kind === "scatter") {
         if (variables.length !== 2) {
           throw new Error(`--kind ${kind} needs exactly two variables, e.g. --var alpha beta`);

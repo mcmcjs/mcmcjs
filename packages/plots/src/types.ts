@@ -30,6 +30,8 @@ export type PlotKind =
   | "splom"
   | "parallel-coords"
   | "scatter3d"
+  | "ppc-density"
+  | "ppc-stat"
   | "corner";
 
 /** Per-variable trace: the raw draw sequence of each chain, plus its key diagnostics. */
@@ -69,6 +71,39 @@ export interface HistogramData {
   counts: number[];
   /** Total number of draws pooled across chains. */
   total: number;
+}
+
+/** Test statistics a predictive check can compare between replicates and data. */
+export type PpcStat = "mean" | "sd" | "min" | "max";
+
+/**
+ * Predictive density check: the observed data's density over the densities of
+ * predictive replicates (one per retained draw), all on a shared grid.
+ */
+export interface PpcDensityData {
+  kind: "ppc-density";
+  variable: string;
+  x: number[];
+  replicates: number[][];
+  observed: number[];
+  /** Predictive draws available before thinning to `replicates`. */
+  nDraws: number;
+  nObservations: number;
+}
+
+/**
+ * Predictive test-statistic check: the distribution of T(y_rep) across draws,
+ * the observed T(y), and the one-sided p-value P(T(y_rep) >= T(y)).
+ */
+export interface PpcStatData {
+  kind: "ppc-stat";
+  variable: string;
+  stat: PpcStat;
+  binEdges: number[];
+  counts: number[];
+  observed: number;
+  pValue: number;
+  nDraws: number;
 }
 
 /** Rank plot: per-chain counts of rank-normalized draws across shared bins. */

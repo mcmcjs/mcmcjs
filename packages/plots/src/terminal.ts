@@ -22,6 +22,8 @@ import type {
   IntervalRow,
   PairData,
   ParallelCoordsData,
+  PpcDensityData,
+  PpcStatData,
   RankData,
   RunningRhatData,
   SplomData,
@@ -157,6 +159,98 @@ export function renderHistogramTerminal(data: HistogramData, opts: TerminalOptio
     yMax: maxC,
     xLeft: fmtNum(edges[0] ?? 0),
     xRight: fmtNum(edges[edges.length - 1] ?? 1),
+    charset,
+    header,
+    gutter: GUTTER,
+  });
+}
+
+/** Predictive density check: replicate curves (dim) under the observed density. */
+export function renderPpcDensityTerminal(data: PpcDensityData, opts: TerminalOptions = {}): string {
+  const charset = opts.charset ?? "unicode";
+  const color = opts.color ?? identity;
+  const totalWidth = opts.width ?? 72;
+  const height = opts.height ?? 12;
+  const plotW = Math.max(8, totalWidth - GUTTER - 2);
+
+  let maxY = 0;
+  for (const curve of [...data.replicates, data.observed]) {
+    for (const v of curve) if (v > maxY) maxY = v;
+  }
+  if (maxY <= 0) maxY = 1;
+
+  const x = data.x;
+  const xLo = x[0] ?? 0;
+  const xHi = x[x.length - 1] ?? 1;
+  const canvas = new DotCanvas(plotW, height);
+  const scaleX = linearScale([xLo, xHi], [0, canvas.wDots - 1]);
+  const scaleY = linearScale([0, maxY], [canvas.hDots - 1, 0]);
+
+  const draw = (curve: number[], series: number): void => {
+    for (let k = 1; k < curve.length; k++) {
+      const y0 = curve[k - 1];
+      const y1 = curve[k];
+      const x0 = x[k - 1];
+      const x1 = x[k];
+      if (y0 === undefined || y1 === undefined || x0 === undefined || x1 === undefined) continue;
+      canvas.line(scaleX.map(x0), scaleY.map(y0), scaleX.map(x1), scaleY.map(y1), series);
+    }
+  };
+  // Replicates share one muted series slot; the observed curve draws last, on top.
+  for (const curve of data.replicates) draw(curve, 1);
+  draw(data.observed, 0);
+
+  const header = `${data.variable}   predictive check   (${data.replicates.length} of ${data.nDraws} draws vs observed)`;
+  return axisFrame(canvas.rows(charset, color), {
+    width: plotW,
+    yMin: 0,
+    yMax: maxY,
+    xLeft: fmtNum(xLo),
+    xRight: fmtNum(xHi),
+    charset,
+    header,
+    gutter: GUTTER,
+  });
+}
+
+/** Predictive test-statistic check: T(y_rep) histogram with the observed T(y) marked. */
+export function renderPpcStatTerminal(data: PpcStatData, opts: TerminalOptions = {}): string {
+  const charset = opts.charset ?? "unicode";
+  const color = opts.color ?? identity;
+  const totalWidth = opts.width ?? 72;
+  const height = opts.height ?? 12;
+  const plotW = Math.max(8, totalWidth - GUTTER - 2);
+
+  const edges = data.binEdges;
+  const lo = Math.min(edges[0] ?? 0, data.observed);
+  const hi = Math.max(edges[edges.length - 1] ?? 1, data.observed);
+  const bins = data.counts.length;
+  const maxC = Math.max(1, ...data.counts);
+  const canvas = new DotCanvas(plotW, height);
+  const baseline = canvas.hDots - 1;
+  const scaleX = linearScale([lo, hi], [0, canvas.wDots - 1]);
+  const scaleC = linearScale([0, maxC], [baseline, 0]);
+
+  for (let b = 0; b < bins; b++) {
+    const count = data.counts[b] ?? 0;
+    if (count <= 0) continue;
+    const top = scaleC.map(count);
+    const xStart = scaleX.map(edges[b] ?? 0);
+    const xEnd = Math.max(xStart + 1, scaleX.map(edges[b + 1] ?? 0));
+    for (let px = xStart; px < xEnd && px < canvas.wDots; px++) {
+      for (let py = top; py <= baseline; py++) canvas.set(px, py, 1);
+    }
+  }
+  const xObs = scaleX.map(data.observed);
+  for (let py = 0; py <= baseline; py++) canvas.set(xObs, py, 3);
+
+  const header = `${data.variable}   T = ${data.stat}   observed ${fmtNum(data.observed)}, p = ${data.pValue.toFixed(3)}`;
+  return axisFrame(canvas.rows(charset, color), {
+    width: plotW,
+    yMin: 0,
+    yMax: maxC,
+    xLeft: fmtNum(lo),
+    xRight: fmtNum(hi),
     charset,
     header,
     gutter: GUTTER,

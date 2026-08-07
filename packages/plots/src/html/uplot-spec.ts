@@ -15,6 +15,8 @@ import {
   renderForestSVG,
   renderPairSVG,
   renderParallelCoordsSVG,
+  renderPpcDensitySVG,
+  renderPpcStatSVG,
   renderSplomSVG,
   renderSummaryTableSVG,
   renderViolinSVG,
@@ -33,6 +35,8 @@ import type {
   PairData,
   ParallelCoordsData,
   PlotKind,
+  PpcDensityData,
+  PpcStatData,
   RankData,
   RunningRhatData,
   SplomData,
@@ -61,6 +65,8 @@ export type PlotData =
   | DiagnosticsHeatmapData
   | SplomData
   | ParallelCoordsData
+  | PpcDensityData
+  | PpcStatData
   | CornerData;
 
 /** One uPlot series, described declaratively (no functions). */
@@ -299,6 +305,20 @@ export function htmlItemFor(d: PlotData): HtmlItem {
         kind: d.kind,
         title: "diagnostics",
         svg: renderDiagnosticsHeatmapSVG(d),
+      };
+    case "ppc-density":
+      return {
+        mode: "svg",
+        kind: d.kind,
+        title: `${d.variable} predictive check`,
+        svg: renderPpcDensitySVG(d),
+      };
+    case "ppc-stat":
+      return {
+        mode: "svg",
+        kind: d.kind,
+        title: `${d.variable} ${d.stat} check`,
+        svg: renderPpcStatSVG(d),
       };
     case "splom":
       return { mode: "svg", kind: d.kind, title: "pairs", svg: renderSplomSVG(d) };
