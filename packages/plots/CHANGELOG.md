@@ -1,5 +1,18 @@
 # @mcmcjs/plots
 
+## 0.8.0
+
+### Minor Changes
+
+- ce4801f: Add the loo-pit plot kind: the PIT ECDF against the uniform diagonal with a simultaneous confidence band, for calibration checking.
+
+### Patch Changes
+
+- Updated dependencies [ce4801f]
+- Updated dependencies [ce4801f]
+  - @mcmcjs/core@0.10.0
+  - @mcmcjs/diagnostics@0.6.0
+
 ## 0.7.0
 
 ### Minor Changes
