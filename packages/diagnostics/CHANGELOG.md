@@ -1,5 +1,11 @@
 # @mcmcjs/diagnostics
 
+## 0.5.0
+
+### Minor Changes
+
+- c29759c: Add PSIS-LOO cross-validation, WAIC, and paired model comparison (gpdFit, psisSmooth, computeLoo, computeWaic, compareLoo, relativeEff), validated against the arviz reference implementation.
+
 ## 0.4.0
 
 ### Minor Changes

@@ -1,5 +1,16 @@
 # @mcmcjs/julia
 
+## 0.12.0
+
+### Minor Changes
+
+- c29759c: The driver gains prior sampling (Turing Prior(), ancestral evaluation for JuliaBUGS) and a loglik mode that evaluates the pointwise log-likelihood at every posterior draw; non-finite draws now serialize as null instead of failing the JSON write.
+
+### Patch Changes
+
+- Updated dependencies [c29759c]
+  - @mcmcjs/core@0.9.0
+
 ## 0.11.3
 
 ### Patch Changes
