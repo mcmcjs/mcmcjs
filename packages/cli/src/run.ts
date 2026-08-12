@@ -44,6 +44,7 @@ import { resolveCmdStan, runFit as runStanFit } from "@mcmcjs/stan";
 import type { Command } from "commander";
 import pc from "picocolors";
 import { ZodError } from "zod";
+import { pickModel } from "./browse";
 import { convertGraph } from "./convert";
 import { buildDiagnosticsReport, type DiagnosticsReport, formatReportHuman } from "./diagnose";
 import { backendLabel, formatFitResult } from "./fit";
@@ -476,8 +477,8 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .summary("full workflow: fit, diagnose, record a run")
     .helpGroup("Run inference:")
     .argument(
-      "<input>",
-      "model file (.jl/.stan), spec file (.toml/.json), or DoodleBUGS graph (.json)",
+      "[input]",
+      "model file (.jl/.stan), spec file (.toml/.json), or DoodleBUGS graph (.json); omit to pick one",
     )
     .description("Run the whole workflow: fit, diagnose, and record the run in the project store")
     .option("--data <file>", "data file (.json object or .csv columns)")
@@ -529,7 +530,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         "\nmaterialize files with `mcmc export`. Settings come from flags (always honored)" +
         "\nover an optional spec file. An unchanged model+data+settings reuses the last run.",
     )
-    .action(async (input: string, opts: RunCliOptions) => {
+    .action(async (input: string | undefined, opts: RunCliOptions) => {
       // `--stream-out -` reserves stdout for the draw stream, so human output
       // (status lines, the report) goes to stderr and --json (which also owns
       // stdout) is rejected.
@@ -543,7 +544,14 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       const say = (line: string) => {
         if (!opts.json) humanOut.write(`${line}\n`);
       };
-      const inputPath = resolve(input);
+      // With no input named, offer the project's models rather than failing.
+      const target = input ?? (opts.json ? undefined : await pickModel());
+      if (!target) {
+        throw new Error(
+          "no model given; pass a model file, spec, or graph (see `mcmc run --help`)",
+        );
+      }
+      const inputPath = resolve(target);
       const config = buildRunConfig(inputPath, opts);
       if (opts.streamOut && config.spec.sampler.parallel !== "serial") {
         throw new Error(

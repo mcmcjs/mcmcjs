@@ -50,3 +50,6 @@ From there you can run the model, read the file, or jump to just that model's ru
 
 Launching a run from the browser runs the real `mcmc run`, streaming progress the same way, and the new run appears in the list when it finishes.
 In a directory with no store yet, the first run creates one beside the model.
+
+The same picker stands in for a missing argument elsewhere: `mcmc run` with no input offers these models instead of failing.
+Piped or redirected, it fails with the usual message, so scripts still get an error rather than a prompt.

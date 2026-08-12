@@ -21,6 +21,9 @@ mcmc run model.jl --data data.csv --seed 42
 
 It prints the diagnostics table and verdict, and exits `0` on convergence, `2` if it ran but did not converge, or `1` on error.
 
+Run it without an input on a terminal and it offers the model files it finds in the project, so you can pick one instead of typing a path.
+To explore what you already have, see [Browse interactively](/docs/guides/browse/).
+
 ### Settings: flags over spec
 
 When you run a model file directly, sampling settings come from flags; when you run a spec file, the spec supplies them and flags override.

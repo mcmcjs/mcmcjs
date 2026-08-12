@@ -11,7 +11,7 @@ Run `mcmc <command> --help` for the authoritative, current flags.
 
 | Command | Description | Key flags |
 | --- | --- | --- |
-| `run <input>` | full workflow: fit, diagnose, record a run | `--data`, `--draws`, `--warmup`, `--chains`, `--adapt-delta`, `--seed`, `--backend`, `--entry`, `-o/--out`, `--stream-out`, `--prior`, `--algorithm`, `--thin`, `--adtype`, `--parallel`, `--refit`, `--daemon`, `--julia-version`, `--package`, `--store` |
+| `run [input]` | full workflow: fit, diagnose, record a run (omit the input on a terminal to pick a model) | `--data`, `--draws`, `--warmup`, `--chains`, `--adapt-delta`, `--seed`, `--backend`, `--entry`, `-o/--out`, `--stream-out`, `--prior`, `--algorithm`, `--thin`, `--adtype`, `--parallel`, `--refit`, `--daemon`, `--julia-version`, `--package`, `--store` |
 | `fit <spec>` | run MCMC inference, write a samples file | `-o/--out`, `--julia-version`, `--versions`, `--package-versions`, `--keep-going`, `--daemon` |
 | `predict <spec> <samples>` | draw posterior-predictive samples | `-o/--out`, `--julia-version`, `--verbose` |
 

@@ -52,6 +52,20 @@ describe("listLine", () => {
     expect(selected.startsWith("  ")).toBe(false);
   });
 
+  it("spends the alignment padding on text before truncating", () => {
+    const row = {
+      label: "@1   model.jl     NUTS 1000x4",
+      hint: "converged",
+      tone: "plain" as const,
+    };
+    const wide = listLine(row, 60, false);
+    expect(wide.plain).toContain("@1   model.jl     NUTS 1000x4");
+
+    const narrow = listLine(row, 34, false);
+    expect(narrow.plain).toContain("@1 model.jl NUTS");
+    expect(narrow.plain).toHaveLength(32);
+  });
+
   it("truncates a long label rather than overflowing the box", () => {
     const line = listLine(
       { label: "a".repeat(200), hint: "b".repeat(200), tone: "plain" },

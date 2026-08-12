@@ -59,7 +59,13 @@ export function listLine(
   // Two columns go to the margins `bar` keeps inside the borders.
   const room = inner - 2 - marker.length;
   const hint = truncate(row.hint, Math.max(0, Math.floor(room / 2)));
-  const label = truncate(row.label, Math.max(1, room - hint.length - 2));
+  const budget = Math.max(1, room - hint.length - 2);
+  // Column padding is what makes rows line up, but on a narrow terminal the
+  // text matters more, so spend those columns on content before truncating.
+  const label = truncate(
+    row.label.length > budget ? row.label.replace(/\s{2,}/g, " ") : row.label,
+    budget,
+  );
   const gap = " ".repeat(Math.max(1, room - label.length - hint.length));
   const plain = `${marker}${label}${gap}${hint}`;
   const tone = TONES[row.tone];

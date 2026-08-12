@@ -147,10 +147,22 @@ async function exploreVariables(samples: Samples): Promise<void> {
   }
 }
 
+/** Asks for one variable by name; used by the plots that take a fixed number. */
+async function chooseVariable(samples: Samples, message: string): Promise<string | undefined> {
+  const chosen = await select({
+    message,
+    showInstructions: false,
+    maxItems: 12,
+    options: samples.variables.map((value) => ({ value, label: value })),
+  });
+  return cancelled(chosen) ? undefined : (chosen as string);
+}
+
 async function choosePlot(samples: Samples): Promise<void> {
   const kind = await select({
     message: "Which plot?",
     showInstructions: false,
+    maxItems: 12,
     options: [
       ...SAMPLES_ONLY_KINDS.map((value) => ({ value: value as string, label: value })),
       { value: "back", label: "Back" },
@@ -158,9 +170,26 @@ async function choosePlot(samples: Samples): Promise<void> {
     initialValue: "trace",
   });
   if (cancelled(kind) || kind === "back") return;
+
+  // pair and scatter plot exactly two variables against each other.
+  let variables: string[] | undefined;
+  if (kind === "pair" || kind === "scatter") {
+    const x = await chooseVariable(samples, "Horizontal variable");
+    if (!x) return;
+    const y = await chooseVariable(samples, "Vertical variable");
+    if (!y) return;
+    variables = [x, y];
+  }
+
   const term = terminalOptions({});
   try {
-    write(renderTerminalPlot(kind as PlotKind, samplesPlotItems(kind as PlotKind, samples), term));
+    write(
+      renderTerminalPlot(
+        kind as PlotKind,
+        samplesPlotItems(kind as PlotKind, samples, variables ? { variables } : {}),
+        term,
+      ),
+    );
   } catch (error) {
     log.error((error as Error).message);
   }
@@ -298,6 +327,24 @@ export async function browse(opts: { store?: string } = {}): Promise<void> {
 /** True when a person is at the keyboard, so the browser can take over. */
 export function interactive(): boolean {
   return process.stdin.isTTY === true && process.stdout.isTTY === true;
+}
+
+/**
+ * Offers the project's model files when a command was given none. Returns
+ * undefined when nothing is found or the user backs out, so the caller can
+ * fall back to its own error.
+ */
+export async function pickModel(root = process.cwd()): Promise<string | undefined> {
+  if (!interactive()) return undefined;
+  const storeDir = findStore(root);
+  const runs = storeDir ? runItems(readLedger(storeDir).runs) : [];
+  const models = modelItems(root, scanModels(root), runs);
+  if (models.length === 0) return undefined;
+  const chosen = await pick<ModelItem>(
+    [{ label: "Models", items: modelPickables(models), empty: "no model files here" }],
+    { escape: "cancel" },
+  );
+  return chosen?.path;
 }
 
 export function registerBrowse(program: Command): void {
