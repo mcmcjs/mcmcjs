@@ -5,6 +5,7 @@
 # chain type (FlexiChains), so a chain-type change is contained here.
 using JSON
 using Logging
+import Distributed
 using Random
 using StableRNGs
 using Turing
@@ -22,6 +23,10 @@ import Mooncake
 import ReverseDiff
 import FlexiChains
 import DimensionalData
+
+# Workers include this file to mirror the master's definitions (ModelData, the
+# helpers a deserialized model may reference) when sampling MCMCDistributed.
+const FITLIB_FILE = @__FILE__
 
 # AbstractMCMC reports sampling progress through ProgressLogging (reachable via
 # Turing's dependency, no extra package in the managed env).
@@ -94,7 +99,8 @@ end
 function apply_model_defaults(sampler, mod)
     haskey(sampler, "adtype") && return sampler
     # Only the gradient samplers take an AD backend.
-    get(sampler, "algorithm", "NUTS") in ("NUTS", "HMC", "HMCDA") || return sampler
+    get(sampler, "algorithm", "NUTS") in ("NUTS", "HMC", "HMCDA", "Gibbs", "External") ||
+        return sampler
     Base.invokelatest(isdefined, mod, :MCMC_DEFAULTS) || return sampler
     defaults = Base.invokelatest(getfield, mod, :MCMC_DEFAULTS)
     hasproperty(defaults, :adtype) || return sampler
@@ -110,7 +116,7 @@ function build_adtype(name)
     error("unsupported adtype: $name")
 end
 
-function build_sampler(sampler, backend)
+function build_sampler(sampler, backend, modelmod = nothing)
     algorithm = get(sampler, "algorithm", "NUTS")
     # Prior draws are iid: no warmup, no adaptation. The JuliaBUGS path samples
     # ancestrally (sample_bugs_prior) instead of going through a sampler object.
@@ -122,6 +128,9 @@ function build_sampler(sampler, backend)
         return AdvancedHMC.NUTS(adapt_delta), warmup
     end
     algorithm == "MH" && return Turing.MH(), warmup
+    algorithm == "ESS" && return Turing.ESS(), warmup
+    algorithm == "SMC" && return Turing.SMC(), warmup
+    algorithm == "PG" && return Turing.PG(Int(sampler["particles"])), warmup
     adkw = haskey(sampler, "adtype") ? (; adtype = build_adtype(sampler["adtype"])) : (;)
     algorithm == "NUTS" && return Turing.NUTS(warmup, adapt_delta; adkw...), warmup
     algorithm == "HMC" &&
@@ -129,7 +138,40 @@ function build_sampler(sampler, backend)
         warmup
     algorithm == "HMCDA" &&
         return Turing.HMCDA(warmup, adapt_delta, Float64(sampler["lambda"]); adkw...), warmup
+    algorithm == "Gibbs" && return build_gibbs(sampler, adkw, warmup), warmup
+    if algorithm == "External"
+        modelmod === nothing && error("the External algorithm applies to Turing models only")
+        Base.invokelatest(isdefined, modelmod, :MCMC_SAMPLER) ||
+            error("algorithm External needs the model file to define MCMC_SAMPLER")
+        ext = Base.invokelatest(getfield, modelmod, :MCMC_SAMPLER)
+        return Turing.externalsampler(ext; adkw...), warmup
+    end
     error("unsupported sampler algorithm: $algorithm")
+end
+
+# One Gibbs component: the block's variables get the block's sampler. A single
+# variable keys by symbol, several by tuple, matching Turing's constructor.
+function block_sampler(block, adkw, warmup)
+    algorithm = get(block, "algorithm", "NUTS")
+    adapt_delta = Float64(get(block, "adapt_delta", 0.8))
+    algorithm == "MH" && return Turing.MH()
+    algorithm == "ESS" && return Turing.ESS()
+    algorithm == "PG" && return Turing.PG(Int(block["particles"]))
+    algorithm == "NUTS" && return Turing.NUTS(warmup, adapt_delta; adkw...)
+    algorithm == "HMC" &&
+        return Turing.HMC(Float64(block["step_size"]), Int(block["leapfrog_steps"]); adkw...)
+    algorithm == "HMCDA" &&
+        return Turing.HMCDA(warmup, adapt_delta, Float64(block["lambda"]); adkw...)
+    error("unsupported Gibbs block algorithm: $algorithm")
+end
+
+function build_gibbs(sampler, adkw, warmup)
+    pairs = map(sampler["blocks"]) do block
+        vars = Symbol.(block["variables"])
+        key = length(vars) == 1 ? vars[1] : Tuple(vars)
+        key => block_sampler(block, adkw, warmup)
+    end
+    return Turing.Gibbs(pairs...)
 end
 
 # Extra keyword arguments for AbstractMCMC.sample, from the request's sampler
@@ -140,7 +182,14 @@ function sampling_kwargs(sampler, warmup, chains)
     thin = Int(get(sampler, "thin", 1))
     thin > 1 && (kw = merge(kw, (; thinning = thin)))
     algorithm = get(sampler, "algorithm", "NUTS")
-    algorithm in ("MH", "HMC") && warmup > 0 && (kw = merge(kw, (; discard_initial = warmup)))
+    if algorithm in ("MH", "HMC", "ESS", "PG", "Gibbs", "External") && warmup > 0
+        kw = merge(kw, (; discard_initial = warmup))
+    end
+    # AdvancedHMC-style external samplers adapt only when told how many steps to
+    # use; without n_adapts a chain can freeze at its initial point.
+    if algorithm == "External" && warmup > 0
+        kw = merge(kw, (; n_adapts = warmup))
+    end
     if haskey(sampler, "initial_params")
         nt = (; (Symbol(k) => narrow(v) for (k, v) in sampler["initial_params"])...)
         strategy = Turing.DynamicPPL.InitFromParams(nt)
@@ -343,14 +392,32 @@ end
 # this (older) world would fail with "method too new". invokelatest fixes that.
 # Returns Turing's default chain type, a FlexiChain. With a callback, draws stream.
 function build_and_sample(
-    entry, data, sampler, draws, chains, rng; callback = nothing, extra = (;), threads = false
+    entry, data, sampler, draws, chains, rng; callback = nothing, extra = (;), parallel = "serial"
 )
     model = condition_on_data(entry(data), data)
     kw = callback === nothing ? extra : merge(extra, (; callback))
-    ensemble = threads ? MCMCThreads() : MCMCSerial()
+    ensemble = parallel == "threads" ? MCMCThreads() :
+        parallel == "distributed" ? MCMCDistributed() : MCMCSerial()
     return Logging.with_logger(JSONProgressLogger()) do
         sample(rng, model, sampler, ensemble, draws, chains; progress = true, kw...)
     end
+end
+
+# Distributed chains need the model's definitions on every process: workers get
+# this file (ModelData and friends), then all processes include the model file
+# into Main so the serialized model's references resolve identically everywhere.
+function setup_distributed(chains, model_file)
+    missing_workers = chains - Distributed.nworkers()
+    if Distributed.nprocs() == 1 || missing_workers > 0
+        Distributed.addprocs(
+            Distributed.nprocs() == 1 ? chains : missing_workers;
+            exeflags = ["--project=$(Base.active_project())", "--startup-file=no"],
+        )
+        Distributed.remotecall_eval(
+            Main, Distributed.workers(), :(Base.include(Main, $FITLIB_FILE))
+        )
+    end
+    Distributed.remotecall_eval(Main, Distributed.procs(), :(Base.include(Main, $model_file)))
 end
 
 # FlexiChains-native wire writer. DimArray(chn) splits array-valued parameters
@@ -734,11 +801,20 @@ function handle_request(request)
             end
         else
             data = backend == "juliabugs" ? bugs_namedtuple(request["data"]) : ModelData(to_namedtuple(request["data"]))
+            parallel = get(request["sampler"], "parallel", "serial")
+            chains = Int(get(request["sampler"], "chains", 4))
+            if parallel == "distributed" && backend != "juliabugs"
+                # Every process needs the model's definitions under the same
+                # names; the module-per-request isolation gives way to Main.
+                stage = "distribute"
+                Base.invokelatest(setup_distributed, chains, request["model"]["file"])
+                modelmod = Main
+                entry = resolve_entry(Main, get(request["model"], "entry", nothing))
+            end
             sampler_conf = backend == "juliabugs" ? request["sampler"] :
                 apply_model_defaults(request["sampler"], modelmod)
-            sampler, warmup = build_sampler(sampler_conf, backend)
+            sampler, warmup = build_sampler(sampler_conf, backend, modelmod)
             draws = Int(request["sampler"]["draws"])
-            chains = Int(get(request["sampler"], "chains", 4))
             stage = "sample"
             if backend == "juliabugs"
                 model = Base.invokelatest(entry, data)
@@ -757,15 +833,14 @@ function handle_request(request)
                 end
                 vnchain_to_wire(chn)
             else
-                threads = get(request["sampler"], "parallel", "serial") == "threads"
                 # The draw streamer assumes chains arrive one at a time; with
                 # concurrent chains the caller must not request streaming.
-                cb = get(request, "stream_draws", false) && !threads ?
+                cb = get(request, "stream_draws", false) && parallel == "serial" ?
                     draw_streamer(draws, Int(get(request, "draw_batch_size", 25))) : nothing
                 extra = sampling_kwargs(request["sampler"], warmup, chains)
                 chn = Base.invokelatest(
                     build_and_sample, entry, data, sampler, draws, chains, rng;
-                    callback = cb, extra, threads,
+                    callback = cb, extra, parallel,
                 )
                 vnchain_to_wire(chn)
             end

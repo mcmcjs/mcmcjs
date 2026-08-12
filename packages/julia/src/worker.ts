@@ -339,7 +339,9 @@ export async function runFitAuto(
   if (io.signal?.aborted) {
     return { status: "cancelled", runtimeRequested: spec.backend.version, elapsedMs: 0 };
   }
-  if (io.daemon && process.platform !== "win32") {
+  // Distributed sampling spawns worker processes and includes the model into
+  // Main; the persistent worker's isolation cannot host that, so it runs one-shot.
+  if (io.daemon && process.platform !== "win32" && spec.sampler.parallel !== "distributed") {
     const start = performance.now();
     try {
       return await runFitViaWorker(spec, resolved, io);
