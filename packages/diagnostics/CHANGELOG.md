@@ -1,5 +1,11 @@
 # @mcmcjs/diagnostics
 
+## 0.7.0
+
+### Minor Changes
+
+- 60ee073: Add simulation-based calibration statistics: chiSquarePValue (chi-square survival function, scipy-validated) and sbcUniformity (binned rank uniformity test with proportional expectations).
+
 ## 0.6.0
 
 ### Minor Changes

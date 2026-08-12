@@ -1,5 +1,25 @@
 # mcmcjs
 
+## 0.24.0
+
+### Minor Changes
+
+- eaae25c: mcmc run accepts the full sampler surface: --algorithm now covers ESS, SMC, PG, Gibbs, and External, and --parallel adds distributed for one worker process per chain on the turing backend.
+- 60ee073: Add mcmc sbc, the simulation-based calibration check: parameters drawn from the prior, datasets simulated through the model, each one refit, and the true parameters' posterior ranks tested for uniformity, with a rank histogram and a chi-square verdict per parameter. mcmc run gains --parallel for threaded chains.
+
+### Patch Changes
+
+- Updated dependencies [60ee073]
+- Updated dependencies [eaae25c]
+- Updated dependencies [60ee073]
+- Updated dependencies [eaae25c]
+- Updated dependencies [60ee073]
+  - @mcmcjs/core@0.11.0
+  - @mcmcjs/diagnostics@0.7.0
+  - @mcmcjs/julia@0.14.0
+  - @mcmcjs/plots@0.8.1
+  - @mcmcjs/stan@0.1.5
+
 ## 0.23.0
 
 ### Minor Changes
