@@ -787,6 +787,121 @@ d("julia e2e: the sampler matrix beyond NUTS", () => {
   }, 600_000);
 });
 
+d("julia e2e: Gibbs, particle samplers, external samplers, distributed chains", () => {
+  const tableSampler = {
+    draws: 150,
+    warmup: 150,
+    chains: 2,
+    adapt_delta: 0.8,
+    thin: 1,
+    parallel: "serial",
+  } as const;
+
+  function tableSpec(name: string, sampler: ResolvedSpec["sampler"]): ResolvedSpec {
+    const path = join(dir, `${name}_table.jl`);
+    writeFileSync(path, TABLE_MODEL);
+    return {
+      ...spec(sampler.draws, sampler.chains),
+      model: { kind: "file", path, entry: "build_model" },
+      modelPath: path,
+      data: TABLE_DATA,
+      sampler,
+    };
+  }
+
+  const io = (name: string) => ({
+    spawn: createFitRunner(),
+    projectDir: (ENV as NonNullable<typeof ENV>).projectDir,
+    outPath: join(dir, `${name}.samples.json`),
+    recordPath: join(dir, `${name}.run.json`),
+  });
+
+  function muMean(name: string, chains: number): number {
+    const samples: Samples = parseSamples(readFileSync(join(dir, `${name}.samples.json`), "utf8"));
+    const mu = Array.from({ length: chains }, (_, c) =>
+      Array.from(chainView(samples, "mu", c)),
+    ).flat();
+    return mu.reduce((a, b) => a + b, 0) / mu.length;
+  }
+
+  it("composes Gibbs blocks (NUTS for mu, MH for sigma) and recovers the data mean", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const result = await runFit(
+      tableSpec("gibbs", {
+        ...tableSampler,
+        algorithm: "Gibbs",
+        blocks: [
+          { variables: ["mu"], algorithm: "NUTS", adapt_delta: 0.8 },
+          { variables: ["sigma"], algorithm: "MH", adapt_delta: 0.8 },
+        ],
+      }),
+      { command: env.command, args: env.args },
+      io("gibbs"),
+    );
+    expect(result.status).toBe("ok");
+    expect(muMean("gibbs", 2)).toBeCloseTo(5.006, 0);
+  }, 600_000);
+
+  it("runs the particle samplers (SMC keeps every draw, PG discards warmup)", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const smc = await runFit(
+      tableSpec("smc", { ...tableSampler, algorithm: "SMC", draws: 400 }),
+      { command: env.command, args: env.args },
+      io("smc"),
+    );
+    expect(smc.status).toBe("ok");
+    const smcSamples = parseSamples(readFileSync(join(dir, "smc.samples.json"), "utf8"));
+    expect(smcSamples.nDraws).toBe(400);
+    expect(muMean("smc", 2)).toBeCloseTo(5.006, 0);
+
+    const pg = await runFit(
+      tableSpec("pg", { ...tableSampler, algorithm: "PG", particles: 15 }),
+      { command: env.command, args: env.args },
+      io("pg"),
+    );
+    expect(pg.status).toBe("ok");
+    expect(muMean("pg", 2)).toBeCloseTo(5.006, 0);
+  }, 600_000);
+
+  it("wraps the model file's MCMC_SAMPLER via External, and errors without one", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const extModelPath = join(dir, "ext_table.jl");
+    writeFileSync(
+      extModelPath,
+      `import AdvancedHMC\nconst MCMC_SAMPLER = AdvancedHMC.NUTS(0.8)\n${TABLE_MODEL}`,
+    );
+    const extSpec = tableSpec("ext", { ...tableSampler, algorithm: "External" });
+    const result = await runFit(
+      { ...extSpec, model: { ...extSpec.model, path: extModelPath }, modelPath: extModelPath },
+      { command: env.command, args: env.args },
+      io("ext"),
+    );
+    expect(result.status).toBe("ok");
+    expect(muMean("ext", 2)).toBeCloseTo(5.006, 0);
+
+    const missing = await runFit(
+      tableSpec("ext_missing", { ...tableSampler, algorithm: "External" }),
+      { command: env.command, args: env.args },
+      io("ext_missing"),
+    );
+    expect(missing.status).toBe("error");
+    expect(missing.error).toContain("MCMC_SAMPLER");
+  }, 600_000);
+
+  it("samples distributed chains on worker processes and recovers the data mean", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const result = await runFit(
+      tableSpec("dist", { ...tableSampler, algorithm: "NUTS", parallel: "distributed" }),
+      { command: env.command, args: env.args },
+      io("dist"),
+    );
+    expect(result.status).toBe("ok");
+    const samples = parseSamples(readFileSync(join(dir, "dist.samples.json"), "utf8"));
+    expect(samples.nChains).toBe(2);
+    expect(muMean("dist", 2)).toBeCloseTo(5.006, 0);
+  }, 900_000);
+});
+
 d("julia e2e: model-declared MCMC defaults", () => {
   const DEFAULTS_MODEL = `using Turing
 
