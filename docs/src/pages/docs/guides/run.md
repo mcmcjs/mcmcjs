@@ -37,6 +37,7 @@ Flags are always honored.
 | `--algorithm <name>` | sampler: NUTS, HMC, HMCDA, MH, or Prior (default NUTS) |
 | `--thin <n>` | keep every thin-th draw |
 | `--adtype <name>` | AD backend for gradient samplers: forwarddiff, reversediff, or mooncake |
+| `--parallel <mode>` | chain execution: serial (default) or threads (Julia backends; incompatible with `--stream-out`) |
 | `--seed <n>` | random seed (default: drawn fresh and recorded) |
 | `--backend <id>` | backend, default detected from the model |
 | `--entry <name>` | model entry function (default `build_model`) |

@@ -76,7 +76,8 @@ Pinned packages provision into their own managed environment, so different pins 
 | `leapfrog_steps` | positive integer | required for HMC | leapfrog steps per proposal |
 | `lambda` | positive number | required for HMCDA | target simulation length |
 | `thin` | positive integer | `1` | keep every thin-th draw |
-| `adtype` | `"forwarddiff"`, `"reversediff"`, `"mooncake"` | backend default | AD backend for gradient samplers (Turing only) |
+| `parallel` | `"serial"`, `"threads"` | `"serial"` | chain execution; threads run chains concurrently in one Julia process (draw streaming stays serial) |
+| `adtype` | `"forwarddiff"`, `"reversediff"`, `"mooncake"` | model or backend default | AD backend for gradient samplers (Turing only); a model file may declare its own default via `const MCMC_DEFAULTS = (; adtype = "mooncake")`, which the spec overrides |
 | `initial_params` | table of named values | - | starting values per variable, replicated across chains (Turing only) |
 
 ### Data

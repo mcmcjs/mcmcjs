@@ -34,6 +34,7 @@ export {
 } from "./mcse";
 export { gpdFit, logSumExp, type PsisResult, psisSmooth } from "./psis";
 export { computeRhat as rhat, type RhatKind } from "./rhat";
+export { chiSquarePValue, type SbcUniformity, sbcUniformity } from "./sbc";
 export { splitRhat } from "./split-rhat";
 export {
   computeExcessKurtosis,

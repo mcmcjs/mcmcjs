@@ -81,3 +81,16 @@ rank  model                        elpd_loo    se  elpd_diff  se_diff  high_k
 `elpd_diff` is each model's distance behind the winner, and `se_diff` is the standard error of that difference computed from the paired pointwise values, which is the number to judge it against.
 A difference within a couple of standard errors is not a meaningful preference.
 Every run must score the same observations; the command refuses to compare models fitted to different data.
+
+## Simulation-based calibration: mcmc sbc
+
+SBC (Talts et al. 2018) validates the whole pipeline at once: if you draw parameters from the prior, simulate data through the model, and refit, the true parameters' ranks within their posteriors must be uniform.
+Non-uniform ranks mean the sampler, the model implementation, or the priors disagree somewhere.
+
+```bash
+mcmc sbc spec.toml --simulations 30 --daemon
+```
+
+The spec needs a `[predict]` block naming the outcomes to simulate.
+Each simulation is a full refit, so the daemon flag pays for itself; 20 simulations catch gross errors, 100 or more is publication grade.
+The report shows a rank histogram and a chi-square uniformity p-value per parameter, with a family-level verdict; exit code 2 means the ranks departed from uniform.

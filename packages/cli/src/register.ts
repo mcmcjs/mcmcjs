@@ -17,6 +17,7 @@ import { registerRun } from "./run";
 import { registerRuns } from "./runs";
 import { registerSamples } from "./samples";
 import { registerSandbox } from "./sandbox";
+import { registerSbc } from "./sbc";
 import { registerSetup } from "./setup";
 import { registerShow } from "./show";
 import { registerStan } from "./stan";
@@ -33,6 +34,7 @@ export function registerAll(program: Command, ctx: EngineContext, registry: Engi
   registerRun(program, ctx);
   registerFit(program, ctx);
   registerPredict(program, ctx);
+  registerSbc(program, ctx);
   registerReport(program);
   registerRuns(program);
   registerShow(program);
