@@ -156,6 +156,7 @@ export async function runFit(
   const args = [
     ...resolved.args,
     "--startup-file=no",
+    ...(spec.sampler.parallel === "threads" ? ["--threads=auto"] : []),
     `--project=${io.projectDir}`,
     driverPath(),
     requestPath,

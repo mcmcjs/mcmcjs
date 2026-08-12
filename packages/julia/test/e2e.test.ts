@@ -87,7 +87,15 @@ function spec(draws: number, chains: number): ResolvedSpec {
     schema_version: "0",
     backend: { id: "turing", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
     model: { kind: "file", path: modelPath, entry: "build_model" },
-    sampler: { algorithm: "NUTS", draws, warmup: 200, chains, adapt_delta: 0.8, thin: 1 },
+    sampler: {
+      algorithm: "NUTS",
+      draws,
+      warmup: 200,
+      chains,
+      adapt_delta: 0.8,
+      thin: 1,
+      parallel: "serial",
+    },
     data: DATA,
     output: { format: "mcmcchains-json" },
     seed: 42,
@@ -439,6 +447,7 @@ d("julia e2e: prior sampling and the prior predictive", () => {
           chains: 2,
           adapt_delta: 0.8,
           thin: 1,
+          parallel: "serial",
         },
       },
       { command: env.command, args: env.args },
@@ -473,7 +482,15 @@ d("julia e2e: prior sampling and the prior predictive", () => {
       model: { kind: "file", path: tableModelPath, entry: "build_model" },
       modelPath: tableModelPath,
       data: TABLE_DATA,
-      sampler: { algorithm: "Prior", draws: 400, warmup: 0, chains: 2, adapt_delta: 0.8, thin: 1 },
+      sampler: {
+        algorithm: "Prior",
+        draws: 400,
+        warmup: 0,
+        chains: 2,
+        adapt_delta: 0.8,
+        thin: 1,
+        parallel: "serial",
+      },
       predict: { targets: ["y"] },
     };
     const priorPath = join(dir, "prior.table.samples.json");
@@ -533,6 +550,7 @@ d("julia e2e: prior sampling and the prior predictive", () => {
           chains: 2,
           adapt_delta: 0.8,
           thin: 1,
+          parallel: "serial",
         },
       },
       { command: env.command, args: env.args },
@@ -708,6 +726,7 @@ d("julia e2e: the sampler matrix beyond NUTS", () => {
           step_size: 0.05,
           leapfrog_steps: 10,
           thin: 2,
+          parallel: "serial",
           adtype: "mooncake",
         },
       },
@@ -747,6 +766,7 @@ d("julia e2e: the sampler matrix beyond NUTS", () => {
           chains: 2,
           adapt_delta: 0.8,
           thin: 1,
+          parallel: "serial",
           initial_params: { mu: 42.0, sigma: 1.0 },
         },
       },
@@ -764,5 +784,74 @@ d("julia e2e: the sampler matrix beyond NUTS", () => {
     // With no burn-in the first retained state is the initial value itself.
     expect(chainView(samples, "mu", 0)[0]).toBe(42);
     expect(chainView(samples, "mu", 1)[0]).toBe(42);
+  }, 600_000);
+});
+
+d("julia e2e: model-declared MCMC defaults", () => {
+  const DEFAULTS_MODEL = `using Turing
+
+const MCMC_DEFAULTS = (; adtype = "nosuch")
+
+@model function build_model(data)
+    y = data["y"]
+    mu ~ Normal(0, 5)
+    for i in eachindex(y)
+        y[i] ~ Normal(mu, 1)
+    end
+end
+`;
+
+  it("applies the model's adtype default and lets the spec override it", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const path = join(dir, "defaults_model.jl");
+    writeFileSync(path, DEFAULTS_MODEL);
+    const base = {
+      ...spec(20, 1),
+      model: { kind: "file", path, entry: "build_model" } as const,
+      modelPath: path,
+      data: { y: [5.0, 5.1] },
+    };
+    const io = (name: string) => ({
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: join(dir, `${name}.samples.json`),
+      recordPath: join(dir, `${name}.run.json`),
+    });
+
+    // The deliberately invalid default is observable: without a spec adtype the
+    // fit fails on it, proving the default reached the sampler.
+    const applied = await runFit(base, { command: env.command, args: env.args }, io("dflt"));
+    expect(applied.status).toBe("error");
+    expect(applied.error).toContain("unsupported adtype: nosuch");
+
+    // A spec adtype wins over the model default.
+    const overridden = await runFit(
+      {
+        ...base,
+        sampler: { ...base.sampler, adtype: "forwarddiff" },
+      },
+      { command: env.command, args: env.args },
+      io("ovrd"),
+    );
+    expect(overridden.status).toBe("ok");
+
+    // A gradient-free sampler never consults the default.
+    const mh = await runFit(
+      {
+        ...base,
+        sampler: {
+          algorithm: "MH",
+          draws: 20,
+          warmup: 0,
+          chains: 1,
+          adapt_delta: 0.8,
+          thin: 1,
+          parallel: "serial",
+        },
+      },
+      { command: env.command, args: env.args },
+      io("mh_dflt"),
+    );
+    expect(mh.status).toBe("ok");
   }, 600_000);
 });

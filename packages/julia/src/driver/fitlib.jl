@@ -88,6 +88,21 @@ function Logging.handle_message(
     Logging.handle_message(logger.fallback, level, message, _module, group, id, file, line; kwargs...)
 end
 
+# A Turing model file may declare the AD backend it needs by exporting, e.g.,
+# `const MCMC_DEFAULTS = (; adtype = "mooncake")`. A spec or flag adtype wins;
+# the model default fills in only when the request leaves adtype unset.
+function apply_model_defaults(sampler, mod)
+    haskey(sampler, "adtype") && return sampler
+    # Only the gradient samplers take an AD backend.
+    get(sampler, "algorithm", "NUTS") in ("NUTS", "HMC", "HMCDA") || return sampler
+    Base.invokelatest(isdefined, mod, :MCMC_DEFAULTS) || return sampler
+    defaults = Base.invokelatest(getfield, mod, :MCMC_DEFAULTS)
+    hasproperty(defaults, :adtype) || return sampler
+    merged = copy(sampler)
+    merged["adtype"] = String(defaults.adtype)
+    return merged
+end
+
 function build_adtype(name)
     name == "forwarddiff" && return Turing.ADTypes.AutoForwardDiff()
     name == "reversediff" && return Turing.ADTypes.AutoReverseDiff()
@@ -106,6 +121,7 @@ function build_sampler(sampler, backend)
         algorithm == "NUTS" || error("the juliabugs backend supports NUTS and Prior only")
         return AdvancedHMC.NUTS(adapt_delta), warmup
     end
+    algorithm == "MH" && return Turing.MH(), warmup
     adkw = haskey(sampler, "adtype") ? (; adtype = build_adtype(sampler["adtype"])) : (;)
     algorithm == "NUTS" && return Turing.NUTS(warmup, adapt_delta; adkw...), warmup
     algorithm == "HMC" &&
@@ -113,7 +129,6 @@ function build_sampler(sampler, backend)
         warmup
     algorithm == "HMCDA" &&
         return Turing.HMCDA(warmup, adapt_delta, Float64(sampler["lambda"]); adkw...), warmup
-    algorithm == "MH" && return Turing.MH(), warmup
     error("unsupported sampler algorithm: $algorithm")
 end
 
@@ -327,11 +342,14 @@ end
 # the model methods are defined by `include` at runtime, so a plain call from
 # this (older) world would fail with "method too new". invokelatest fixes that.
 # Returns Turing's default chain type, a FlexiChain. With a callback, draws stream.
-function build_and_sample(entry, data, sampler, draws, chains, rng; callback = nothing, extra = (;))
+function build_and_sample(
+    entry, data, sampler, draws, chains, rng; callback = nothing, extra = (;), threads = false
+)
     model = condition_on_data(entry(data), data)
     kw = callback === nothing ? extra : merge(extra, (; callback))
+    ensemble = threads ? MCMCThreads() : MCMCSerial()
     return Logging.with_logger(JSONProgressLogger()) do
-        sample(rng, model, sampler, MCMCSerial(), draws, chains; progress = true, kw...)
+        sample(rng, model, sampler, ensemble, draws, chains; progress = true, kw...)
     end
 end
 
@@ -376,12 +394,16 @@ end
 # Returns a FlexiChain like the Turing path; gen_chains recovers generated
 # quantities (unobserved nodes with no observed descendants) after sampling.
 # With a callback, draws stream (see bugs_draw_streamer).
-function sample_bugs(model, sampler, warmup, draws, chains, rng; callback = nothing, thin = 1)
+function sample_bugs(
+    model, sampler, warmup, draws, chains, rng;
+    callback = nothing, thin = 1, threads = false,
+)
     kw = callback === nothing ? (;) : (; callback)
     thin > 1 && (kw = merge(kw, (; thinning = thin)))
+    ensemble = threads ? JuliaBUGS.AbstractMCMC.MCMCThreads() : JuliaBUGS.AbstractMCMC.MCMCSerial()
     return Logging.with_logger(JSONProgressLogger()) do
         JuliaBUGS.AbstractMCMC.sample(
-            rng, model, sampler, JuliaBUGS.AbstractMCMC.MCMCSerial(), draws, chains;
+            rng, model, sampler, ensemble, draws, chains;
             chain_type = FlexiChains.VNChain, n_adapts = warmup, discard_initial = warmup,
             progress = true, kw...,
         )
@@ -712,7 +734,9 @@ function handle_request(request)
             end
         else
             data = backend == "juliabugs" ? bugs_namedtuple(request["data"]) : ModelData(to_namedtuple(request["data"]))
-            sampler, warmup = build_sampler(request["sampler"], backend)
+            sampler_conf = backend == "juliabugs" ? request["sampler"] :
+                apply_model_defaults(request["sampler"], modelmod)
+            sampler, warmup = build_sampler(sampler_conf, backend)
             draws = Int(request["sampler"]["draws"])
             chains = Int(get(request["sampler"], "chains", 4))
             stage = "sample"
@@ -723,21 +747,25 @@ function handle_request(request)
                 else
                     # Reconstruction reads the plain BUGSModel; entry may return a gradient wrapper.
                     base = hasproperty(model, :base_model) ? model.base_model : model
-                    cb = get(request, "stream_draws", false) ?
+                    threads = get(request["sampler"], "parallel", "serial") == "threads"
+                    cb = get(request, "stream_draws", false) && !threads ?
                         bugs_draw_streamer(base, draws, Int(get(request, "draw_batch_size", 25))) : nothing
                     Base.invokelatest(
                         sample_bugs, model, sampler, warmup, draws, chains, rng;
-                        callback = cb, thin = Int(get(request["sampler"], "thin", 1)),
+                        callback = cb, thin = Int(get(request["sampler"], "thin", 1)), threads,
                     )
                 end
                 vnchain_to_wire(chn)
             else
-                cb = get(request, "stream_draws", false) ?
+                threads = get(request["sampler"], "parallel", "serial") == "threads"
+                # The draw streamer assumes chains arrive one at a time; with
+                # concurrent chains the caller must not request streaming.
+                cb = get(request, "stream_draws", false) && !threads ?
                     draw_streamer(draws, Int(get(request, "draw_batch_size", 25))) : nothing
                 extra = sampling_kwargs(request["sampler"], warmup, chains)
                 chn = Base.invokelatest(
                     build_and_sample, entry, data, sampler, draws, chains, rng;
-                    callback = cb, extra,
+                    callback = cb, extra, threads,
                 )
                 vnchain_to_wire(chn)
             end

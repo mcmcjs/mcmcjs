@@ -88,6 +88,26 @@ describe("SpecSchema", () => {
     ).toThrow();
   });
 
+  it("accepts threads for julia backends and rejects it for stan and Prior", () => {
+    const spec = SpecSchema.parse({ ...VALID, sampler: { draws: 10, parallel: "threads" } });
+    expect(spec.sampler.parallel).toBe("threads");
+    expect(SpecSchema.parse(VALID).sampler.parallel).toBe("serial");
+    expect(() =>
+      SpecSchema.parse({
+        ...VALID,
+        backend: { id: "stan" },
+        model: { kind: "file", path: "./m.stan" },
+        sampler: { draws: 10, parallel: "threads" },
+      }),
+    ).toThrow(/not supported for the stan backend/);
+    expect(() =>
+      SpecSchema.parse({
+        ...VALID,
+        sampler: { draws: 10, algorithm: "Prior", parallel: "threads" },
+      }),
+    ).toThrow(/single ancestral pass/);
+  });
+
   it("rejects thinning and initial_params for prior draws", () => {
     expect(() =>
       SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "Prior", thin: 2 } }),

@@ -125,6 +125,7 @@ export interface RunCliOptions {
   algorithm?: string;
   thin?: number;
   adtype?: string;
+  parallel?: string;
   backend?: string;
   entry?: string;
   refit?: boolean;
@@ -197,6 +198,7 @@ function applyOverrides(spec: Spec, opts: RunCliOptions): Spec {
       ...(opts.prior ? { algorithm: "Prior" } : {}),
       ...(opts.thin !== undefined ? { thin: opts.thin } : {}),
       ...(opts.adtype ? { adtype: opts.adtype } : {}),
+      ...(opts.parallel ? { parallel: opts.parallel } : {}),
       ...(opts.draws !== undefined ? { draws: opts.draws } : {}),
       ...(opts.warmup !== undefined ? { warmup: opts.warmup } : {}),
       ...(opts.chains !== undefined ? { chains: opts.chains } : {}),
@@ -332,6 +334,7 @@ export function buildRunConfig(inputPath: string, opts: RunCliOptions): RunConfi
       algorithm: opts.prior ? "Prior" : (opts.algorithm ?? "NUTS"),
       ...(opts.thin !== undefined ? { thin: opts.thin } : {}),
       ...(opts.adtype ? { adtype: opts.adtype } : {}),
+      ...(opts.parallel ? { parallel: opts.parallel } : {}),
       draws: opts.draws ?? 1000,
       warmup: opts.warmup ?? 1000,
       chains: opts.chains ?? 4,
@@ -494,6 +497,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       "--adtype <name>",
       "AD backend for gradient samplers: forwarddiff | reversediff | mooncake",
     )
+    .option("--parallel <mode>", "chain execution: serial | threads (Julia backends)")
     .option("--seed <n>", "random seed (default: drawn fresh and recorded)", parseIntOption)
     .option("--backend <id>", "backend (default: detected from the model)")
     .option("--entry <name>", "model entry function for Julia backends (default build_model)")
@@ -535,6 +539,11 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       };
       const inputPath = resolve(input);
       const config = buildRunConfig(inputPath, opts);
+      if (opts.streamOut && config.spec.sampler.parallel === "threads") {
+        throw new Error(
+          "--stream-out needs chains sampled one at a time; drop it or use --parallel serial",
+        );
+      }
       for (const note of config.notes) say(note);
 
       // Fail clearly on a missing data file (a --data typo or a stale data_file)

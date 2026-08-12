@@ -73,6 +73,8 @@ const Sampler = z
     lambda: z.number().positive().optional(),
     /** Keep every thin-th draw. */
     thin: z.number().int().positive().default(1),
+    /** "threads" samples chains concurrently on Julia threads (one process). */
+    parallel: z.enum(["serial", "threads"]).default("serial"),
     /** AD backend for gradient-based samplers (default: the backend's own default). */
     adtype: z.enum(["forwarddiff", "reversediff", "mooncake"]).optional(),
     /** Named starting values per variable, replicated across chains. */
@@ -102,6 +104,9 @@ const Sampler = z
     }
     if (s.algorithm === "Prior") {
       if (s.thin !== 1) issue("thin", "prior draws are independent; thinning does not apply");
+      if (s.parallel !== "serial") {
+        issue("parallel", "prior sampling is a single ancestral pass; parallel does not apply");
+      }
       if (s.initial_params !== undefined) {
         issue("initial_params", "prior draws are independent; initial_params does not apply");
       }
@@ -169,6 +174,9 @@ export const SpecSchema = z
           ["sampler", "initial_params"],
           "initial_params is not supported for the stan backend",
         );
+      }
+      if (s.sampler.parallel !== "serial") {
+        issue(["sampler", "parallel"], "parallel chains are not supported for the stan backend");
       }
     }
     if (s.backend.id === "juliabugs") {
