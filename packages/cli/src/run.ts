@@ -491,13 +491,19 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .option("--chains <n>", "number of chains (default 4)", parseIntOption)
     .option("--adapt-delta <x>", "NUTS target acceptance rate (default 0.8)", parseFloatOption)
     .option("--prior", "draw from the prior instead of running MCMC (no warmup)")
-    .option("--algorithm <name>", "sampler: NUTS | HMC | HMCDA | MH | Prior (default NUTS)")
+    .option(
+      "--algorithm <name>",
+      "sampler: NUTS | HMC | HMCDA | MH | ESS | SMC | PG | Gibbs | External | Prior (default NUTS)",
+    )
     .option("--thin <n>", "keep every thin-th draw", parseIntOption)
     .option(
       "--adtype <name>",
       "AD backend for gradient samplers: forwarddiff | reversediff | mooncake",
     )
-    .option("--parallel <mode>", "chain execution: serial | threads (Julia backends)")
+    .option(
+      "--parallel <mode>",
+      "chain execution: serial | threads | distributed (distributed is Turing-only)",
+    )
     .option("--seed <n>", "random seed (default: drawn fresh and recorded)", parseIntOption)
     .option("--backend <id>", "backend (default: detected from the model)")
     .option("--entry <name>", "model entry function for Julia backends (default build_model)")
@@ -539,7 +545,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       };
       const inputPath = resolve(input);
       const config = buildRunConfig(inputPath, opts);
-      if (opts.streamOut && config.spec.sampler.parallel === "threads") {
+      if (opts.streamOut && config.spec.sampler.parallel !== "serial") {
         throw new Error(
           "--stream-out needs chains sampled one at a time; drop it or use --parallel serial",
         );
