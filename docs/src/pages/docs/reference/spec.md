@@ -67,7 +67,7 @@ Pinned packages provision into their own managed environment, so different pins 
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `algorithm` | `"NUTS"`, `"HMC"`, `"HMCDA"`, `"MH"`, `"Prior"` | `"NUTS"` | the sampler; stan supports NUTS only, juliabugs NUTS and Prior |
+| `algorithm` | `"NUTS"`, `"HMC"`, `"HMCDA"`, `"MH"`, `"ESS"`, `"SMC"`, `"PG"`, `"Gibbs"`, `"External"`, `"Prior"` | `"NUTS"` | the sampler; stan supports NUTS only, juliabugs NUTS and Prior |
 | `draws` | positive integer | required | posterior draws per chain |
 | `warmup` | non-negative integer | `1000` | NUTS/HMCDA adaptation; burn-in discarded for MH and HMC |
 | `chains` | positive integer | `4` | number of chains |
@@ -75,10 +75,41 @@ Pinned packages provision into their own managed environment, so different pins 
 | `step_size` | positive number | required for HMC | leapfrog integrator step size |
 | `leapfrog_steps` | positive integer | required for HMC | leapfrog steps per proposal |
 | `lambda` | positive number | required for HMCDA | target simulation length |
+| `particles` | positive integer | required for PG | particle count |
+| `blocks` | array of tables | required for Gibbs | one `[[sampler.blocks]]` per component; see below |
 | `thin` | positive integer | `1` | keep every thin-th draw |
-| `parallel` | `"serial"`, `"threads"` | `"serial"` | chain execution; threads run chains concurrently in one Julia process (draw streaming stays serial) |
+| `parallel` | `"serial"`, `"threads"`, `"distributed"` | `"serial"` | chain execution; threads share one Julia process, distributed starts one worker process per chain (Turing only, adds startup cost) |
 | `adtype` | `"forwarddiff"`, `"reversediff"`, `"mooncake"` | model or backend default | AD backend for gradient samplers (Turing only); a model file may declare its own default via `const MCMC_DEFAULTS = (; adtype = "mooncake")`, which the spec overrides |
 | `initial_params` | table of named values | - | starting values per variable, replicated across chains (Turing only) |
+
+#### Gibbs blocks
+
+`algorithm = "Gibbs"` composes per-variable samplers: each `[[sampler.blocks]]` table names the variables it updates and the component that updates them (`NUTS`, `HMC`, `HMCDA`, `MH`, `PG`, or `ESS`), with the same per-algorithm parameters as the top level.
+The classic use is a gradient sampler for continuous parameters and a particle or Metropolis component for the discrete ones.
+
+```toml
+[sampler]
+algorithm = "Gibbs"
+draws = 1000
+
+[[sampler.blocks]]
+variables = ["mu", "sigma"]
+algorithm = "NUTS"
+
+[[sampler.blocks]]
+variables = ["k"]
+algorithm = "PG"
+particles = 20
+```
+
+#### External samplers
+
+`algorithm = "External"` runs any AbstractMCMC-compatible sampler the model file exports as `MCMC_SAMPLER`; the driver wraps it with Turing's `externalsampler`, passing the spec's `adtype` through when set.
+
+```julia
+import AdvancedHMC
+const MCMC_SAMPLER = AdvancedHMC.NUTS(0.8)
+```
 
 ### Data
 

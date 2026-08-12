@@ -34,10 +34,10 @@ Flags are always honored.
 | `--chains <n>` | number of chains (default 4) |
 | `--adapt-delta <x>` | NUTS target acceptance rate (default 0.8) |
 | `--prior` | draw from the prior instead of running MCMC (no warmup) |
-| `--algorithm <name>` | sampler: NUTS, HMC, HMCDA, MH, or Prior (default NUTS) |
+| `--algorithm <name>` | sampler: NUTS, HMC, HMCDA, MH, ESS, SMC, PG, Gibbs, External, or Prior (default NUTS; Gibbs blocks and PG particles are spec-only) |
 | `--thin <n>` | keep every thin-th draw |
 | `--adtype <name>` | AD backend for gradient samplers: forwarddiff, reversediff, or mooncake |
-| `--parallel <mode>` | chain execution: serial (default) or threads (Julia backends; incompatible with `--stream-out`) |
+| `--parallel <mode>` | chain execution: serial (default), threads, or distributed (Turing-only, one worker process per chain; incompatible with `--stream-out`) |
 | `--seed <n>` | random seed (default: drawn fresh and recorded) |
 | `--backend <id>` | backend, default detected from the model |
 | `--entry <name>` | model entry function (default `build_model`) |
