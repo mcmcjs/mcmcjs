@@ -871,7 +871,7 @@ d("julia e2e: Gibbs, particle samplers, external samplers, distributed chains", 
 
   it("wraps the model file's MCMC_SAMPLER via External, and errors without one", async () => {
     const env = ENV as NonNullable<typeof ENV>;
-    const extModelPath = join(dir, "ext_table.jl");
+    const extModelPath = join(dir, "ext_sampler.jl");
     writeFileSync(
       extModelPath,
       `import AdvancedHMC\nconst MCMC_SAMPLER = AdvancedHMC.NUTS(0.8)\n${TABLE_MODEL}`,
