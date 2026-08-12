@@ -840,6 +840,12 @@ d("julia e2e: Gibbs, particle samplers, external samplers, distributed chains", 
     );
     expect(result.status).toBe("ok");
     expect(muMean("gibbs", 2)).toBeCloseTo(5.006, 0);
+    // A frozen NUTS block would still pass the mean check; require real movement.
+    const samples = parseSamples(readFileSync(join(dir, "gibbs.samples.json"), "utf8"));
+    for (const chain of [0, 1]) {
+      const unique = new Set(chainView(samples, "mu", chain)).size;
+      expect(unique).toBeGreaterThan(samples.nDraws / 2);
+    }
   }, 600_000);
 
   it("runs the particle samplers (SMC keeps every draw, PG discards warmup)", async () => {

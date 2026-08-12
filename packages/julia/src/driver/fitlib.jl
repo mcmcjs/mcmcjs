@@ -190,6 +190,15 @@ function sampling_kwargs(sampler, warmup, chains)
     if algorithm == "External" && warmup > 0
         kw = merge(kw, (; n_adapts = warmup))
     end
+    # NUTS/HMCDA blocks inside Gibbs adapt only through the sample-level nadapts
+    # keyword (the constructor's count is ignored there); without it the block
+    # never tunes its step size and can freeze.
+    if algorithm == "Gibbs" && warmup > 0
+        blocks = get(sampler, "blocks", Any[])
+        if any(get(b, "algorithm", "NUTS") in ("NUTS", "HMCDA") for b in blocks)
+            kw = merge(kw, (; nadapts = warmup))
+        end
+    end
     if haskey(sampler, "initial_params")
         nt = (; (Symbol(k) => narrow(v) for (k, v) in sampler["initial_params"])...)
         strategy = Turing.DynamicPPL.InitFromParams(nt)
