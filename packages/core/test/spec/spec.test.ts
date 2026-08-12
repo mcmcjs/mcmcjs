@@ -108,6 +108,91 @@ describe("SpecSchema", () => {
     ).toThrow(/single ancestral pass/);
   });
 
+  it("composes Gibbs from blocks and validates per-block parameters", () => {
+    const spec = SpecSchema.parse({
+      ...VALID,
+      sampler: {
+        draws: 10,
+        algorithm: "Gibbs",
+        blocks: [
+          { variables: ["mu"], algorithm: "NUTS" },
+          { variables: ["k", "z"], algorithm: "PG", particles: 15 },
+        ],
+      },
+    });
+    expect(spec.sampler.blocks).toHaveLength(2);
+    expect(spec.sampler.blocks?.[1]?.particles).toBe(15);
+    expect(() =>
+      SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "Gibbs" } }),
+    ).toThrow(/add \[\[sampler.blocks\]\]/);
+    expect(() =>
+      SpecSchema.parse({
+        ...VALID,
+        sampler: { draws: 10, blocks: [{ variables: ["mu"] }] },
+      }),
+    ).toThrow(/blocks apply to Gibbs only/);
+    expect(() =>
+      SpecSchema.parse({
+        ...VALID,
+        sampler: {
+          draws: 10,
+          algorithm: "Gibbs",
+          blocks: [{ variables: ["mu"], algorithm: "PG" }],
+        },
+      }),
+    ).toThrow(/PG requires particles/);
+    expect(() =>
+      SpecSchema.parse({
+        ...VALID,
+        sampler: {
+          draws: 10,
+          algorithm: "Gibbs",
+          blocks: [{ variables: [], algorithm: "MH" }],
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("accepts SMC, PG, ESS, and External with their rules", () => {
+    expect(
+      SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "SMC" } }).sampler.algorithm,
+    ).toBe("SMC");
+    expect(
+      SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "PG", particles: 20 } }).sampler
+        .particles,
+    ).toBe(20);
+    expect(() => SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "PG" } })).toThrow(
+      /PG requires particles/,
+    );
+    expect(() => SpecSchema.parse({ ...VALID, sampler: { draws: 10, particles: 20 } })).toThrow(
+      /particles applies to PG only/,
+    );
+    expect(() =>
+      SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "SMC", adtype: "mooncake" } }),
+    ).toThrow(/no gradient/);
+    // External and Gibbs may carry an adtype for their gradient parts.
+    expect(
+      SpecSchema.parse({
+        ...VALID,
+        sampler: { draws: 10, algorithm: "External", adtype: "mooncake" },
+      }).sampler.adtype,
+    ).toBe("mooncake");
+  });
+
+  it("accepts distributed chains for turing and rejects them for juliabugs", () => {
+    expect(
+      SpecSchema.parse({ ...VALID, sampler: { draws: 10, parallel: "distributed" } }).sampler
+        .parallel,
+    ).toBe("distributed");
+    expect(() =>
+      SpecSchema.parse({
+        ...VALID,
+        backend: { id: "juliabugs" },
+        sampler: { draws: 10, parallel: "distributed" },
+      }),
+    ).toThrow(/Turing-only/);
+  });
+
   it("rejects thinning and initial_params for prior draws", () => {
     expect(() =>
       SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "Prior", thin: 2 } }),

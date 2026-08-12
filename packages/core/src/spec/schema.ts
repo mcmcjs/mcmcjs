@@ -56,12 +56,79 @@ const Backend = z
     }
   });
 
+interface ParamRules {
+  algorithm: string;
+  step_size?: number;
+  leapfrog_steps?: number;
+  lambda?: number;
+  particles?: number;
+}
+
+/** Per-algorithm parameter rules, shared by the sampler and its Gibbs blocks. */
+function samplerParamIssues(s: ParamRules): { path: string; message: string }[] {
+  const issues: { path: string; message: string }[] = [];
+  if (s.algorithm === "HMC") {
+    if (s.step_size === undefined)
+      issues.push({ path: "step_size", message: "HMC requires step_size" });
+    if (s.leapfrog_steps === undefined) {
+      issues.push({ path: "leapfrog_steps", message: "HMC requires leapfrog_steps" });
+    }
+  } else {
+    if (s.step_size !== undefined) {
+      issues.push({ path: "step_size", message: "step_size applies to HMC only" });
+    }
+    if (s.leapfrog_steps !== undefined) {
+      issues.push({ path: "leapfrog_steps", message: "leapfrog_steps applies to HMC only" });
+    }
+  }
+  if (s.algorithm === "HMCDA") {
+    if (s.lambda === undefined) issues.push({ path: "lambda", message: "HMCDA requires lambda" });
+  } else if (s.lambda !== undefined) {
+    issues.push({ path: "lambda", message: "lambda applies to HMCDA only" });
+  }
+  if (s.algorithm === "PG") {
+    if (s.particles === undefined) {
+      issues.push({ path: "particles", message: "PG requires particles" });
+    }
+  } else if (s.particles !== undefined) {
+    issues.push({ path: "particles", message: "particles applies to PG only" });
+  }
+  return issues;
+}
+
+const GibbsBlock = z
+  .object({
+    /** Model variables this block updates, by base name. */
+    variables: z.array(z.string().min(1)).min(1),
+    algorithm: z.enum(["NUTS", "HMC", "HMCDA", "MH", "PG", "ESS"]).default("NUTS"),
+    adapt_delta: z.number().gt(0).lt(1).default(0.8),
+    step_size: z.number().positive().optional(),
+    leapfrog_steps: z.number().int().positive().optional(),
+    lambda: z.number().positive().optional(),
+    particles: z.number().int().positive().optional(),
+  })
+  .strict()
+  .superRefine((b, ctx) => {
+    for (const { path, message } of samplerParamIssues(b)) {
+      ctx.addIssue({ code: "custom", path: [path], message });
+    }
+  });
+
+/** Samplers that take an AD backend: gradient-based, or wrappers that may hold one. */
+const ADTYPE_ALGORITHMS = new Set(["NUTS", "HMC", "HMCDA", "Gibbs", "External"]);
+
 const Sampler = z
   .object({
-    /** "Prior" draws from the prior instead of running MCMC (no warmup or adaptation). */
-    algorithm: z.enum(["NUTS", "HMC", "HMCDA", "MH", "Prior"]).default("NUTS"),
+    /**
+     * "Prior" draws from the prior instead of running MCMC; "Gibbs" composes
+     * per-variable blocks; "External" wraps a sampler the model file exports
+     * as MCMC_SAMPLER.
+     */
+    algorithm: z
+      .enum(["NUTS", "HMC", "HMCDA", "MH", "ESS", "SMC", "PG", "Gibbs", "External", "Prior"])
+      .default("NUTS"),
     draws: z.number().int().positive(),
-    /** NUTS/HMCDA adaptation steps; burn-in discarded for MH and HMC. */
+    /** NUTS/HMCDA adaptation steps; burn-in discarded for the other samplers (SMC excepted). */
     warmup: z.number().int().nonnegative().default(1000),
     chains: z.number().int().positive().default(4),
     adapt_delta: z.number().gt(0).lt(1).default(0.8),
@@ -71,10 +138,14 @@ const Sampler = z
     leapfrog_steps: z.number().int().positive().optional(),
     /** Target simulation length (HMCDA only). */
     lambda: z.number().positive().optional(),
+    /** Particle count (PG only). */
+    particles: z.number().int().positive().optional(),
+    /** Gibbs blocks, one per [[sampler.blocks]] table (Gibbs only). */
+    blocks: z.array(GibbsBlock).min(1).optional(),
     /** Keep every thin-th draw. */
     thin: z.number().int().positive().default(1),
-    /** "threads" samples chains concurrently on Julia threads (one process). */
-    parallel: z.enum(["serial", "threads"]).default("serial"),
+    /** "threads": concurrent chains in one process; "distributed": one worker process per chain (Turing only). */
+    parallel: z.enum(["serial", "threads", "distributed"]).default("serial"),
     /** AD backend for gradient-based samplers (default: the backend's own default). */
     adtype: z.enum(["forwarddiff", "reversediff", "mooncake"]).optional(),
     /** Named starting values per variable, replicated across chains. */
@@ -82,24 +153,17 @@ const Sampler = z
   })
   .strict()
   .superRefine((s, ctx) => {
-    const gradient = s.algorithm === "NUTS" || s.algorithm === "HMC" || s.algorithm === "HMCDA";
     const issue = (path: string, message: string) =>
       ctx.addIssue({ code: "custom", path: [path], message });
-    if (s.algorithm === "HMC") {
-      if (s.step_size === undefined) issue("step_size", "HMC requires step_size");
-      if (s.leapfrog_steps === undefined) issue("leapfrog_steps", "HMC requires leapfrog_steps");
-    } else {
-      if (s.step_size !== undefined) issue("step_size", "step_size applies to HMC only");
-      if (s.leapfrog_steps !== undefined) {
-        issue("leapfrog_steps", "leapfrog_steps applies to HMC only");
+    for (const { path, message } of samplerParamIssues(s)) issue(path, message);
+    if (s.algorithm === "Gibbs") {
+      if (s.blocks === undefined) {
+        issue("blocks", "Gibbs composes per-variable blocks; add [[sampler.blocks]] tables");
       }
+    } else if (s.blocks !== undefined) {
+      issue("blocks", "blocks apply to Gibbs only");
     }
-    if (s.algorithm === "HMCDA") {
-      if (s.lambda === undefined) issue("lambda", "HMCDA requires lambda");
-    } else if (s.lambda !== undefined) {
-      issue("lambda", "lambda applies to HMCDA only");
-    }
-    if (!gradient && s.adtype !== undefined) {
+    if (!ADTYPE_ALGORITHMS.has(s.algorithm) && s.adtype !== undefined) {
       issue("adtype", `adtype does not apply to ${s.algorithm}: it has no gradient`);
     }
     if (s.algorithm === "Prior") {
@@ -193,6 +257,12 @@ export const SpecSchema = z
         issue(
           ["sampler", "initial_params"],
           "initial_params is not supported for the juliabugs backend",
+        );
+      }
+      if (s.sampler.parallel === "distributed") {
+        issue(
+          ["sampler", "parallel"],
+          "distributed chains are Turing-only; the juliabugs backend supports serial or threads",
         );
       }
     }
