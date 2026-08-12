@@ -23,6 +23,7 @@ See [Run inference](/docs/guides/run/) and [Predict](/docs/guides/predict/).
 
 | Command | Description | Key flags |
 | --- | --- | --- |
+| `browse` | explore runs and models interactively (also what bare `mcmc` opens on a terminal) | `--store` |
 | `runs` | list and manage recorded runs (`runs list`, `runs prune --keep <n>`) | `--store` |
 | `show [ref]` | show one run's settings and artifacts | `--store` |
 | `diagnose [target]` | convergence diagnostics for a samples file | `--rhat-max`, `--ess-min`, `--hdi-prob`, `--max-divergences`, `--warmup`, `--stdin`, `--store` |
@@ -36,7 +37,7 @@ See [Run inference](/docs/guides/run/) and [Predict](/docs/guides/predict/).
 | `report [ref]` | open a run in the report web app | `--store`, `--app-url`, `--no-open` |
 
 A `target` is a samples file (MCMCChains JSON or ArviZ InferenceData JSON) or a run ref (`latest`, `@N`, an id prefix); it defaults to the latest store run.
-See [Diagnose convergence](/docs/guides/diagnose/), [Plot](/docs/guides/plot/), and [The run store](/docs/guides/run-store/).
+See [Browse interactively](/docs/guides/browse/), [Diagnose convergence](/docs/guides/diagnose/), [Plot](/docs/guides/plot/), and [The run store](/docs/guides/run-store/).
 
 ## Start a project
 

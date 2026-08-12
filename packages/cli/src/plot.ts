@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { chainView, dropWarmup, loadDataFile, parseSamples } from "@mcmcjs/core";
+import { chainView, dropWarmup, loadDataFile, parseSamples, type Samples } from "@mcmcjs/core";
 import { computeLooPit } from "@mcmcjs/diagnostics";
 import {
   type AutocorrData,
@@ -121,7 +121,7 @@ function parseTruth(spec?: string): CornerTruth | undefined {
   return { values };
 }
 
-const KINDS = [
+export const KINDS = [
   "trace",
   "density",
   "histogram",
@@ -146,7 +146,13 @@ const KINDS = [
   "ppc-stat",
   "loo-pit",
 ] as const;
-type PlotKind = (typeof KINDS)[number];
+export type PlotKind = (typeof KINDS)[number];
+
+/** The kinds that need only the draws; the rest also need observed data. */
+export const SAMPLES_ONLY_KINDS = KINDS.filter(
+  (kind) => kind !== "ppc-density" && kind !== "ppc-stat" && kind !== "loo-pit",
+);
+
 const FORMATS = ["terminal", "svg", "html"] as const;
 type Format = (typeof FORMATS)[number];
 
@@ -275,6 +281,113 @@ function renderSvg(kind: PlotKind, data: unknown): string {
   }
 }
 
+export interface PlotDataOptions {
+  variables?: readonly string[];
+  hdiProb?: number;
+  bins?: number;
+  maxLag?: number;
+  colorBy?: string;
+  truth?: CornerTruth;
+}
+
+/**
+ * The plot payload for a kind that needs only the draws: one item for the plots
+ * that take every variable at once, one per variable for the rest.
+ */
+export function samplesPlotItems(
+  kind: PlotKind,
+  samples: Samples,
+  opts: PlotDataOptions = {},
+): unknown[] {
+  const variables = opts.variables ?? samples.variables;
+  switch (kind) {
+    case "forest":
+      return [forestData(samples, { variables, hdiProb: opts.hdiProb ?? 0.94 })];
+    case "energy":
+      return [energyData(samples, { bins: opts.bins })];
+    case "chain-intervals-all":
+      return [chainIntervalsAllData(samples, { variables })];
+    case "summary-table":
+      return [summaryTableData(samples, { variables })];
+    case "diagnostics-heatmap":
+      return [diagnosticsHeatmapData(samples, { variables })];
+    case "splom":
+      return [splomData(samples, [...variables])];
+    case "corner":
+      return [
+        cornerData([{ samples }], {
+          vars: [...variables],
+          ...(opts.truth ? { truth: [opts.truth] } : {}),
+        }),
+      ];
+    case "parallel-coords":
+      return [parallelCoordsData(samples, [...variables])];
+    case "pair":
+    case "scatter": {
+      if (variables.length !== 2) {
+        throw new Error(`--kind ${kind} needs exactly two variables, e.g. --var alpha beta`);
+      }
+      return [
+        pairData(samples, variables[0] as string, variables[1] as string, {
+          colorVar: opts.colorBy,
+        }),
+      ];
+    }
+    case "ppc-density":
+    case "ppc-stat":
+    case "loo-pit":
+      throw new Error(`--kind ${kind} needs observed data as well as the draws`);
+    default:
+      return variables.map((v) => {
+        switch (kind) {
+          case "density":
+            return densityData(samples, v);
+          case "histogram":
+            return histogramData(samples, v, { bins: opts.bins });
+          case "rank":
+            return rankData(samples, v, { bins: opts.bins });
+          case "autocorr":
+            return autocorrData(samples, v, { maxLag: opts.maxLag });
+          case "ecdf":
+            return ecdfData(samples, v);
+          case "cumulative-mean":
+            return cumulativeMeanData(samples, v);
+          case "running-rhat":
+            return runningRhatData(samples, v);
+          case "violin":
+            return violinData(samples, v);
+          case "chain-intervals":
+            return chainIntervalsData(samples, v);
+          default:
+            return traceData(samples, v);
+        }
+      });
+  }
+}
+
+/** Terminal options carrying the shared chain palette. */
+export function terminalOptions(opts: {
+  width?: number;
+  height?: number;
+  ascii?: boolean;
+}): TerminalOptions {
+  return {
+    width: opts.width,
+    height: opts.height,
+    charset: opts.ascii ? "ascii" : "unicode",
+    color: (text, chain) => (PALETTE[chain % PALETTE.length] ?? pc.white)(text),
+    warn: (text) => pc.yellow(text),
+  };
+}
+
+export function renderTerminalPlot(
+  kind: PlotKind,
+  items: readonly unknown[],
+  term: TerminalOptions,
+): string {
+  return items.map((data) => renderTerminal(kind, data, term)).join("\n");
+}
+
 export function registerPlot(program: Command): void {
   program
     .command("plot")
@@ -334,31 +447,8 @@ export function registerPlot(program: Command): void {
       if (opts.warmup !== undefined) samples = dropWarmup(samples, opts.warmup);
       const variables = opts.var ?? samples.variables;
 
-      // forest/splom/parallel-coords take all variables in one plot; pair takes exactly two; the rest are per-variable.
       let items: unknown[];
-      if (kind === "forest") {
-        items = [forestData(samples, { variables, hdiProb: opts.hdiProb })];
-      } else if (kind === "energy") {
-        items = [energyData(samples, { bins: opts.bins })];
-      } else if (kind === "chain-intervals-all") {
-        items = [chainIntervalsAllData(samples, { variables })];
-      } else if (kind === "summary-table") {
-        items = [summaryTableData(samples, { variables })];
-      } else if (kind === "diagnostics-heatmap") {
-        items = [diagnosticsHeatmapData(samples, { variables })];
-      } else if (kind === "splom") {
-        items = [splomData(samples, [...variables])];
-      } else if (kind === "corner") {
-        const truth = parseTruth(opts.truth);
-        items = [
-          cornerData([{ samples }], {
-            vars: [...variables],
-            ...(truth ? { truth: [truth] } : {}),
-          }),
-        ];
-      } else if (kind === "parallel-coords") {
-        items = [parallelCoordsData(samples, [...variables])];
-      } else if (kind === "loo-pit") {
+      if (kind === "loo-pit") {
         if (!opts.observed || !opts.loglik) {
           throw new Error(
             "--kind loo-pit needs the observed data and the pointwise log-likelihood; pass --observed <file> and --loglik <file> (mcmc export loglik)",
@@ -414,39 +504,14 @@ export function registerPlot(program: Command): void {
                   bins: opts.bins,
                 }),
               ];
-      } else if (kind === "pair" || kind === "scatter") {
-        if (variables.length !== 2) {
-          throw new Error(`--kind ${kind} needs exactly two variables, e.g. --var alpha beta`);
-        }
-        items = [
-          pairData(samples, variables[0] as string, variables[1] as string, {
-            colorVar: opts.colorBy,
-          }),
-        ];
       } else {
-        items = variables.map((v) => {
-          switch (kind) {
-            case "density":
-              return densityData(samples, v);
-            case "histogram":
-              return histogramData(samples, v, { bins: opts.bins });
-            case "rank":
-              return rankData(samples, v, { bins: opts.bins });
-            case "autocorr":
-              return autocorrData(samples, v, { maxLag: opts.maxLag });
-            case "ecdf":
-              return ecdfData(samples, v);
-            case "cumulative-mean":
-              return cumulativeMeanData(samples, v);
-            case "running-rhat":
-              return runningRhatData(samples, v);
-            case "violin":
-              return violinData(samples, v);
-            case "chain-intervals":
-              return chainIntervalsData(samples, v);
-            default:
-              return traceData(samples, v);
-          }
+        items = samplesPlotItems(kind, samples, {
+          variables,
+          hdiProb: opts.hdiProb,
+          bins: opts.bins,
+          maxLag: opts.maxLag,
+          colorBy: opts.colorBy,
+          truth: parseTruth(opts.truth),
         });
       }
 
@@ -475,13 +540,7 @@ export function registerPlot(program: Command): void {
         return;
       }
 
-      const term: TerminalOptions = {
-        width: opts.width,
-        height: opts.height,
-        charset: opts.ascii ? "ascii" : "unicode",
-        color: (text, chain) => (PALETTE[chain % PALETTE.length] ?? pc.white)(text),
-        warn: (text) => pc.yellow(text),
-      };
-      emit(items.map((d) => renderTerminal(kind, d, term)).join("\n"), `${kind} plot`);
+      const term = terminalOptions(opts);
+      emit(renderTerminalPlot(kind, items, term), `${kind} plot`);
     });
 }

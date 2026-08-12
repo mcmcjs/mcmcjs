@@ -1,5 +1,6 @@
 import type { EngineContext, EngineRegistry } from "@mcmcjs/engine";
 import type { Command } from "commander";
+import { registerBrowse } from "./browse";
 import { registerConvert } from "./convert";
 import { registerDaemon } from "./daemon";
 import { registerDiagnose } from "./diagnose";
@@ -36,6 +37,7 @@ export function registerAll(program: Command, ctx: EngineContext, registry: Engi
   registerPredict(program, ctx);
   registerSbc(program, ctx);
   registerReport(program);
+  registerBrowse(program);
   registerRuns(program);
   registerShow(program);
   registerDiagnose(program);

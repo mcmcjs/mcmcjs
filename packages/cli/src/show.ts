@@ -15,7 +15,7 @@ function artifactFiles(entry: LedgerEntry): Array<{ key: string; file: string }>
   ];
 }
 
-function readRecord(dir: string): RunRecord | undefined {
+export function readRecord(dir: string): RunRecord | undefined {
   const path = join(dir, "run.json");
   if (!existsSync(path)) return undefined;
   try {

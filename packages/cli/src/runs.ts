@@ -11,7 +11,7 @@ import pc from "picocolors";
 import { parseIntOption } from "./options";
 import { locateStore, timeAgo } from "./store-cli";
 
-function verdictOf(entry: LedgerEntry): string {
+export function verdictOf(entry: LedgerEntry): string {
   if (entry.status === "failed") return "failed";
   if (entry.status === "cancelled") return "cancelled";
   if (!entry.diagnostics) return "-";

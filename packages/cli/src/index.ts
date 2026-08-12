@@ -3,6 +3,7 @@ import { createRegistry, createRunner, type EngineContext } from "@mcmcjs/engine
 import { juliaEngine } from "@mcmcjs/julia";
 import { stanEngine } from "@mcmcjs/stan";
 import { Command } from "commander";
+import { browse, interactive } from "./browse";
 import { registerAll } from "./register";
 import { maybeNotifyUpdate } from "./update-check";
 import { type VersionMeta, versionText } from "./version";
@@ -47,10 +48,18 @@ registerAll(program, ctx, registry);
 
 if (process.argv[2] !== "__update-check") maybeNotifyUpdate(__MCMC_VERSION__);
 
-// Bare `mcmc` prints the grouped help and exits 0 (a query, not an error).
-// A pre-parse guard, not program.action(), which would break --did-you-mean.
+// Bare `mcmc` opens the browser when a person is at the keyboard, and prints
+// the grouped help otherwise (a query, not an error). A pre-parse guard, not
+// program.action(), which would break --did-you-mean.
 if (process.argv.length <= 2) {
-  program.outputHelp();
+  if (interactive()) {
+    browse().catch((error: unknown) => {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+    });
+  } else {
+    program.outputHelp();
+  }
 } else {
   program.parseAsync(process.argv).catch((error: unknown) => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

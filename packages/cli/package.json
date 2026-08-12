@@ -49,6 +49,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@clack/core": "1.4.3",
+    "@clack/prompts": "1.7.0",
     "@mcmcjs/core": "workspace:*",
     "@mcmcjs/diagnostics": "workspace:*",
     "@mcmcjs/doodleppl": "workspace:*",

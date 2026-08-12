@@ -20,6 +20,7 @@ const GROUPS: Record<string, string> = {
   fit: "Run inference:",
   predict: "Run inference:",
   sbc: "Run inference:",
+  browse: "Inspect runs:",
   runs: "Inspect runs:",
   show: "Inspect runs:",
   diagnose: "Inspect runs:",

@@ -11,6 +11,7 @@ export const navGroups = [
 		title: "Guides",
 		items: [
 			{ title: "Run inference", href: "/docs/guides/run/" },
+			{ title: "Browse interactively", href: "/docs/guides/browse/" },
 			{ title: "Diagnose convergence", href: "/docs/guides/diagnose/" },
 			{ title: "Plot", href: "/docs/guides/plot/" },
 			{ title: "Report", href: "/docs/guides/report/" },
