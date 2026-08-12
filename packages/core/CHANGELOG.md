@@ -1,5 +1,12 @@
 # @mcmcjs/core
 
+## 0.11.0
+
+### Minor Changes
+
+- 60ee073: The spec's sampler gains parallel = "serial" | "threads" for concurrent chain execution on the Julia backends, rejected for stan and for prior sampling.
+- eaae25c: The spec's sampler grows to the full Turing surface: ESS, SMC, PG (with particles), Gibbs composed from [[sampler.blocks]] tables, and External for a model-exported MCMC_SAMPLER, plus parallel = "distributed" for one worker process per chain.
+
 ## 0.10.0
 
 ### Minor Changes

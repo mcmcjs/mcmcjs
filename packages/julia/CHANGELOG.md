@@ -1,5 +1,18 @@
 # @mcmcjs/julia
 
+## 0.14.0
+
+### Minor Changes
+
+- eaae25c: The driver runs the new samplers: Gibbs built from per-variable blocks (NUTS/HMC/HMCDA/MH/PG/ESS), SMC and PG, and externalsampler around the model file's MCMC_SAMPLER; parallel = "distributed" provisions worker processes with the model loaded and samples via MCMCDistributed.
+- 60ee073: Chains can sample concurrently on Julia threads (sampler.parallel = "threads" adds --threads=auto and switches to MCMCThreads), and a Turing model file can declare its preferred AD backend via MCMC_DEFAULTS, which a spec or flag adtype overrides.
+
+### Patch Changes
+
+- Updated dependencies [60ee073]
+- Updated dependencies [eaae25c]
+  - @mcmcjs/core@0.11.0
+
 ## 0.13.0
 
 ### Minor Changes

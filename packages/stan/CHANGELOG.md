@@ -1,5 +1,13 @@
 # @mcmcjs/stan
 
+## 0.1.5
+
+### Patch Changes
+
+- Updated dependencies [60ee073]
+- Updated dependencies [eaae25c]
+  - @mcmcjs/core@0.11.0
+
 ## 0.1.4
 
 ### Patch Changes
