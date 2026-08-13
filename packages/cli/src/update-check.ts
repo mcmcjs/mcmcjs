@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Command } from "commander";
 import pc from "picocolors";
+import { installKind, selfInvocation } from "./self";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 5_000;
@@ -52,9 +53,14 @@ export function isStale(cache: UpdateCache | undefined, nowMs = Date.now()): boo
   return !Number.isFinite(at) || nowMs - at > CHECK_INTERVAL_MS;
 }
 
-export function updateNote(latest: string, current: string): string {
+export function updateNote(latest: string, current: string, kind = installKind()): string {
+  // Telling a curl-installed binary to run npm would install a second copy.
+  const how =
+    kind === "binary"
+      ? "curl -fsSL https://mcmcjs.github.io/mcmcjs/install.sh | sh"
+      : "npm install -g mcmcjs";
   return pc.dim(
-    `\nnote: mcmcjs ${latest} is available (you have ${current}). Update with: npm install -g mcmcjs\n`,
+    `\nnote: mcmcjs ${latest} is available (you have ${current}). Update with: ${how}\n`,
   );
 }
 
@@ -74,11 +80,9 @@ export function maybeNotifyUpdate(currentVersion: string): void {
       process.stderr.write(updateNote(cache.latest, currentVersion));
     });
   }
-  if (isStale(cache) && process.argv[1]) {
-    const child = spawn(process.execPath, [process.argv[1], "__update-check"], {
-      detached: true,
-      stdio: "ignore",
-    });
+  if (isStale(cache)) {
+    const self = selfInvocation(["__update-check"]);
+    const child = spawn(self.command, self.args, { detached: true, stdio: "ignore" });
     child.on("error", () => {});
     child.unref();
   }

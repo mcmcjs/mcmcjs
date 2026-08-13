@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { type LedgerEntry, readLedger } from "@mcmcjs/core";
 import { assembleBundle } from "./export";
+import { selfInvocation } from "./self";
 
 declare const __MCMC_VERSION__: string;
 
@@ -155,9 +156,8 @@ export async function ensureDaemon(): Promise<DaemonState> {
     await stopDaemon();
   }
 
-  const entry = process.argv[1];
-  if (!entry) throw new Error("cannot locate the mcmc entry point");
-  const child = spawn(process.execPath, [entry, "__report-daemon"], {
+  const self = selfInvocation(["__report-daemon"]);
+  const child = spawn(self.command, self.args, {
     detached: true,
     stdio: "ignore",
   });

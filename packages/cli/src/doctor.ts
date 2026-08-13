@@ -2,6 +2,26 @@ import type { EngineContext, EngineRegistry, HealthReport, NamedToolInfo } from 
 import type { Command } from "commander";
 import pc from "picocolors";
 import { findDaemon } from "./report-daemon";
+import { copiesOnPath, installKind, looksLikeNpm } from "./self";
+
+/**
+ * Which copy of the CLI is running, and whether another one shadows it. The
+ * npm package and the install script put `mcmc` in different directories, so
+ * having both is easy and silently running the older one is the trap.
+ */
+export function formatInstall(copies: readonly string[], kind: "binary" | "npm"): string {
+  const how = kind === "binary" ? "standalone binary" : "npm package";
+  const first = copies[0];
+  const lines = [`install: ${how}${first ? ` at ${first}` : ""}`];
+  for (const other of copies.slice(1)) {
+    lines.push(
+      pc.yellow(
+        `warning: another mcmc is on PATH at ${other}${looksLikeNpm(other) ? " (npm)" : ""}; the one above wins`,
+      ),
+    );
+  }
+  return lines.join("\n");
+}
 
 export function formatTool(tool: NamedToolInfo): string {
   if (!tool.found) return `${tool.name.padEnd(8)} ${pc.red("not found")}`;
@@ -66,11 +86,12 @@ export function registerDoctor(
         process.stdout.write(
           `${reports.map((r) => formatReport(r.report, r.displayName)).join("\n\n")}\n`,
         );
+        process.stdout.write(`\n${formatInstall(copiesOnPath(), installKind())}\n`);
         // A background listener should never be invisible.
         const daemon = await findDaemon();
         if (daemon) {
           process.stdout.write(
-            `\nreport server: running on port ${daemon.port} (pid ${daemon.pid}); stop it with \`mcmc report stop\`\n`,
+            `report server: running on port ${daemon.port} (pid ${daemon.pid}); stop it with \`mcmc report stop\`\n`,
           );
         }
       }

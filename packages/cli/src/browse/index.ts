@@ -22,6 +22,7 @@ import {
   terminalOptions,
 } from "../plot";
 import { openInBrowser, resolveAppUrl, stageReport } from "../report";
+import { selfInvocation } from "../self";
 import { formatRunDetail, readRecord } from "../show";
 import { locateStore } from "../store-cli";
 import { buildSummaryRows, formatSummaryTable } from "../summary";
@@ -120,10 +121,9 @@ function cancelled<T>(value: T | symbol): value is symbol {
 
 /** Runs a command in a fresh process so it owns the terminal while it works. */
 function runCommand(args: string[]): void {
-  const argv = process.argv[1];
-  if (!argv) throw new Error("cannot locate the mcmc entry point");
   write(pc.dim(`$ mcmc ${args.join(" ")}`));
-  spawnSync(process.execPath, [argv, ...args], { stdio: "inherit" });
+  const self = selfInvocation(args);
+  spawnSync(self.command, self.args, { stdio: "inherit" });
 }
 
 async function exploreVariables(samples: Samples): Promise<void> {
