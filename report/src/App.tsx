@@ -18,7 +18,6 @@ function parseHash(): DeepLink | null {
 export function App() {
   const { resolved, toggle } = useTheme();
   const [deepLink, setDeepLink] = useState<DeepLink | null>(parseHash);
-  const [connect, setConnect] = useState<string | null>(() => parseHash()?.connect ?? null);
   const [current, setCurrent] = useState<StoredRun | null>(null);
 
   const openRun = useCallback((id: string) => {
@@ -34,7 +33,6 @@ export function App() {
     const onHash = (): void => {
       const link = parseHash();
       setDeepLink(link);
-      if (link?.connect) setConnect(link.connect);
       setCurrent((current) => (link && current && current.id !== link.runId ? null : current));
     };
     window.addEventListener("hashchange", onHash);
@@ -69,12 +67,6 @@ export function App() {
     );
   }
   return (
-    <Landing
-      deepLink={deepLink}
-      connect={connect ?? undefined}
-      onOpen={openRun}
-      onToggleTheme={toggle}
-      themeLabel={themeLabel}
-    />
+    <Landing deepLink={deepLink} onOpen={openRun} onToggleTheme={toggle} themeLabel={themeLabel} />
   );
 }

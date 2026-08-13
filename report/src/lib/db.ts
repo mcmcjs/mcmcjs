@@ -64,6 +64,32 @@ export function putRun(bundle: RunBundle): Promise<StoredRun> {
   return tx(RUNS, "readwrite", (s) => s.put(stored)).then(() => stored);
 }
 
+/**
+ * What the app remembers about the CLI's store server. The token outlives
+ * daemon restarts, so a reloaded tab reconnects without a fresh CLI link.
+ */
+export interface Pairing {
+  /** Daemon root, e.g. http://127.0.0.1:7788. */
+  origin: string;
+  token: string;
+  /** The store last opened through the CLI, so a reload lands where it left. */
+  storeId?: string;
+}
+
+const PAIRING_KEY = "cli-pairing";
+
+export function getPairing(): Promise<Pairing | undefined> {
+  return tx<Pairing | undefined>(
+    HANDLES,
+    "readonly",
+    (s) => s.get(PAIRING_KEY) as IDBRequest<Pairing | undefined>,
+  ).catch(() => undefined);
+}
+
+export function putPairing(pairing: Pairing): Promise<unknown> {
+  return tx(HANDLES, "readwrite", (s) => s.put(pairing, PAIRING_KEY)).catch(() => undefined);
+}
+
 export function listRoots(): Promise<FileSystemDirectoryHandle[]> {
   return tx<FileSystemDirectoryHandle[]>(
     ROOTS,

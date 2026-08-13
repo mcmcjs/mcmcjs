@@ -2,7 +2,17 @@ import type { LedgerEntry } from "@mcmcjs/core";
 import { parseRunBundle } from "@mcmcjs/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type Ambient, startAmbient } from "../lib/ambient";
-import { addRoot, listRoots, putRun } from "../lib/db";
+import {
+  type Endpoint,
+  endpointFromPairing,
+  fetchStores,
+  ledgerUrl,
+  linkedRunUrl,
+  parseConnect,
+  runUrl,
+  toPairing,
+} from "../lib/cli-server";
+import { addRoot, getPairing, listRoots, putPairing, putRun } from "../lib/db";
 import { locateStore, readLedgerEntries, readStoreRun, timeAgo } from "../lib/runs";
 
 export interface DeepLink {
@@ -25,18 +35,21 @@ function VerdictDot({ entry }: { entry: LedgerEntry }) {
 
 export function Landing({
   deepLink,
-  connect,
   onOpen,
   onToggleTheme,
   themeLabel,
 }: {
   deepLink: DeepLink | null;
-  connect?: string;
   onOpen: (id: string) => void;
   onToggleTheme: () => void;
   themeLabel: string;
 }) {
   const [servedRuns, setServedRuns] = useState<LedgerEntry[] | null>(null);
+  const [endpoint, setEndpoint] = useState<Endpoint | null>(null);
+  const [reachable, setReachable] = useState<"unknown" | "probing" | "ok" | "unreachable">(
+    "unknown",
+  );
+  const [storePath, setStorePath] = useState<string | null>(null);
   const [handoff, setHandoff] = useState<"idle" | "pending" | "failed">(
     deepLink?.connect ? "pending" : "idle",
   );
@@ -58,63 +71,99 @@ export function Landing({
     [onOpen],
   );
 
-  // A freshly-run CLI serves the store on the loopback interface; fetching the
-  // linked run opens it with no file access at all. The browser may hold the
-  // first fetch on a local-network permission prompt.
+  // A CLI link carries the store server's port and token. Saving them is what
+  // lets a later visit reconnect on its own, with no link and no file access.
   useEffect(() => {
     if (!deepLink?.connect) return;
+    const parsed = parseConnect(deepLink.connect);
+    if (!parsed) return;
+    setEndpoint(parsed);
+    if (!parsed.legacy) void putPairing(toPairing(parsed));
+  }, [deepLink]);
+
+  // No link: fall back to the last pairing, so a reload or a bookmark still
+  // finds the CLI.
+  useEffect(() => {
+    if (deepLink?.connect) return;
+    let cancelled = false;
+    getPairing().then((pairing) => {
+      if (!cancelled && pairing) setEndpoint(endpointFromPairing(pairing));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [deepLink]);
+
+  // The linked run opens itself; the browser may hold this first fetch while it
+  // asks for local-network permission.
+  useEffect(() => {
+    if (!endpoint || !deepLink?.runId) return;
+    const url = linkedRunUrl(endpoint, deepLink.runId);
+    if (!url) return;
     let cancelled = false;
     setHandoff("pending");
-    openBundleUrl(deepLink.connect).catch(() => {
+    openBundleUrl(url).catch(() => {
       if (!cancelled) setHandoff("failed");
     });
     return () => {
       cancelled = true;
     };
-  }, [deepLink, openBundleUrl]);
+  }, [endpoint, deepLink, openBundleUrl]);
 
-  // While `mcmc report --watch` runs, the CLI serves the whole store; listing
-  // it needs no file access and works in every browser.
+  // Whatever the CLI is serving, listed without any file access. Retrying
+  // replaces the endpoint object, which re-runs this.
   useEffect(() => {
-    if (!connect) return;
+    if (!endpoint) return;
     let cancelled = false;
-    fetch(`${connect}/ledger`)
+    setReachable("probing");
+    fetch(ledgerUrl(endpoint))
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error())))
       .then((entries: LedgerEntry[]) => {
-        if (!cancelled) setServedRuns(entries);
+        if (cancelled) return;
+        setServedRuns(entries);
+        setReachable("ok");
+        return fetchStores(endpoint).then((stores) => {
+          if (!cancelled) setStorePath(stores.find((s) => s.id === endpoint.storeId)?.path ?? null);
+        });
       })
       .catch(() => {
-        if (!cancelled) setServedRuns(null);
+        if (cancelled) return;
+        setServedRuns(null);
+        setReachable("unreachable");
       });
     return () => {
       cancelled = true;
     };
-  }, [connect]);
+  }, [endpoint]);
 
   const openServedRun = useCallback(
     async (entry: LedgerEntry) => {
+      if (!endpoint) return;
       setError(null);
       try {
-        await openBundleUrl(`${connect}/run/${entry.id}`);
+        await openBundleUrl(runUrl(endpoint, entry.id));
       } catch (err) {
         setServedRuns(null);
-        setError(`${(err as Error).message}; the mcmc report server may have exited`);
+        setReachable("unreachable");
+        setError((err as Error).message);
       }
     },
-    [connect, openBundleUrl],
+    [endpoint, openBundleUrl],
   );
 
   const openLinkedRun = useCallback(async () => {
-    if (!deepLink?.connect) return;
+    if (!endpoint || !deepLink?.runId) return;
+    const url = linkedRunUrl(endpoint, deepLink.runId);
+    if (!url) return;
     setError(null);
     setHandoff("pending");
     try {
-      await openBundleUrl(deepLink.connect);
+      await openBundleUrl(url);
     } catch (err) {
       setHandoff("failed");
-      setError(`${(err as Error).message}; the mcmc report server may have exited`);
+      setError((err as Error).message);
     }
-  }, [deepLink, openBundleUrl]);
+  }, [endpoint, deepLink, openBundleUrl]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -310,7 +359,7 @@ export function Landing({
               )
             )}
           </div>
-          {deepLink.connect ? (
+          {endpoint ? (
             <button type="button" className="btn" onClick={openLinkedRun}>
               Open run
             </button>
@@ -330,9 +379,30 @@ export function Landing({
         </div>
       )}
 
+      {endpoint && reachable === "unreachable" && (
+        <div className="banner" role="alert">
+          <div>
+            <div>Cannot reach the mcmc store server</div>
+            <div className="hint">
+              Start it with <code>mcmc report</code>, and allow local network access if the browser
+              asks. A run fitted on another machine needs <code>mcmc export bundle</code> instead,
+              dropped here.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setEndpoint((current) => (current ? { ...current } : current))}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {servedRuns && (
         <section className="block">
           <p className="eyebrow">Runs from the CLI</p>
+          {storePath && <p className="hint">{storePath}</p>}
           <table className="ledger">
             <thead>
               <tr>
