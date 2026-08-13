@@ -1,10 +1,7 @@
 name: Site publish
 
 # Publishes the site to https://mcmcjs.github.io/ by pushing the built output to
-# the deploy branch of mcmcjs/mcmcjs.github.io, which holds nothing else. This
-# is the only site build: the old project site at /mcmcjs/ is frozen, still
-# served from this repo's gh-pages branch so binaries released with its URLs
-# baked in keep working.
+# the deploy branch of mcmcjs/mcmcjs.github.io, which holds nothing else.
 #
 # Needs SITE_TOKEN, a token with contents:write on mcmcjs/mcmcjs.github.io
 # (deploy keys are disabled for that org). Without it this workflow skips, so a
