@@ -8,6 +8,7 @@
 	},
 	"scripts": {
 		"dev": "astro dev",
+		"prebuild": "node ../scripts/gen-latest-version.mjs",
 		"build": "astro build && pagefind --site dist",
 		"build:astro": "astro build",
 		"index": "pagefind --site dist",

@@ -31,3 +31,8 @@ mcmcjs-sandbox
 
 # run store created by running the examples (or any `mcmc run`)
 .mcmc/
+
+# single-file binaries, and the version stamp the docs build writes for the
+# install script
+dist-bin/
+docs/public/latest.txt

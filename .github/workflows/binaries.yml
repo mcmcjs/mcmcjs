@@ -1,0 +1,59 @@
+name: Binaries
+
+# Attaches single-file `mcmc` binaries to each CLI release, so the install
+# script can fetch one without npm or Node.js. Runs when the release workflow
+# publishes an mcmcjs@* tag, and can be re-run by hand against an existing tag.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach binaries to (e.g. mcmcjs@0.25.1)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # Only the CLI package ships a binary; the libraries do not.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'mcmcjs@')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+      - uses: ./.github/actions/setup
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Bun cross-compiles every target from one runner. The binaries embed a
+      # runtime and are ~100 MB each, so they ship compressed (about 38 MB).
+      - name: Build the binaries
+        run: |
+          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64; do
+            echo "building $target"
+            node scripts/build-binary.mjs --target "$target" --outdir dist-bin
+          done
+          ls -lh dist-bin
+
+      - name: Package
+        working-directory: dist-bin
+        run: |
+          for file in mcmc-*; do
+            case "$file" in
+              *.exe) tar -czf "${file%.exe}.tar.gz" --transform 's|.*|mcmc.exe|' "$file" ;;
+              *) tar -czf "$file.tar.gz" --transform 's|.*|mcmc|' "$file" ;;
+            esac
+            rm "$file"
+          done
+          sha256sum ./*.tar.gz | sed 's| \./| |' > checksums.txt
+          ls -lh
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+        run: gh release upload "$TAG" dist-bin/* --clobber --repo "$GITHUB_REPOSITORY"
