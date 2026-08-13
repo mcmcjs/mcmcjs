@@ -1,5 +1,13 @@
 # mcmcjs
 
+## 0.25.0
+
+### Minor Changes
+
+- eef1c54: Add mcmc browse, an interactive browser over the project's runs and model files: filter as you type, then read a run's summary, diagnostics, per-variable traces, and plots, launch or repeat a fit, or delete a run; bare `mcmc` opens it when a terminal is attached and still prints the help otherwise.
+- 5ffbcae: The report app now pairs with the CLI instead of being handed a one-shot link: `mcmc report` runs a background store server on a stable port with a token the app remembers, so a reloaded or bookmarked tab reconnects on its own and lists every store you have reported from. The server caches preflights, idles out after 30 minutes, and is managed with `mcmc report status` and `mcmc report stop`; `mcmc run --report` opens a finished run straight away.
+- 1ace7d2: mcmc run with no input now offers the project's model files to pick from when a terminal is attached, and still fails with a clear message when piped.
+
 ## 0.24.0
 
 ### Minor Changes
