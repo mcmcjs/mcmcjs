@@ -40,6 +40,8 @@ const GROUPS: Record<string, string> = {
   julia: "Toolchain:",
   stan: "Toolchain:",
   daemon: "Toolchain:",
+  mcp: "Toolchain:",
+  skill: "Toolchain:",
   update: "Toolchain:",
 };
 

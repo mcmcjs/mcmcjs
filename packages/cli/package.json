@@ -58,6 +58,7 @@
     "@mcmcjs/julia": "workspace:*",
     "@mcmcjs/plots": "workspace:*",
     "@mcmcjs/stan": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "commander": "^15.0.0",
     "picocolors": "^1.1.1",
     "zod": "^4.4.3"

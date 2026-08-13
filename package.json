@@ -31,6 +31,7 @@
     "verify": "pnpm build && pnpm check && pnpm typecheck && pnpm test",
     "sandbox": "sh scripts/sandbox.sh",
     "gen:templates": "node scripts/gen-templates.mjs",
+    "gen:skill": "node scripts/gen-skill.mjs",
     "build:binary": "node scripts/build-binary.mjs",
     "changeset": "changeset",
     "version-packages": "changeset version",

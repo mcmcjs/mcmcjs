@@ -61,5 +61,7 @@ See [Convert DoodleBUGS](/docs/guides/convert/).
 | `stan version <sub>` | manage installed CmdStan versions: `list`, `status`, `add`, `remove` | `--verbose` (add) |
 | `daemon <sub>` | manage persistent Julia workers: `status`, `stop` | |
 | `update` | update mcmc in place: replaces a binary install from the latest release, or runs npm for an npm install | `--check`, `--force`, `--json` |
+| `mcp` | run as an MCP server so an assistant can drive mcmc | |
+| `skill <sub>` | install the agent skill (`skill install`, `skill show`) | `--project`, `--force`, `--json` |
 
 See [Manage Julia](/docs/guides/julia/).

@@ -11,6 +11,7 @@ import { registerFit } from "./fit";
 import { registerInit } from "./init";
 import { registerJulia } from "./julia";
 import { registerCompare, registerLoo } from "./loo";
+import { registerMcp } from "./mcp";
 import { registerPlot } from "./plot";
 import { registerPredict } from "./predict";
 import { registerReport } from "./report";
@@ -21,6 +22,7 @@ import { registerSandbox } from "./sandbox";
 import { registerSbc } from "./sbc";
 import { registerSetup } from "./setup";
 import { registerShow } from "./show";
+import { registerSkill } from "./skill";
 import { registerStan } from "./stan";
 import { registerSummary } from "./summary";
 import { registerUpdate } from "./update";
@@ -62,6 +64,8 @@ export function registerAll(
   registerJulia(program, ctx);
   registerStan(program, ctx);
   registerDaemon(program);
+  registerMcp(program);
+  registerSkill(program);
   registerUpdate(program, version);
   registerUpdateCheck(program);
 }
