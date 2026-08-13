@@ -10,10 +10,11 @@ It bootstraps the toolchain for you, runs inference as a subprocess, and turns t
 ## Install
 
 ```bash
-npm i -g mcmcjs
+curl -fsSL https://mcmcjs.github.io/mcmcjs/install.sh | sh   # single binary, no Node.js needed
+npm i -g mcmcjs                                              # or from npm
 ```
 
-This installs the `mcmc` binary.
+Either way you get the `mcmc` command.
 The libraries are published under the `@mcmcjs/*` scope on npm.
 
 ## Quickstart

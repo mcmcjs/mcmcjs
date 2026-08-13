@@ -13,6 +13,12 @@ Every command supports `--json` and clear exit codes (`0` ok, `1` error, `2` ran
 npm install -g mcmcjs
 ```
 
+Or install a single-file binary, with no Node.js or npm involved:
+
+```bash
+curl -fsSL https://mcmcjs.github.io/mcmcjs/install.sh | sh
+```
+
 ## Commands
 
 ```bash

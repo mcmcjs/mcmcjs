@@ -4,10 +4,24 @@ title: Installation
 description: Install the mcmc CLI and provision the Julia runtime.
 ---
 
-MCMC.js ships as the `mcmcjs` npm package, which installs the `mcmc` binary.
+MCMC.js installs the `mcmc` command either as a single-file binary or from npm.
 Inference runs in a backend runtime (Julia, or CmdStan for Stan), which the CLI can install for you.
 
 ## 1. Install the CLI
+
+### Without Node.js
+
+The install script downloads one self-contained binary for your platform (macOS and Linux, x64 and arm64) and needs neither Node.js nor npm.
+
+```bash
+curl -fsSL https://mcmcjs.github.io/mcmcjs/install.sh | sh
+```
+
+It lands in `~/.local/bin` by default; set `MCMC_INSTALL_DIR` to choose somewhere else, or `MCMC_VERSION` to pin a release.
+The script verifies the download against the release checksums and tells you if `~/.local/bin` is not on your `PATH`.
+Upgrade by running it again.
+
+### With npm
 
 You need [Node.js](https://nodejs.org) 22 or newer.
 
@@ -15,12 +29,13 @@ You need [Node.js](https://nodejs.org) 22 or newer.
 npm install -g mcmcjs
 ```
 
-This puts the `mcmc` binary on your `PATH`.
-Check it:
+Either way, check it:
 
 ```bash
 mcmc --version
 ```
+
+<div class="callout note"><p>Installing both ways leaves two copies of <code>mcmc</code>, and whichever comes first on your <code>PATH</code> wins. The install script says so when it finds an existing copy, and <code>mcmc doctor</code> names the one that is running and warns about the other. Remove the npm copy with <code>npm rm -g mcmcjs</code>, or the binary with <code>rm ~/.local/bin/mcmc</code>.</p></div>
 
 ## 2. Provision Julia
 
