@@ -75,6 +75,27 @@ export function inspectSource(path: string, source: string, entry = DEFAULT_ENTR
 }
 
 /**
+ * Whether a .toml/.json file is an inference spec. A run bundle also carries a
+ * schema_version, so the shape has to decide: a spec names a backend, a model,
+ * and a sampler.
+ */
+export function looksLikeSpec(source: string): boolean {
+  const text = source.trimStart();
+  if (text.startsWith("{")) {
+    try {
+      const doc = JSON.parse(text) as Record<string, unknown>;
+      if (typeof doc.kind === "string" && doc.kind.startsWith("mcmcjs-")) return false;
+      return ["backend", "model", "sampler"].every(
+        (key) => typeof doc[key] === "object" && doc[key] !== null,
+      );
+    } catch {
+      return false;
+    }
+  }
+  return /(^|\n)\s*\[backend\]/.test(source) && /(^|\n)\s*\[sampler\]/.test(source);
+}
+
+/**
  * The one line that makes a model file runnable, when we can work it out. A
  * fit calls the entry with the data table, so a model taking named arguments
  * needs an adapter that pulls them out of it.

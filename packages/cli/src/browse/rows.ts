@@ -9,6 +9,8 @@ export interface RunItem {
   /** The short ref the other commands accept, e.g. "@3". */
   ref: string;
   entry: LedgerEntry;
+  /** The store this run belongs to; a project can have several. */
+  storeDir: string;
 }
 
 export interface ModelItem {

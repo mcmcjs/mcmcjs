@@ -10,11 +10,12 @@ import {
   removeLedgerEntries,
   runDir,
   type Samples,
+  STORE_DIR_NAME,
 } from "@mcmcjs/core";
 import type { Command } from "commander";
 import pc from "picocolors";
 import { buildDiagnosticsReport, formatReportTable } from "../diagnose";
-import { adapterFor, inspectSource, type ModelSurface } from "../model-file";
+import { adapterFor, inspectSource, looksLikeSpec, type ModelSurface } from "../model-file";
 import {
   type PlotKind,
   renderTerminalPlot,
@@ -78,7 +79,7 @@ export function scanModels(root: string, depth = SCAN_DEPTH): string[] {
 
 function isSpecFile(path: string): boolean {
   try {
-    return readFileSync(path, "utf8").includes("schema_version");
+    return looksLikeSpec(readFileSync(path, "utf8"));
   } catch {
     return false;
   }
@@ -98,10 +99,55 @@ function readSurface(path: string): ModelSurface | undefined {
   }
 }
 
-export function runItems(entries: readonly LedgerEntry[]): RunItem[] {
-  return [...entries]
-    .reverse()
-    .map((entry, i) => ({ kind: "run" as const, ref: `@${i + 1}`, entry }));
+/**
+ * Every run store under `root`, plus the one above it. A `mcmc run` puts its
+ * store beside the model, so a repo with an examples directory keeps its runs
+ * there rather than at the root.
+ */
+export function findStores(root: string, depth = SCAN_DEPTH): string[] {
+  const stores = new Set<string>();
+  const above = findStore(root);
+  if (above) stores.add(above);
+  const walk = (dir: string, left: number): void => {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name === STORE_DIR_NAME) {
+        stores.add(join(dir, entry.name));
+        continue;
+      }
+      if (left > 0 && !entry.name.startsWith(".") && !SKIP_DIRS.has(entry.name)) {
+        walk(join(dir, entry.name), left - 1);
+      }
+    }
+  };
+  walk(root, depth);
+  return [...stores];
+}
+
+/** The runs of every store, newest first, each remembering where it lives. */
+export function runItems(
+  stores: readonly { storeDir: string; entries: readonly LedgerEntry[] }[],
+): RunItem[] {
+  return stores
+    .flatMap(({ storeDir, entries }) => entries.map((entry) => ({ storeDir, entry })))
+    .sort((a, b) => b.entry.started_at.localeCompare(a.entry.started_at))
+    .map(({ storeDir, entry }, i) => ({
+      kind: "run" as const,
+      ref: `@${i + 1}`,
+      entry,
+      storeDir,
+    }));
+}
+
+/** Where a run's model actually is, resolved against its own store. */
+export function runModelPath(item: RunItem): string {
+  return resolve(dirname(item.storeDir), item.entry.model_path);
 }
 
 export function modelItems(
@@ -116,7 +162,9 @@ export function modelItems(
       path,
       label,
       language: languageOf(path),
-      runs: runs.filter((run) => run.entry.model_path === label).length,
+      // Each run's model path is relative to its own store, which may sit in a
+      // subdirectory, so compare resolved paths.
+      runs: runs.filter((run) => runModelPath(run) === path).length,
       // A spec is always runnable; a model file needs an entry function.
       ready: languageOf(path) === "spec" || (readSurface(path)?.hasEntry ?? true),
     };
@@ -214,8 +262,8 @@ async function choosePlot(samples: Samples): Promise<void> {
 }
 
 /** Actions on one run; returns to the list when the user backs out. */
-async function actOnRun(storeDir: string, item: RunItem): Promise<void> {
-  const { entry, ref } = item;
+async function actOnRun(item: RunItem): Promise<void> {
+  const { entry, ref, storeDir } = item;
   const dir = runDir(storeDir, entry.id);
   for (;;) {
     const action = await select({
@@ -294,7 +342,7 @@ async function actOnModel(
   runs: readonly RunItem[],
 ): Promise<void> {
   for (;;) {
-    const mine = runs.filter((run) => run.entry.model_path === item.label);
+    const mine = runs.filter((run) => runModelPath(run) === item.path);
     const action = await select({
       message: `${item.label} ${pc.dim(`${item.language} · esc to go back`)}`,
       showInstructions: false,
@@ -334,28 +382,40 @@ async function actOnModel(
         [{ label: "Runs", items: runPickables(mine), empty: "no runs yet" }],
         { escape: "back" },
       );
-      if (chosen && storeDir) await actOnRun(storeDir, chosen);
+      if (chosen) await actOnRun(chosen);
     }
   }
 }
 
 export async function browse(opts: { store?: string } = {}): Promise<void> {
-  let storeDir = opts.store ? locateStore(opts.store) : findStore(process.cwd());
-  const root = storeDir ? dirname(resolve(storeDir)) : process.cwd();
+  const pinned = opts.store ? locateStore(opts.store) : undefined;
+  const root = pinned ? dirname(resolve(pinned)) : process.cwd();
   const models = modelItems(root, scanModels(root), []);
-  if (!storeDir && models.length === 0) {
+  const stores = () => (pinned ? [pinned] : findStores(root));
+  if (stores().length === 0 && models.length === 0) {
     log.warn("no runs and no model files here");
     log.message("Start one with `mcmc init demo`, then `mcmc run demo/model.jl`.");
     return;
   }
 
   intro(pc.bold("mcmc"));
-  log.message(pc.dim(storeDir ? `store ${storeDir}` : `no run store yet · ${root}`));
+  const found = stores();
+  log.message(
+    pc.dim(
+      found.length === 1
+        ? `store ${found[0]}`
+        : found.length > 1
+          ? `${found.length} run stores under ${root}`
+          : `no run store yet · ${root}`,
+    ),
+  );
 
   for (;;) {
-    // A run launched from here creates the store, so keep looking until it exists.
-    if (!storeDir) storeDir = findStore(root);
-    const runs = storeDir ? runItems(readLedger(storeDir).runs) : [];
+    // Re-read every time: a run launched from here creates or fills a store,
+    // and it lands beside the model rather than at the root.
+    const runs = runItems(
+      stores().map((storeDir) => ({ storeDir, entries: readLedger(storeDir).runs })),
+    );
     const scopes: [Scope<RunItem>, Scope<ModelItem>] = [
       {
         label: "Runs",
@@ -372,8 +432,8 @@ export async function browse(opts: { store?: string } = {}): Promise<void> {
       scopes as unknown as Scope<RunItem | ModelItem>[],
     );
     if (!chosen) break;
-    if (chosen.kind === "run" && storeDir) await actOnRun(storeDir, chosen);
-    else if (chosen.kind === "model") await actOnModel(storeDir, chosen, runs);
+    if (chosen.kind === "run") await actOnRun(chosen);
+    else await actOnModel(pinned, chosen, runs);
   }
   outro(pc.dim("bye"));
 }
@@ -390,8 +450,9 @@ export function interactive(): boolean {
  */
 export async function pickModel(root = process.cwd()): Promise<string | undefined> {
   if (!interactive()) return undefined;
-  const storeDir = findStore(root);
-  const runs = storeDir ? runItems(readLedger(storeDir).runs) : [];
+  const runs = runItems(
+    findStores(root).map((storeDir) => ({ storeDir, entries: readLedger(storeDir).runs })),
+  );
   const models = modelItems(root, scanModels(root), runs);
   if (models.length === 0) return undefined;
   const chosen = await pick<ModelItem>(

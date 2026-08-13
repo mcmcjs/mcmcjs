@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LedgerEntry } from "@mcmcjs/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { modelItems, runItems, scanModels } from "../../src/browse";
+import { findStores, modelItems, runItems, scanModels } from "../../src/browse";
 
 let dir: string;
 
@@ -23,12 +23,23 @@ function file(relative: string, contents = ""): string {
 }
 
 const MODEL = "using Turing\n@model function m(y)\n  y ~ Normal()\nend\n";
+const SPEC = [
+  'schema_version = "0"',
+  "seed = 1",
+  "[backend]",
+  'id = "turing"',
+  "[model]",
+  'kind = "file"',
+  'path = "./m.jl"',
+  "[sampler]",
+  "draws = 10",
+].join("\n");
 
 describe("scanModels", () => {
   it("finds model files and specs, and nothing else", () => {
     file("model.jl", MODEL);
     file("model.stan", "parameters { real mu; }\nmodel { mu ~ normal(0,1); }");
-    file("spec.toml", 'schema_version = "0"');
+    file("spec.toml", SPEC);
     file("notes.md", "# hi");
     file("config.toml", "[tool]\nvalue = 1");
     const found = scanModels(dir).map((path) => path.slice(dir.length + 1));
@@ -44,6 +55,17 @@ describe("scanModels", () => {
     file("test/runtests.jl", 'using Test\n@testset "x" begin\nend\n');
     const found = scanModels(dir).map((path) => path.slice(dir.length + 1));
     expect(found).toEqual(["model.jl"]);
+  });
+
+  // A run bundle carries a schema_version too, and running one is an error.
+  it("does not mistake an exported run bundle for a spec", () => {
+    file("spec.toml", SPEC);
+    file(
+      "demo.mcmcrun.json",
+      JSON.stringify({ kind: "mcmcjs-run-bundle", schema_version: "0", entry: {} }),
+    );
+    const found = scanModels(dir).map((path) => path.slice(dir.length + 1));
+    expect(found).toEqual(["spec.toml"]);
   });
 
   it("keeps a file that only adapts a model defined elsewhere", () => {
@@ -89,12 +111,19 @@ function entry(over: Partial<LedgerEntry> = {}): LedgerEntry {
   };
 }
 
+const at = (iso: string, over: Partial<LedgerEntry> = {}) => entry({ started_at: iso, ...over });
+
 describe("runItems", () => {
   it("numbers runs newest first, matching the refs the other commands take", () => {
     const items = runItems([
-      entry({ id: "oldest" }),
-      entry({ id: "middle" }),
-      entry({ id: "newest" }),
+      {
+        storeDir: "/p/.mcmc",
+        entries: [
+          at("2026-08-01T00:00:00Z", { id: "oldest" }),
+          at("2026-08-02T00:00:00Z", { id: "middle" }),
+          at("2026-08-03T00:00:00Z", { id: "newest" }),
+        ],
+      },
     ]);
     expect(items.map((item) => [item.ref, item.entry.id])).toEqual([
       ["@1", "newest"],
@@ -103,10 +132,34 @@ describe("runItems", () => {
     ]);
   });
 
+  // A run's store sits beside its model, so one project can hold several.
+  it("merges several stores by time, remembering where each run lives", () => {
+    const items = runItems([
+      { storeDir: "/p/a/.mcmc", entries: [at("2026-08-01T00:00:00Z", { id: "a1" })] },
+      { storeDir: "/p/b/.mcmc", entries: [at("2026-08-05T00:00:00Z", { id: "b1" })] },
+    ]);
+    expect(items.map((item) => [item.ref, item.entry.id, item.storeDir])).toEqual([
+      ["@1", "b1", "/p/b/.mcmc"],
+      ["@2", "a1", "/p/a/.mcmc"],
+    ]);
+  });
+
   it("leaves the ledger untouched", () => {
     const ledger = [entry({ id: "a" }), entry({ id: "b" })];
-    runItems(ledger);
+    runItems([{ storeDir: "/p/.mcmc", entries: ledger }]);
     expect(ledger.map((e) => e.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("findStores", () => {
+  it("finds a store beside a model in a subdirectory, not just above", () => {
+    mkdirSync(join(dir, "examples", "coin", ".mcmc"), { recursive: true });
+    mkdirSync(join(dir, "node_modules", "pkg", ".mcmc"), { recursive: true });
+    expect(findStores(dir)).toEqual([join(dir, "examples", "coin", ".mcmc")]);
+  });
+
+  it("returns nothing when the project has no runs at all", () => {
+    expect(findStores(dir)).toEqual([]);
   });
 });
 
@@ -115,9 +168,14 @@ describe("modelItems", () => {
     file("model.jl", MODEL);
     file("sub/other.jl", MODEL);
     const runs = runItems([
-      entry({ model_path: "model.jl" }),
-      entry({ model_path: "model.jl" }),
-      entry({ model_path: "sub/other.jl" }),
+      {
+        storeDir: join(dir, ".mcmc"),
+        entries: [
+          entry({ model_path: "model.jl" }),
+          entry({ model_path: "model.jl" }),
+          entry({ model_path: "sub/other.jl" }),
+        ],
+      },
     ]);
     const items = modelItems(dir, [join(dir, "model.jl"), join(dir, "sub", "other.jl")], runs);
     expect(items.map((item) => [item.label, item.language, item.runs])).toEqual([
@@ -126,10 +184,24 @@ describe("modelItems", () => {
     ]);
   });
 
+  // The bug this pins: `mcmc run` puts the store beside the model, so a run
+  // recorded under examples/ has a model_path relative to that store.
+  it("counts runs recorded in a store nested beside the model", () => {
+    file("examples/coin/coin.jl", MODEL);
+    const runs = runItems([
+      {
+        storeDir: join(dir, "examples", "coin", ".mcmc"),
+        entries: [entry({ model_path: "coin.jl" })],
+      },
+    ]);
+    const items = modelItems(dir, [join(dir, "examples", "coin", "coin.jl")], runs);
+    expect(items.map((item) => [item.label, item.runs])).toEqual([["examples/coin/coin.jl", 1]]);
+  });
+
   it("marks a model that has no entry function as not ready to run", () => {
     file("bare.jl", MODEL);
     file("ready.jl", `${MODEL}build_model(data) = m(data.y)\n`);
-    file("spec.toml", 'schema_version = "0"');
+    file("spec.toml", SPEC);
     const items = modelItems(
       dir,
       [join(dir, "bare.jl"), join(dir, "ready.jl"), join(dir, "spec.toml")],

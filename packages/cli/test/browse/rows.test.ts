@@ -44,6 +44,7 @@ const runItem = (over: Partial<LedgerEntry> = {}, ref = "@1"): RunItem => ({
   kind: "run",
   ref,
   entry: entry(over),
+  storeDir: "/p/.mcmc",
 });
 
 describe("runPickables", () => {
