@@ -1,5 +1,11 @@
 # mcmcjs
 
+## 0.28.3
+
+### Patch Changes
+
+- 347fac0: The site moved to https://mcmcjs.github.io/, so the install and uninstall commands, the report app URL, and the update notice all point there.
+
 ## 0.28.2
 
 ### Patch Changes
