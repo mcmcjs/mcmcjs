@@ -95,6 +95,7 @@ describe("modelPickables", () => {
     label: "model.jl",
     language: "julia",
     runs: 3,
+    ready: true,
     ...over,
   });
 
@@ -102,6 +103,12 @@ describe("modelPickables", () => {
     expect(modelPickables([model()])[0]?.row.hint).toBe("julia · 3 runs");
     expect(modelPickables([model({ runs: 1 })])[0]?.row.hint).toBe("julia · 1 run");
     expect(modelPickables([model({ runs: 0 })])[0]?.row.hint).toBe("julia · 0 runs");
+  });
+
+  it("says so when a model cannot be run as it stands", () => {
+    const [row] = modelPickables([model({ ready: false })]);
+    expect(row?.row.hint).toBe("julia · needs a build_model");
+    expect(row?.row.tone).toBe("warn");
   });
 });
 

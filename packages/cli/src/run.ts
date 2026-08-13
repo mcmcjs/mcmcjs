@@ -47,7 +47,7 @@ import { ZodError } from "zod";
 import { pickModel } from "./browse";
 import { convertGraph } from "./convert";
 import { buildDiagnosticsReport, type DiagnosticsReport, formatReportHuman } from "./diagnose";
-import { backendLabel, formatFitResult } from "./fit";
+import { backendLabel, entryHelp, formatFitResult } from "./fit";
 import { installRunner, juliaupBin } from "./julia";
 import { parseFloatOption, parseIntOption } from "./options";
 import { rendererFor } from "./progress";
@@ -841,6 +841,8 @@ export function registerRun(program: Command, ctx: EngineContext): void {
           );
         } else {
           humanOut.write(`${formatFitResult(fit, config.channel, join(dir, "run.json"))}\n`);
+          const help = entryHelp(fit.error, config.modelPath, config.spec.model.entry);
+          if (help) humanOut.write(`${help}\n`);
           // A data-field error with no data provided almost always means the
           // model needs data nobody passed; point at the fix instead of the raw error.
           const noData = !config.dataFile && Object.keys(config.spec.data).length === 0;

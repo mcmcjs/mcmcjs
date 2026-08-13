@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { parseSpec, resolveData } from "@mcmcjs/core";
 import { createFitRunner, type EngineContext, type FitResult } from "@mcmcjs/engine";
@@ -17,6 +17,7 @@ import { resolveCmdStan, runFit as runStanFit, runMatrix as runStanMatrix } from
 import type { Command } from "commander";
 import pc from "picocolors";
 import { installRunner, juliaupBin } from "./julia";
+import { entryAdvice, inspectSource } from "./model-file";
 import { rendererFor, silentProgress } from "./progress";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
@@ -82,6 +83,25 @@ export function formatFitResult(
     return `${pc.yellow("cancelled")}: the fit was stopped before finishing`;
   }
   return `${pc.red("fit failed")}${result.stage ? ` at ${result.stage}` : ""}: ${result.error}`;
+}
+
+/**
+ * Turns the driver's "no entry function" into the line that fixes it. Read
+ * from the failure rather than checked up front, so a model that builds its
+ * entry in some way we cannot see in the text is never refused.
+ */
+export function entryHelp(error: string | undefined, modelPath: string, entry?: string): string {
+  if (!error || !/defines no entry function/.test(error)) return "";
+  try {
+    const advice = entryAdvice(
+      modelPath,
+      inspectSource(modelPath, readFileSync(modelPath, "utf8")),
+      entry,
+    );
+    return advice ? `\n${pc.dim(advice)}` : "";
+  } catch {
+    return "";
+  }
 }
 
 /** Renders a multi-version matrix result for the terminal. */

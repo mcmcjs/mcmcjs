@@ -18,6 +18,8 @@ export interface ModelItem {
   label: string;
   language: string;
   runs: number;
+  /** False when the file declares a model but no entry function to call. */
+  ready: boolean;
 }
 
 export type BrowseItem = RunItem | ModelItem;
@@ -76,8 +78,10 @@ export function modelPickables(items: readonly ModelItem[]): Pickable<ModelItem>
     value: item,
     row: {
       label: item.label.padEnd(width),
-      hint: `${item.language} · ${item.runs === 1 ? "1 run" : `${item.runs} runs`}`,
-      tone: "plain" as const,
+      hint: item.ready
+        ? `${item.language} · ${item.runs === 1 ? "1 run" : `${item.runs} runs`}`
+        : `${item.language} · needs a build_model`,
+      tone: (item.ready ? "plain" : "warn") as Tone,
     },
     search: `${item.label} ${item.language}`.toLowerCase(),
   }));

@@ -45,8 +45,19 @@ Escape backs out one level rather than quitting, so exploring is cheap.
 
 ## What you can do with a model
 
-The Models scope lists the `.jl` and `.stan` files and the spec files under the project, each with the number of runs recorded from it.
+The Models scope lists the files that actually declare a model, not every source file: a `.jl` file has to define a `@model` (or a `build_model` adapting one defined elsewhere), and a `.stan` file has to have a `model` or `parameters` block.
+Comments and docstrings do not count, so a sampler documented with a `@model` example stays out of the list.
+Each row shows the number of runs recorded from that file.
 From there you can run the model, read the file, or jump to just that model's runs.
+
+A file that declares a model but no entry function is listed as `needs a build_model`, because a fit calls that function with the data table.
+Opening it offers to add the missing line, showing it first:
+
+```julia
+build_model(data) = eight_schools(data.J, data.y, data.sigma)
+```
+
+The mapping from arguments to data columns is a guess from the model's signature, so check it before running; `mcmc run` prints the same suggestion when a fit fails for want of an entry function.
 
 Launching a run from the browser runs the real `mcmc run`, streaming progress the same way, and the new run appears in the list when it finishes.
 In a directory with no store yet, the first run creates one beside the model.

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { type Dirent, existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { type Dirent, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { confirm, intro, isCancel, log, outro, select } from "@clack/prompts";
 import {
@@ -14,6 +14,7 @@ import {
 import type { Command } from "commander";
 import pc from "picocolors";
 import { buildDiagnosticsReport, formatReportTable } from "../diagnose";
+import { adapterFor, inspectSource, type ModelSurface } from "../model-file";
 import {
   type PlotKind,
   renderTerminalPlot,
@@ -66,7 +67,8 @@ export function scanModels(root: string, depth = SCAN_DEPTH): string[] {
       if (entry.name.startsWith(".")) continue;
       const dot = entry.name.lastIndexOf(".");
       const ext = dot === -1 ? "" : entry.name.slice(dot);
-      if (MODEL_EXTENSIONS.includes(ext)) found.push(full);
+      // A Julia project is mostly not models, so the contents decide.
+      if (MODEL_EXTENSIONS.includes(ext) && isModelFile(full)) found.push(full);
       else if (SPEC_EXTENSIONS.includes(ext) && isSpecFile(full)) found.push(full);
     }
   };
@@ -79,6 +81,20 @@ function isSpecFile(path: string): boolean {
     return readFileSync(path, "utf8").includes("schema_version");
   } catch {
     return false;
+  }
+}
+
+/** A source file worth listing: it declares a model, or adapts one. */
+function isModelFile(path: string): boolean {
+  const surface = readSurface(path);
+  return surface !== undefined && surface.kind !== "none";
+}
+
+function readSurface(path: string): ModelSurface | undefined {
+  try {
+    return inspectSource(path, readFileSync(path, "utf8"));
+  } catch {
+    return undefined;
   }
 }
 
@@ -101,6 +117,8 @@ export function modelItems(
       label,
       language: languageOf(path),
       runs: runs.filter((run) => run.entry.model_path === label).length,
+      // A spec is always runnable; a model file needs an entry function.
+      ready: languageOf(path) === "spec" || (readSurface(path)?.hasEntry ?? true),
     };
   });
 }
@@ -250,6 +268,26 @@ async function actOnRun(storeDir: string, item: RunItem): Promise<void> {
   }
 }
 
+/**
+ * Appends the one-line adapter a fit needs, after showing it. The mapping from
+ * arguments to data columns is a guess, so it is confirmed, not assumed.
+ */
+async function addAdapter(path: string): Promise<string | undefined> {
+  const source = readFileSync(path, "utf8");
+  const adapter = adapterFor(inspectSource(path, source));
+  if (!adapter) {
+    log.error("cannot work out the model's arguments; add a build_model by hand");
+    return undefined;
+  }
+  const yes = await confirm({
+    message: `Append  ${adapter}  to ${path}?`,
+    initialValue: true,
+  });
+  if (cancelled(yes) || !yes) return undefined;
+  writeFileSync(path, `${source.replace(/\n*$/, "\n")}\n${adapter}\n`);
+  return adapter;
+}
+
 async function actOnModel(
   storeDir: string | undefined,
   item: ModelItem,
@@ -261,13 +299,23 @@ async function actOnModel(
       message: `${item.label} ${pc.dim(`${item.language} · esc to go back`)}`,
       showInstructions: false,
       options: [
-        { value: "run", label: "Run it", hint: "fit, diagnose, record" },
+        ...(item.ready
+          ? [{ value: "run", label: "Run it", hint: "fit, diagnose, record" }]
+          : [{ value: "adapt", label: "Add a build_model", hint: "makes it runnable" }]),
         { value: "show", label: "Show the file" },
         ...(mine.length > 0 ? [{ value: "runs", label: `Runs (${mine.length})` }] : []),
         { value: "back", label: "Back to the list" },
       ],
     });
     if (cancelled(action) || action === "back") return;
+    if (action === "adapt") {
+      const added = await addAdapter(item.path);
+      if (added) {
+        item.ready = true;
+        log.success(`added to ${item.label}:  ${added}`);
+      }
+      continue;
+    }
     if (action === "run") {
       // With no store yet, `run` creates one beside the model.
       runCommand(["run", item.path, ...(storeDir ? ["--store", storeDir] : [])]);
