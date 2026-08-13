@@ -10,6 +10,8 @@ export interface Endpoint {
   origin: string;
   token: string;
   storeId?: string;
+  /** The run the link was minted for, when it names one. */
+  runId?: string;
   legacy: boolean;
 }
 
@@ -22,7 +24,8 @@ export function parseConnect(connect: string): Endpoint | undefined {
   }
   const parts = url.pathname.split("/").filter(Boolean);
   if (parts[0] === "v1" && parts[1] && parts[2] === "stores" && parts[3]) {
-    return { origin: url.origin, token: parts[1], storeId: parts[3], legacy: false };
+    const runId = parts[4] === "runs" ? parts[5] : undefined;
+    return { origin: url.origin, token: parts[1], storeId: parts[3], runId, legacy: false };
   }
   if (parts.length === 1 && parts[0]) {
     return { origin: url.origin, token: parts[0], legacy: true };
@@ -66,7 +69,8 @@ export function runUrl(endpoint: Endpoint, runId: string): string {
 /** The run an old-style link points at is served from the link itself. */
 export function linkedRunUrl(endpoint: Endpoint, runId?: string): string | undefined {
   if (endpoint.legacy) return `${endpoint.origin}/${endpoint.token}`;
-  return runId ? runUrl(endpoint, runId) : undefined;
+  const id = runId ?? endpoint.runId;
+  return id ? runUrl(endpoint, id) : undefined;
 }
 
 export interface StoreListing {

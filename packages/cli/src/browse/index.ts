@@ -227,8 +227,10 @@ async function actOnRun(storeDir: string, item: RunItem): Promise<void> {
       if (action === "detail") write(formatRunDetail(entry, dir, readRecord(dir)));
       if (action === "report") {
         const url = await stageReport(storeDir, entry.id, resolveAppUrl());
-        write(pc.dim(url));
         openInBrowser(url);
+        log.success("opening the report in your browser");
+        // Printed too: a sandbox or an SSH session has no browser to open.
+        write(pc.dim(url));
       }
       if (action === "rerun") {
         runCommand(["run", join(dir, "spec.toml"), "--store", storeDir, "--refit"]);

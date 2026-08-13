@@ -10,6 +10,7 @@ import {
   serve,
   storeId,
   storeUrl,
+  watchState,
 } from "../src/report-daemon";
 
 describe("reportUrl", () => {
@@ -165,6 +166,18 @@ describe("the store server", () => {
     server.close();
   });
 
+  // The handoff link names the run itself, so an app build from before pairing
+  // existed still opens it by fetching the link as-is.
+  it("serves a bundle straight from the handoff link", async () => {
+    const store = registerStore(storeDir, ORIGIN);
+    const { server, port } = await serve({ port: 0 });
+    const connect = `${storeUrl(port, readOrCreateToken(), store.id)}/runs/${entry.id}`;
+    const response = await fetch(connect, { headers: { Origin: ORIGIN } });
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { kind: string }).kind).toBe("mcmcjs-run-bundle");
+    server.close();
+  });
+
   it("lists every registered store, so a reconnecting app needs no link", async () => {
     const store = registerStore(storeDir, ORIGIN);
     const { server, port } = await serve({ port: 0 });
@@ -200,6 +213,22 @@ describe("the store server", () => {
     });
     expect(response.headers.get("access-control-allow-origin")).toBeNull();
     server.close();
+  });
+
+  it("gives up the port when its state file stops naming it", async () => {
+    // A discarded sandbox takes the data dir with it; the daemon must not sit
+    // on the shared port with nothing left on disk to stop it by.
+    const orphaned = new Promise<void>((done) => {
+      const timer = watchState(
+        process.pid,
+        () => {
+          clearInterval(timer);
+          done();
+        },
+        10,
+      );
+    });
+    await expect(orphaned).resolves.toBeUndefined();
   });
 
   it("shuts down after the idle window", async () => {

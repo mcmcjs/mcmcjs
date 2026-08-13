@@ -14,6 +14,7 @@ export const DEFAULT_PORT = 7788;
 export const PORT_RANGE = 5;
 const IDLE_TIMEOUT_MS = 30 * 60_000;
 const READY_TIMEOUT_MS = 8_000;
+const STATE_WATCH_MS = 60_000;
 /** Assembled bundles are held for reuse, but a daemon outlives many runs. */
 const CACHE_BYTES = 128 * 1024 * 1024;
 
@@ -356,6 +357,25 @@ function listenOnFreePort(server: Server, first: number, tries: number): Promise
   });
 }
 
+/**
+ * Watches the state file and calls back when it stops naming this process:
+ * `mcmc report stop` removed it, or the data dir it lived in was deleted (a
+ * discarded sandbox). Without this the daemon would hold the port until it
+ * idled out, with nothing on disk left to stop it by.
+ */
+export function watchState(
+  pid: number,
+  onOrphaned: () => void,
+  intervalMs = STATE_WATCH_MS,
+): NodeJS.Timeout {
+  const timer = setInterval(() => {
+    const state = readDaemonState();
+    if (!state || state.pid !== pid) onOrphaned();
+  }, intervalMs);
+  timer.unref();
+  return timer;
+}
+
 /** The detached background process behind `mcmc report`. */
 export async function runDaemon(): Promise<void> {
   const quit = (): void => {
@@ -370,6 +390,7 @@ export async function runDaemon(): Promise<void> {
     started_at: new Date().toISOString(),
   };
   writeAtomic(daemonStatePath(), `${JSON.stringify(state, null, 2)}\n`);
+  watchState(process.pid, quit);
   process.on("SIGTERM", quit);
   process.on("SIGINT", quit);
 }

@@ -57,7 +57,10 @@ export async function stageReport(
   const origin = new URL(appUrl).origin;
   const store = registerStore(storeDir, origin);
   const daemon = await ensureDaemon();
-  const connect = storeUrl(daemon.port, readOrCreateToken(), store.id);
+  // The link points at the run's own bundle. The app derives the store base
+  // from it, and an app build from before pairing existed fetches it as-is,
+  // so a cached tab still opens the run.
+  const connect = `${storeUrl(daemon.port, readOrCreateToken(), store.id)}/runs/${runId}`;
   return reportUrl(appUrl, storeDir, runId, connect);
 }
 
