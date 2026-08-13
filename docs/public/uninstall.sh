@@ -1,6 +1,6 @@
 #!/bin/sh
 # Remove the mcmcjs CLI installed by install.sh:
-#   curl -fsSL https://mcmcjs.github.io/mcmcjs/uninstall.sh | sh
+#   curl -fsSL https://mcmcjs.github.io/uninstall.sh | sh
 #
 # Removes the binary and, with --all, the cached Julia driver and the report
 # server's state. Your runs are not touched: they live in each project's .mcmc

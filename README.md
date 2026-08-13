@@ -10,8 +10,8 @@ It bootstraps the toolchain for you, runs inference as a subprocess, and turns t
 ## Install
 
 ```bash
-curl -fsSL https://mcmcjs.github.io/mcmcjs/install.sh | sh   # single binary, no Node.js needed
-npm i -g mcmcjs                                              # or from npm
+curl -fsSL https://mcmcjs.github.io/install.sh | sh   # single binary, no Node.js needed
+npm i -g mcmcjs                                      # or from npm
 ```
 
 Either way you get the `mcmc` command.

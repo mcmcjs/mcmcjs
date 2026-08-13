@@ -13,7 +13,7 @@ import {
 } from "./report-daemon";
 import { locateStore } from "./store-cli";
 
-export const DEFAULT_REPORT_APP = "https://mcmcjs.github.io/mcmcjs/report/";
+export const DEFAULT_REPORT_APP = "https://mcmcjs.github.io/report/";
 
 /** The report-app deep link for one run: the app resolves it from its connected store. */
 export function reportUrl(

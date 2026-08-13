@@ -14,7 +14,7 @@ Inference runs in a backend runtime (Julia, or CmdStan for Stan), which the CLI 
 The install script downloads one self-contained binary for your platform (macOS and Linux, x64 and arm64) and needs neither Node.js nor npm.
 
 ```bash
-curl -fsSL https://mcmcjs.github.io/mcmcjs/install.sh | sh
+curl -fsSL https://mcmcjs.github.io/install.sh | sh
 ```
 
 It lands in `~/.local/bin` by default; set `MCMC_INSTALL_DIR` to choose somewhere else, or `MCMC_VERSION` to pin a release.
@@ -52,7 +52,7 @@ A binary install replaces itself from the latest release, verifying the checksum
 ### Uninstall
 
 ```bash
-curl -fsSL https://mcmcjs.github.io/mcmcjs/uninstall.sh | sh
+curl -fsSL https://mcmcjs.github.io/uninstall.sh | sh
 ```
 
 That stops the report server and removes the binary, keeping the cached Julia driver in case you reinstall; pass `--all` to remove that and the report server's state too.

@@ -1,16 +1,14 @@
 name: Site publish
 
-# Publishes the site to the org root, https://mcmcjs.github.io/, by pushing the
-# built output to the deploy branch of mcmcjs/mcmcjs.github.io. That repo holds
-# nothing but the build.
+# Publishes the site to https://mcmcjs.github.io/ by pushing the built output to
+# the deploy branch of mcmcjs/mcmcjs.github.io, which holds nothing else. This
+# is the only site build: the old project site at /mcmcjs/ is frozen, still
+# served from this repo's gh-pages branch so binaries released with its URLs
+# baked in keep working.
 #
-# The project site (https://mcmcjs.github.io/mcmcjs/) keeps publishing from
-# docs-publish.yml and report-publish.yml: released binaries have its URLs
-# baked in, so it has to stay reachable.
-#
-# Needs SITE_DEPLOY_KEY: an SSH private key whose public half is a write deploy
-# key on mcmcjs/mcmcjs.github.io. Without it this workflow skips, so a fork
-# never fails here.
+# Needs SITE_TOKEN, a token with contents:write on mcmcjs/mcmcjs.github.io
+# (deploy keys are disabled for that org). Without it this workflow skips, so a
+# fork never fails here.
 on:
   push:
     branches: [main]
@@ -37,16 +35,16 @@ jobs:
         with:
           node-version: 22
 
-      - name: Is the deploy key configured?
+      - name: Is the token configured?
         id: key
         env:
-          DEPLOY_KEY: ${{ secrets.SITE_DEPLOY_KEY }}
+          SITE_TOKEN: ${{ secrets.SITE_TOKEN }}
         run: |
-          if [ -n "$DEPLOY_KEY" ]; then
+          if [ -n "$SITE_TOKEN" ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "SITE_DEPLOY_KEY is not set; skipping the org-root publish." >> "$GITHUB_STEP_SUMMARY"
+            echo "SITE_TOKEN is not set; skipping the site publish." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       # At the org root the report app lives under /report/, not /mcmcjs/report/.
@@ -86,7 +84,7 @@ jobs:
         if: steps.key.outputs.present == 'true'
         uses: peaceiris/actions-gh-pages@v3
         with:
-          deploy_key: ${{ secrets.SITE_DEPLOY_KEY }}
+          personal_token: ${{ secrets.SITE_TOKEN }}
           external_repository: mcmcjs/mcmcjs.github.io
           publish_branch: deploy
           publish_dir: site

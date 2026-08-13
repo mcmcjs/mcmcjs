@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install the mcmcjs CLI:
-#   curl -fsSL https://mcmcjs.github.io/mcmcjs/install.sh | sh
+#   curl -fsSL https://mcmcjs.github.io/install.sh | sh
 #
 # Downloads a single-file `mcmc` binary from the project's GitHub Releases. The
 # binary needs no Node.js and no npm; Julia or CmdStan are installed later by
@@ -74,7 +74,7 @@ if [ "$VERSION" = latest ]; then
     grep -o '"tag_name": *"mcmcjs@[^"]*"' | head -1 | sed 's/.*mcmcjs@//; s/"$//')
 fi
 if [ -z "${VERSION:-}" ] || [ "$VERSION" = latest ]; then
-  VERSION=$(curl -fsSL "https://mcmcjs.github.io/mcmcjs/latest.txt" 2>/dev/null | tr -d '\r\n ')
+  VERSION=$(curl -fsSL "https://mcmcjs.github.io/latest.txt" 2>/dev/null | tr -d '\r\n ')
 fi
 [ -n "$VERSION" ] || fail "could not look up the latest version; set MCMC_VERSION=x.y.z"
 base="https://github.com/$REPO/releases/download/mcmcjs@$VERSION"

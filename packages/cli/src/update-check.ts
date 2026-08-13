@@ -57,7 +57,7 @@ export function updateNote(latest: string, current: string, kind = installKind()
   // Telling a curl-installed binary to run npm would install a second copy.
   const how =
     kind === "binary"
-      ? "curl -fsSL https://mcmcjs.github.io/mcmcjs/install.sh | sh"
+      ? "curl -fsSL https://mcmcjs.github.io/install.sh | sh"
       : "npm install -g mcmcjs";
   return pc.dim(
     `\nnote: mcmcjs ${latest} is available (you have ${current}). Update with: ${how}\n`,

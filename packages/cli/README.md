@@ -16,7 +16,7 @@ npm install -g mcmcjs
 Or install a single-file binary, with no Node.js or npm involved:
 
 ```bash
-curl -fsSL https://mcmcjs.github.io/mcmcjs/install.sh | sh
+curl -fsSL https://mcmcjs.github.io/install.sh | sh
 ```
 
 ## Commands
