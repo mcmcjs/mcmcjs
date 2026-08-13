@@ -1,5 +1,16 @@
 # mcmcjs
 
+## 0.26.0
+
+### Minor Changes
+
+- 5e35943: Install without npm: `curl -fsSL https://mcmcjs.github.io/mcmcjs/install.sh | sh` fetches a single-file `mcmc` binary that carries its own runtime, the example templates, and the Julia driver, so it needs neither Node.js nor npm. The script verifies release checksums and reports an existing install rather than silently shadowing it, and `mcmc doctor` now names the copy that is running and warns when a second one is on PATH.
+
+### Patch Changes
+
+- Updated dependencies [5e35943]
+  - @mcmcjs/julia@0.14.1
+
 ## 0.25.1
 
 ### Patch Changes
