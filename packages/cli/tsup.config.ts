@@ -1,4 +1,4 @@
-import { cpSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { defineConfig } from "tsup";
 
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as {
@@ -28,9 +28,7 @@ export default defineConfig({
   define: {
     __MCMC_VERSION__: JSON.stringify(pkg.version),
     __MCMC_META__: JSON.stringify(meta),
-  },
-  // The sandbox example files ship inside dist/ (the files allowlist).
-  onSuccess: async () => {
-    cpSync("templates", "dist/templates", { recursive: true });
+    // The single-file binary sets this; the npm build never is one.
+    __MCMC_COMPILED__: "false",
   },
 });

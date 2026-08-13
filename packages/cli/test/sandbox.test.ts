@@ -21,11 +21,9 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const TEMPLATES = join(__dirname, "..", "templates");
-
 describe("seedSandbox", () => {
   it("copies the example trio plus the README", () => {
-    const names = seedSandbox(dir, TEMPLATES);
+    const names = seedSandbox(dir);
     expect(names).toEqual([
       "README.md",
       "data.csv",
@@ -39,7 +37,7 @@ describe("seedSandbox", () => {
   });
 
   it("the seeded model detects as a Turing model", async () => {
-    seedSandbox(dir, TEMPLATES);
+    seedSandbox(dir);
     const { detectBackend } = await import("../src/run");
     expect(detectBackend(readFileSync(join(dir, "model.jl"), "utf8"))).toBe("turing");
   });
@@ -101,7 +99,7 @@ describe("relocate", () => {
   it("copies the tree to the target and removes the source", () => {
     const src = join(dir, "src");
     mkdirSync(src);
-    seedSandbox(src, TEMPLATES);
+    seedSandbox(src);
     const target = join(dir, "nested", "kept");
     const final = relocate(src, target);
     expect(final).toBe(target);

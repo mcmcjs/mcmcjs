@@ -1,21 +1,20 @@
 import { spawn } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
 import { sharedTmpParent } from "@mcmcjs/julia";
 import type { Command } from "commander";
 import pc from "picocolors";
+import { TEMPLATE_FILES } from "./templates.generated";
 
-/** The shipped example files, copied to dist/templates at build time. */
-export function templatesDir(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), "templates");
-}
-
-/** Seeds a sandbox dir with the example files; returns their names, sorted. */
-export function seedSandbox(dir: string, from = templatesDir()): string[] {
-  const names = readdirSync(from).sort();
-  for (const name of names) cpSync(join(from, name), join(dir, name));
+/**
+ * Seeds a directory with the example files; returns their names, sorted. The
+ * contents are embedded rather than read from disk, so a single-file binary
+ * carries them too.
+ */
+export function seedSandbox(dir: string, files: Record<string, string> = TEMPLATE_FILES): string[] {
+  const names = Object.keys(files).sort();
+  for (const name of names) writeFileSync(join(dir, name), files[name] as string);
   return names;
 }
 

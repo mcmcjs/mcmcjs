@@ -1,18 +1,23 @@
 import { mkdirSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Command } from "commander";
-import { seedSandbox, templatesDir } from "./sandbox";
+import { seedSandbox } from "./sandbox";
+import { TEMPLATE_FILES } from "./templates.generated";
 
 /**
  * Seeds `dir` with the example files, refusing a non-empty directory unless
- * forced. Pure (takes the template source) so it is testable without the build.
+ * forced. Takes the file set so tests can seed their own.
  */
-export function initSeed(dir: string, from: string, force: boolean): string[] {
+export function initSeed(
+  dir: string,
+  force: boolean,
+  files: Record<string, string> = TEMPLATE_FILES,
+): string[] {
   mkdirSync(dir, { recursive: true });
   if (!force && readdirSync(dir).length > 0) {
     throw new Error(`${dir} is not empty; pass --force to seed it anyway`);
   }
-  return seedSandbox(dir, from);
+  return seedSandbox(dir, files);
 }
 
 export function registerInit(program: Command): void {
@@ -26,7 +31,7 @@ export function registerInit(program: Command): void {
     .option("--json", "print the result as JSON")
     .action((dir: string, opts: { force?: boolean; json?: boolean }) => {
       const target = resolve(dir);
-      const files = initSeed(target, templatesDir(), Boolean(opts.force));
+      const files = initSeed(target, Boolean(opts.force));
       if (opts.json) {
         process.stdout.write(
           `${JSON.stringify({ action: "init", dir: target, files }, null, 2)}\n`,
