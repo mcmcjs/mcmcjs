@@ -35,7 +35,19 @@ Either way, check it:
 mcmc --version
 ```
 
-<div class="callout note"><p>Installing both ways leaves two copies of <code>mcmc</code>, and whichever comes first on your <code>PATH</code> wins. The install script says so when it finds an existing copy, and <code>mcmc doctor</code> names the one that is running and warns about the other. Remove the npm copy with <code>npm rm -g mcmcjs</code>, or the binary with <code>rm ~/.local/bin/mcmc</code>.</p></div>
+<div class="callout note"><p>Installing both ways leaves two copies of <code>mcmc</code>, and whichever comes first on your <code>PATH</code> wins. The install script says so when it finds an existing copy, and <code>mcmc doctor</code> names the one that is running and warns about the other.</p></div>
+
+If your shell still runs an older copy after installing, it has cached the old location: run `hash -r`, or open a new shell.
+
+### Uninstall
+
+```bash
+curl -fsSL https://mcmcjs.github.io/mcmcjs/uninstall.sh | sh
+```
+
+That stops the report server and removes the binary, keeping the cached Julia driver in case you reinstall; pass `--all` to remove that and the report server's state too.
+Your runs are never touched, since they live in each project's `.mcmc` directory, and neither are Julia or CmdStan.
+A copy installed with npm is reported rather than removed: take that one out with `npm rm -g mcmcjs`.
 
 ## 2. Provision Julia
 

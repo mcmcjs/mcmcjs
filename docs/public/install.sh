@@ -35,7 +35,21 @@ asset="mcmc-$os-$arch.tar.gz"
 command -v tar >/dev/null 2>&1 || fail "tar is required."
 
 # An existing install is reported, never silently replaced or shadowed.
+# `command -v` skips a broken symlink, which is exactly the leftover worth
+# naming, so walk PATH as well.
 existing=$(command -v mcmc 2>/dev/null || true)
+if [ -z "$existing" ]; then
+  old_ifs=$IFS
+  IFS=:
+  for dir in $PATH; do
+    [ -n "$dir" ] || continue
+    if [ "$dir/mcmc" != "$INSTALL_DIR/mcmc" ] && { [ -e "$dir/mcmc" ] || [ -L "$dir/mcmc" ]; }; then
+      existing="$dir/mcmc"
+      break
+    fi
+  done
+  IFS=$old_ifs
+fi
 if [ -n "$existing" ] && [ "$existing" != "$INSTALL_DIR/mcmc" ]; then
   say "Note: mcmc is already installed at $existing"
   # npm links its global bin at a symlink into node_modules, so resolve first.
@@ -103,6 +117,10 @@ rm -f "$INSTALL_DIR/mcmc.old"
 version=$("$INSTALL_DIR/mcmc" --version 2>/dev/null | head -1 || echo "mcmc")
 say ""
 say "Installed $version to $INSTALL_DIR/mcmc"
+# A shell that ran an older mcmc has cached its path and will keep using it,
+# even when that file is gone ("No such file or directory" for a path you did
+# not type). Cheap to mention, baffling to debug.
+say "If your shell still runs an older mcmc, run: hash -r"
 
 # Say plainly what will actually run, rather than assuming this one won.
 resolved=$(command -v mcmc 2>/dev/null || true)

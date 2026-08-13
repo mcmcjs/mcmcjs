@@ -53,7 +53,7 @@ const structuredData = [
 				name: "How do I install MCMC.js?",
 				acceptedAnswer: {
 					"@type": "Answer",
-					text: `Install the mcmc CLI globally with npm, then run mcmc setup. See ${installUrl}.`,
+					text: `Install the mcmc CLI with the install script (a single binary, no Node.js needed) or globally with npm, then run mcmc setup. See ${installUrl}.`,
 				},
 			},
 			{
@@ -225,14 +225,14 @@ not converged (R-hat <= 1.01, ESS >= 400, divergences <= 0)`;
 	<section class="section">
 		<div class="section-header">
 			<h2>Start in one line.</h2>
-			<p>Install the CLI from npm, then provision the runtime with <code>mcmc setup</code>.</p>
+			<p>Install the CLI, then provision the runtime with <code>mcmc setup</code>.</p>
 		</div>
 		<div class="install-strip">
 			<div>
-				<strong>npm global install</strong>
-				<span>Installs the <code>mcmc</code> binary. Run <code>mcmc setup</code> once to provision Julia via juliaup, or <code>mcmc setup --engine stan</code> for CmdStan.</span>
+				<strong>Install the <code>mcmc</code> command</strong>
+				<span>A single binary, no Node.js required. Run <code>mcmc setup</code> once to provision Julia via juliaup, or <code>mcmc setup --engine stan</code> for CmdStan. Prefer npm? <code>npm i -g mcmcjs</code>.</span>
 			</div>
-			<pre><code>npm i -g mcmcjs</code></pre>
+			<pre><code>curl -fsSL https://mcmcjs.github.io/mcmcjs/install.sh | sh</code></pre>
 			<a class="button secondary" href={withBase('/docs/quickstart/')}>Quickstart</a>
 		</div>
 	</section>
