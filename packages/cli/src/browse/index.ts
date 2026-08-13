@@ -21,7 +21,7 @@ import {
   samplesPlotItems,
   terminalOptions,
 } from "../plot";
-import { reportUrl, resolveAppUrl } from "../report";
+import { openInBrowser, resolveAppUrl, stageReport } from "../report";
 import { formatRunDetail, readRecord } from "../show";
 import { locateStore } from "../store-cli";
 import { buildSummaryRows, formatSummaryTable } from "../summary";
@@ -209,7 +209,7 @@ async function actOnRun(storeDir: string, item: RunItem): Promise<void> {
         { value: "variables", label: "Variables", hint: "per-variable traces" },
         { value: "plot", label: "Plots" },
         { value: "detail", label: "Settings and artifacts" },
-        { value: "report", label: "Report link" },
+        { value: "report", label: "Open in the report app" },
         { value: "rerun", label: "Run again", hint: "same settings, fresh fit" },
         { value: "delete", label: "Delete" },
         { value: "back", label: "Back to the list" },
@@ -225,7 +225,11 @@ async function actOnRun(storeDir: string, item: RunItem): Promise<void> {
       if (action === "variables") await exploreVariables(samplesOf(storeDir, entry));
       if (action === "plot") await choosePlot(samplesOf(storeDir, entry));
       if (action === "detail") write(formatRunDetail(entry, dir, readRecord(dir)));
-      if (action === "report") write(reportUrl(resolveAppUrl(), storeDir, entry.id));
+      if (action === "report") {
+        const url = await stageReport(storeDir, entry.id, resolveAppUrl());
+        write(pc.dim(url));
+        openInBrowser(url);
+      }
       if (action === "rerun") {
         runCommand(["run", join(dir, "spec.toml"), "--store", storeDir, "--refit"]);
         return;

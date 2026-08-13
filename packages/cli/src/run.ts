@@ -51,7 +51,7 @@ import { backendLabel, formatFitResult } from "./fit";
 import { installRunner, juliaupBin } from "./julia";
 import { parseFloatOption, parseIntOption } from "./options";
 import { rendererFor } from "./progress";
-import { reportUrl, resolveAppUrl } from "./report";
+import { openInBrowser, resolveAppUrl, stageReport } from "./report";
 import { timeAgo } from "./store-cli";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
@@ -130,6 +130,7 @@ export interface RunCliOptions {
   backend?: string;
   entry?: string;
   refit?: boolean;
+  report?: boolean;
   store?: string;
   daemon?: boolean;
   package?: string[];
@@ -509,6 +510,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .option("--backend <id>", "backend (default: detected from the model)")
     .option("--entry <name>", "model entry function for Julia backends (default build_model)")
     .option("--refit", "fit even when nothing changed since the last run")
+    .option("--report", "open the finished run in the report web app (or set MCMC_REPORT_OPEN=1)")
     .option(
       "--daemon",
       "fit through a persistent Julia worker (Julia backends; or set MCMC_DAEMON=1)",
@@ -610,13 +612,13 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       const seedPinned = opts.seed !== undefined || config.specSource !== "defaults";
       const modelRel = relative(dirname(storeDir), config.modelPath).split(sep).join("/");
 
-      const finish = (
+      const finish = async (
         report: DiagnosticsReport,
         runId: string,
         cached: boolean,
         fit: unknown,
         spec: Spec,
-      ): void => {
+      ): Promise<void> => {
         const dir = runDir(storeDir, runId);
         if (opts.out) {
           try {
@@ -634,7 +636,23 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         } else {
           humanOut.write(formatReportHuman(report));
           say("");
-          say(`${pc.dim("report:")} ${reportUrl(resolveAppUrl(), storeDir, runId)}`);
+          if (opts.report ?? process.env.MCMC_REPORT_OPEN === "1") {
+            try {
+              const url = await stageReport(storeDir, runId, resolveAppUrl());
+              openInBrowser(url);
+              // The link is long and the browser already has it; `mcmc report
+              // --no-open` prints it for anyone who needs to paste it.
+              say(`${pc.dim("view:")} opening the report in your browser`);
+            } catch (error) {
+              process.stderr.write(
+                `warning: could not open the report: ${(error as Error).message}\n`,
+              );
+            }
+          } else {
+            // The command, not a 200-character URL: the link only works while
+            // the store server is up, and `mcmc report` is what brings it up.
+            say(`${pc.dim("view:")} mcmc report`);
+          }
         }
         process.exitCode = report.converged ? 0 : 2;
       };
@@ -652,7 +670,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
               say("--stream-out is skipped on a reused run; pass --refit to stream fresh draws");
             }
             say("");
-            finish(
+            await finish(
               buildDiagnosticsReport(parseSamples(readFileSync(samplesPath, "utf8"))),
               prior.id,
               true,
@@ -851,6 +869,6 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         `${pc.green("ok:")} run ${runId} (${(fit.elapsedMs / 1000).toFixed(1)} s, ${runtimeName} ${fit.runtimeActual ?? config.channel}) saved to ${displayPath(storeDir)}`,
       );
       say("");
-      finish(report, runId, false, fit, frozen);
+      await finish(report, runId, false, fit, frozen);
     });
 }

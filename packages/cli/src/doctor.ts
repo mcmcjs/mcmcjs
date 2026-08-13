@@ -1,6 +1,7 @@
 import type { EngineContext, EngineRegistry, HealthReport, NamedToolInfo } from "@mcmcjs/engine";
 import type { Command } from "commander";
 import pc from "picocolors";
+import { findDaemon } from "./report-daemon";
 
 export function formatTool(tool: NamedToolInfo): string {
   if (!tool.found) return `${tool.name.padEnd(8)} ${pc.red("not found")}`;
@@ -65,6 +66,13 @@ export function registerDoctor(
         process.stdout.write(
           `${reports.map((r) => formatReport(r.report, r.displayName)).join("\n\n")}\n`,
         );
+        // A background listener should never be invisible.
+        const daemon = await findDaemon();
+        if (daemon) {
+          process.stdout.write(
+            `\nreport server: running on port ${daemon.port} (pid ${daemon.pid}); stop it with \`mcmc report stop\`\n`,
+          );
+        }
       }
       process.exitCode = ready ? 0 : 1;
     });
