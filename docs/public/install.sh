@@ -114,9 +114,12 @@ mv "$tmp/mcmc" "$INSTALL_DIR/mcmc" ||
   fail "could not write $INSTALL_DIR/mcmc. Set MCMC_INSTALL_DIR to a writable directory."
 rm -f "$INSTALL_DIR/mcmc.old"
 
-version=$("$INSTALL_DIR/mcmc" --version 2>/dev/null | head -1 || echo "mcmc")
 say ""
-say "Installed $version to $INSTALL_DIR/mcmc"
+# Unpiped on purpose: the binary prints its wordmark when stdout is a terminal,
+# and a pipe would hide it.
+"$INSTALL_DIR/mcmc" --version 2>/dev/null || say "Installed mcmc"
+say ""
+say "Installed to $INSTALL_DIR/mcmc"
 # A shell that ran an older mcmc has cached its path and will keep using it,
 # even when that file is gone ("No such file or directory" for a path you did
 # not type). Cheap to mention, baffling to debug.

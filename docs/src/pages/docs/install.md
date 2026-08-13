@@ -39,6 +39,16 @@ mcmc --version
 
 If your shell still runs an older copy after installing, it has cached the old location: run `hash -r`, or open a new shell.
 
+### Update
+
+```bash
+mcmc update           # update this copy in place
+mcmc update --check   # only report whether a newer release exists
+```
+
+A binary install replaces itself from the latest release, verifying the checksum first; an npm install is updated with npm.
+`--force` reinstalls the current version, which repairs a damaged install.
+
 ### Uninstall
 
 ```bash

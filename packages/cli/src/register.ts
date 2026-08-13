@@ -23,6 +23,7 @@ import { registerSetup } from "./setup";
 import { registerShow } from "./show";
 import { registerStan } from "./stan";
 import { registerSummary } from "./summary";
+import { registerUpdate } from "./update";
 import { registerUpdateCheck } from "./update-check";
 
 /**
@@ -31,7 +32,12 @@ import { registerUpdateCheck } from "./update-check";
  * commands within a section in this order. Shared by the CLI entry and the
  * help test so the test asserts the real wiring, not a duplicate list.
  */
-export function registerAll(program: Command, ctx: EngineContext, registry: EngineRegistry): void {
+export function registerAll(
+  program: Command,
+  ctx: EngineContext,
+  registry: EngineRegistry,
+  version = "0.0.0",
+): void {
   registerRun(program, ctx);
   registerFit(program, ctx);
   registerPredict(program, ctx);
@@ -56,5 +62,6 @@ export function registerAll(program: Command, ctx: EngineContext, registry: Engi
   registerJulia(program, ctx);
   registerStan(program, ctx);
   registerDaemon(program);
+  registerUpdate(program, version);
   registerUpdateCheck(program);
 }

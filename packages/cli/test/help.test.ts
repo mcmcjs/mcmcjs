@@ -40,6 +40,7 @@ const GROUPS: Record<string, string> = {
   julia: "Toolchain:",
   stan: "Toolchain:",
   daemon: "Toolchain:",
+  update: "Toolchain:",
 };
 
 describe("mcmc --help grouping", () => {

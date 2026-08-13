@@ -60,5 +60,6 @@ See [Convert DoodleBUGS](/docs/guides/convert/).
 | `julia version <sub>` | manage installed Julia versions: `list`, `status`, `add`, `remove`, `default`, `update`, `gc` | `--default` (add), `--verbose` |
 | `stan version <sub>` | manage installed CmdStan versions: `list`, `status`, `add`, `remove` | `--verbose` (add) |
 | `daemon <sub>` | manage persistent Julia workers: `status`, `stop` | |
+| `update` | update mcmc in place: replaces a binary install from the latest release, or runs npm for an npm install | `--check`, `--force`, `--json` |
 
 See [Manage Julia](/docs/guides/julia/).

@@ -24,7 +24,7 @@ program
   .description(
     "Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics",
   )
-  .version(versionText(__MCMC_VERSION__, __MCMC_META__))
+  .version(versionText(__MCMC_VERSION__, __MCMC_META__, process.stdout.isTTY === true))
   .showSuggestionAfterError()
   .showHelpAfterError("(run `mcmc --help` to see all commands)")
   .addHelpText(
@@ -44,7 +44,7 @@ const registry = createRegistry("julia");
 registry.register(juliaEngine);
 registry.register(stanEngine);
 
-registerAll(program, ctx, registry);
+registerAll(program, ctx, registry, __MCMC_VERSION__);
 
 if (process.argv[2] !== "__update-check") maybeNotifyUpdate(__MCMC_VERSION__);
 
