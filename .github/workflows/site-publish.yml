@@ -1,0 +1,94 @@
+name: Site publish
+
+# Publishes the site to the org root, https://mcmcjs.github.io/, by pushing the
+# built output to the deploy branch of mcmcjs/mcmcjs.github.io. That repo holds
+# nothing but the build.
+#
+# The project site (https://mcmcjs.github.io/mcmcjs/) keeps publishing from
+# docs-publish.yml and report-publish.yml: released binaries have its URLs
+# baked in, so it has to stay reachable.
+#
+# Needs SITE_DEPLOY_KEY: an SSH private key whose public half is a write deploy
+# key on mcmcjs/mcmcjs.github.io. Without it this workflow skips, so a fork
+# never fails here.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "report/**"
+      - "packages/charts/**"
+      - "packages/core/**"
+      - "packages/plots/**"
+      - ".github/workflows/site-publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: site-publish
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+        with:
+          node-version: 22
+
+      - name: Is the deploy key configured?
+        id: key
+        env:
+          DEPLOY_KEY: ${{ secrets.SITE_DEPLOY_KEY }}
+        run: |
+          if [ -n "$DEPLOY_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "SITE_DEPLOY_KEY is not set; skipping the org-root publish." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # At the org root the report app lives under /report/, not /mcmcjs/report/.
+      - name: Build the report app
+        if: steps.key.outputs.present == 'true'
+        run: pnpm build
+        env:
+          BASE_PATH: /report/
+
+      - name: Build the docs
+        if: steps.key.outputs.present == 'true'
+        run: |
+          npm ci
+          npm run build
+        working-directory: docs
+        env:
+          BASE_PATH: /
+
+      - name: Post-process HTML links
+        if: steps.key.outputs.present == 'true'
+        uses: shravanngoswamii/html-link-action@v1
+        with:
+          site-dir: docs/dist
+          noopener: true
+          noreferrer: true
+          external-target-blank: true
+
+      - name: Assemble the site
+        if: steps.key.outputs.present == 'true'
+        run: |
+          mkdir -p site/report
+          cp -r docs/dist/. site/
+          cp -r report/dist/. site/report/
+          ls site
+
+      - name: Publish to mcmcjs.github.io
+        if: steps.key.outputs.present == 'true'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          deploy_key: ${{ secrets.SITE_DEPLOY_KEY }}
+          external_repository: mcmcjs/mcmcjs.github.io
+          publish_branch: deploy
+          publish_dir: site
+          force_orphan: true
+          commit_message: "publish the site from ${{ github.sha }}"
