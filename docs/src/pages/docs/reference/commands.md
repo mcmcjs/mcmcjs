@@ -11,7 +11,7 @@ Run `mcmc <command> --help` for the authoritative, current flags.
 
 | Command | Description | Key flags |
 | --- | --- | --- |
-| `run [input]` | full workflow: fit, diagnose, record a run (omit the input on a terminal to pick a model) | `--data`, `--draws`, `--warmup`, `--chains`, `--adapt-delta`, `--seed`, `--backend`, `--entry`, `-o/--out`, `--stream-out`, `--prior`, `--algorithm`, `--thin`, `--adtype`, `--parallel`, `--refit`, `--daemon`, `--julia-version`, `--package`, `--store` |
+| `run [input]` | full workflow: fit, diagnose, record a run (omit the input on a terminal to pick a model; `--report` opens the result) | `--data`, `--draws`, `--warmup`, `--chains`, `--adapt-delta`, `--seed`, `--backend`, `--entry`, `-o/--out`, `--stream-out`, `--prior`, `--algorithm`, `--thin`, `--adtype`, `--parallel`, `--refit`, `--daemon`, `--julia-version`, `--package`, `--store` |
 | `fit <spec>` | run MCMC inference, write a samples file | `-o/--out`, `--julia-version`, `--versions`, `--package-versions`, `--keep-going`, `--daemon` |
 | `predict <spec> <samples>` | draw posterior-predictive samples | `-o/--out`, `--julia-version`, `--verbose` |
 
@@ -34,7 +34,7 @@ See [Run inference](/docs/guides/run/) and [Predict](/docs/guides/predict/).
 | `samples [target]` | export the raw draws in a portable format | `--to`, `-o/--out`, `--warmup`, `--stdin`, `--store` |
 | `plot [target]` | diagnostic plots for a samples file | `--kind`, `--format`, `--var`, `-o/--out`, `--width`, `--height`, `--ascii`, `--hdi-prob`, `--bins`, `--max-lag`, `--color-by`, `--warmup`, `--stdin`, `--store` |
 | `export <what>` | copy a run's artifact (`samples`/`spec`/`record`/`bundle`) to a visible file | `--run`, `-o/--out`, `--force`, `--store` |
-| `report [ref]` | open a run in the report web app | `--store`, `--app-url`, `--no-open` |
+| `report [ref]` | open a run in the report web app (`report status`, `report stop` manage the store server) | `--store`, `--app-url`, `--no-open`, `--no-serve` |
 
 A `target` is a samples file (MCMCChains JSON or ArviZ InferenceData JSON) or a run ref (`latest`, `@N`, an id prefix); it defaults to the latest store run.
 See [Browse interactively](/docs/guides/browse/), [Diagnose convergence](/docs/guides/diagnose/), [Plot](/docs/guides/plot/), and [The run store](/docs/guides/run-store/).

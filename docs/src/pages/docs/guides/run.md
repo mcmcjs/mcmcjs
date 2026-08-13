@@ -45,6 +45,7 @@ Flags are always honored.
 | `--backend <id>` | backend, default detected from the model |
 | `--entry <name>` | model entry function (default `build_model`) |
 | `-o, --out <file>` | also export the samples file to this path |
+| `--report` | open the finished run in the report web app (or set `MCMC_REPORT_OPEN=1`) |
 | `--store <dir>` | run store directory (default: nearest `.mcmc`, or beside the model) |
 | `--julia-version <channel>` | Julia version/channel to run, overriding the spec |
 | `--package <name=version>` | pin a managed package version, repeatable (e.g. `--package Turing=0.45`) |
