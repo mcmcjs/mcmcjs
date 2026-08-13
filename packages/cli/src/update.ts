@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Command } from "commander";
@@ -87,8 +87,17 @@ async function replaceBinary(target: string, base: string): Promise<void> {
     if (untar.status !== 0) throw new Error("could not unpack the release (tar failed)");
 
     const staged = join(dir, process.platform === "win32" ? "mcmc.exe" : "mcmc");
-    chmodSync(staged, 0o755);
-    renameSync(staged, target);
+    // Stage beside the target, not in the temp dir: a rename cannot cross
+    // filesystems, and /tmp is usually its own mount.
+    const beside = `${target}.new`;
+    try {
+      copyFileSync(staged, beside);
+      chmodSync(beside, 0o755);
+      renameSync(beside, target);
+    } catch (error) {
+      rmSync(beside, { force: true });
+      throw error;
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
