@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { McpServer } from "@modelcontextprotocol/server";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import type { Command } from "commander";
+import { z } from "zod";
 import { selfInvocation } from "../self";
 import { TOOLS, type ToolSpec } from "./tools";
 
@@ -58,11 +59,15 @@ export function formatResult(
   result: CommandResult,
 ): {
   content: { type: "text"; text: string }[];
+  structuredContent?: Record<string, unknown>;
   isError?: boolean;
 } {
   const body = result.stdout.trim();
   if (result.ok || (result.code === 2 && body)) {
-    return { content: [{ type: "text", text: body || "(no output)" }] };
+    return {
+      content: [{ type: "text", text: body || "(no output)" }],
+      ...(structured(tool, body) ?? {}),
+    };
   }
   const detail = [result.stderr.trim(), body].filter(Boolean).join("\n");
   return {
@@ -74,6 +79,31 @@ export function formatResult(
     ],
     isError: true,
   };
+}
+
+/**
+ * The command's JSON as typed data beside the text, so a client can read a
+ * field instead of parsing a blob. A command that prints a bare array is
+ * wrapped under the tool's key, because structured content is an object.
+ * Anything that fails to parse simply has none.
+ */
+export function structured(
+  tool: ToolSpec,
+  body: string,
+): { structuredContent: Record<string, unknown> } | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  const value =
+    Array.isArray(parsed) && tool.outputKey
+      ? { [tool.outputKey]: parsed }
+      : parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : undefined;
+  return value ? { structuredContent: value } : undefined;
 }
 
 export function buildServer(): McpServer {
@@ -91,7 +121,8 @@ export function buildServer(): McpServer {
       {
         title: tool.title,
         description: tool.description,
-        inputSchema: tool.input,
+        inputSchema: z.object(tool.input),
+        outputSchema: tool.output,
         annotations: {
           readOnlyHint: tool.name !== "mcmc_run" && tool.name !== "mcmc_sbc",
           openWorldHint: false,
@@ -115,7 +146,16 @@ export function registerMcp(program: Command): void {
       "Speak the Model Context Protocol on stdin/stdout, so an assistant can fit models and read diagnostics through mcmc. Add it with: claude mcp add mcmcjs -- mcmc mcp",
     )
     .action(async () => {
-      const server = buildServer();
-      await server.connect(new StdioServerTransport());
+      // serveStdio picks the protocol era from the opening exchange, so one
+      // server answers both a current client and a 2025-era one.
+      const handle = serveStdio(() => buildServer());
+      await new Promise<void>((resolve) => {
+        const stop = () => {
+          void handle.close().finally(resolve);
+        };
+        process.on("SIGINT", stop);
+        process.on("SIGTERM", stop);
+        process.stdin.on("close", stop);
+      });
     });
 }

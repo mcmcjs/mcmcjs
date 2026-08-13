@@ -59,16 +59,98 @@ async function download(url: string, timeoutMs = DOWNLOAD_TIMEOUT_MS): Promise<B
   return Buffer.from(await response.arrayBuffer());
 }
 
+export interface Reporter {
+  /** A step that has started. */
+  line: (text: string) => void;
+  /** A line that replaces itself on a terminal. */
+  progress: (text: string) => void;
+  /** Ends a progress line so the next output starts clean. */
+  done: () => void;
+}
+
+/**
+ * Step output for the update. On a terminal the download redraws one line; a
+ * pipe or a log gets each step once, with no control characters.
+ */
+export function createReporter(opts: {
+  write: (text: string) => void;
+  tty: boolean;
+  silent?: boolean;
+}): Reporter {
+  if (opts.silent) return { line: () => {}, progress: () => {}, done: () => {} };
+  let width = 0;
+  return {
+    line: (text) => opts.write(`${text}\n`),
+    progress: (text) => {
+      if (!opts.tty) return;
+      opts.write(`\r${text.padEnd(width)}`);
+      width = text.length;
+    },
+    done: () => {
+      if (opts.tty && width > 0) opts.write("\n");
+      width = 0;
+    },
+  };
+}
+
+const BAR_WIDTH = 24;
+
+/** `[####....] 45%  17.2/38.0 MB`, or just the size when the length is unknown. */
+export function progressLine(received: number, total: number | undefined): string {
+  const mb = (bytes: number) => (bytes / 1_048_576).toFixed(1);
+  if (!total) return `${mb(received)} MB`;
+  const fraction = Math.min(1, received / total);
+  const filled = Math.round(fraction * BAR_WIDTH);
+  const bar = "#".repeat(filled) + ".".repeat(BAR_WIDTH - filled);
+  return `[${bar}] ${String(Math.round(fraction * 100)).padStart(3)}%  ${mb(received)}/${mb(total)} MB`;
+}
+
+/**
+ * Downloads while reporting progress. A ~38 MB release over a slow link is a
+ * long silence otherwise, and a silent CLI looks hung.
+ */
+async function downloadWithProgress(
+  url: string,
+  onProgress: (line: string) => void,
+  timeoutMs = DOWNLOAD_TIMEOUT_MS,
+): Promise<Buffer> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  if (!response.ok) throw new Error(`${url} returned ${response.status}`);
+  const length = Number(response.headers.get("content-length"));
+  const total = Number.isFinite(length) && length > 0 ? length : undefined;
+  if (!response.body) return Buffer.from(await response.arrayBuffer());
+
+  const chunks: Buffer[] = [];
+  let received = 0;
+  let lastReport = 0;
+  for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+    chunks.push(Buffer.from(chunk));
+    received += chunk.byteLength;
+    // Redrawing per chunk floods a pipe; twice a second reads as live.
+    const now = Date.now();
+    if (now - lastReport > 500) {
+      lastReport = now;
+      onProgress(progressLine(received, total));
+    }
+  }
+  onProgress(progressLine(received, total ?? received));
+  return Buffer.concat(chunks);
+}
+
 /**
  * Replaces the running binary with `version` from the release. The new file is
  * written beside the old one and renamed over it, which is the only way to
  * swap an executable that is currently running.
  */
-async function replaceBinary(target: string, base: string): Promise<void> {
+async function replaceBinary(target: string, base: string, step: Reporter): Promise<void> {
   const asset = assetName();
   const dir = mkdtempSync(join(tmpdir(), "mcmc-update-"));
   try {
-    const archive = await download(`${base}/${asset}`);
+    const archive = await downloadWithProgress(`${base}/${asset}`, (line) =>
+      step.progress(`  ${line}`),
+    );
+    step.done();
+    step.line("verifying the checksum");
     try {
       const manifest = (await download(`${base}/checksums.txt`, FETCH_TIMEOUT_MS)).toString("utf8");
       const want = checksumFor(manifest, asset);
@@ -81,12 +163,14 @@ async function replaceBinary(target: string, base: string): Promise<void> {
       if (/checksum mismatch/.test((error as Error).message)) throw error;
     }
 
+    step.line("unpacking");
     const archivePath = join(dir, asset);
     writeFileSync(archivePath, archive);
     const untar = spawnSync("tar", ["-xzf", archivePath, "-C", dir], { stdio: "ignore" });
     if (untar.status !== 0) throw new Error("could not unpack the release (tar failed)");
 
     const staged = join(dir, process.platform === "win32" ? "mcmc.exe" : "mcmc");
+    step.line(`replacing ${target}`);
     // Stage beside the target, not in the temp dir: a rename cannot cross
     // filesystems, and /tmp is usually its own mount.
     const beside = `${target}.new`;
@@ -159,8 +243,17 @@ export function registerUpdate(program: Command, currentVersion: string): void {
 
       // The binary replaces itself, so the path is process.execPath.
       const target = process.execPath;
-      say(`Downloading mcmcjs ${latest}...`);
-      await replaceBinary(target, `https://github.com/${REPO}/releases/download/mcmcjs@${latest}`);
+      const step = createReporter({
+        write: (text) => process.stdout.write(text),
+        tty: process.stdout.isTTY === true,
+        silent: opts.json,
+      });
+      step.line(`downloading mcmcjs ${latest} (${assetName()})`);
+      await replaceBinary(
+        target,
+        `https://github.com/${REPO}/releases/download/mcmcjs@${latest}`,
+        step,
+      );
       say(`${pc.green("updated")} ${target} to mcmcjs ${latest}`);
       say(pc.dim("run `hash -r` if your shell still remembers an older path"));
     });

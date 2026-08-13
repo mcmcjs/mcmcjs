@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assetName, checksumFor, pickCliTag } from "../src/update";
+import { assetName, checksumFor, createReporter, pickCliTag, progressLine } from "../src/update";
 
 describe("assetName", () => {
   it("matches the release assets the install script fetches", () => {
@@ -41,5 +41,60 @@ describe("checksumFor", () => {
   it("returns nothing for an asset that is not listed", () => {
     expect(checksumFor(manifest, "mcmc-windows-x64.tar.gz")).toBeUndefined();
     expect(checksumFor("", "mcmc-linux-x64.tar.gz")).toBeUndefined();
+  });
+});
+
+describe("progressLine", () => {
+  it("draws a bar with the percentage and the megabytes", () => {
+    expect(progressLine(19_922_944, 39_845_888)).toBe(
+      "[############............]  50%  19.0/38.0 MB",
+    );
+  });
+
+  it("fills at the end and never overshoots", () => {
+    expect(progressLine(100, 100)).toContain("100%");
+    expect(progressLine(150, 100)).toContain("100%");
+    expect(progressLine(150, 100)).not.toContain("150%");
+  });
+
+  // A release without a content-length still has to show something moving.
+  it("falls back to the size when the total is unknown", () => {
+    expect(progressLine(1_048_576, undefined)).toBe("1.0 MB");
+  });
+});
+
+describe("createReporter", () => {
+  const collect = () => {
+    const out: string[] = [];
+    return { out, write: (text: string) => out.push(text) };
+  };
+
+  it("redraws one line on a terminal, padding over the last one", () => {
+    const { out, write } = collect();
+    const step = createReporter({ write, tty: true });
+    step.progress("a longer line");
+    step.progress("short");
+    step.done();
+    expect(out[0]).toBe("\ra longer line");
+    expect(out[1]).toBe("\rshort        ");
+    expect(out[2]).toBe("\n");
+  });
+
+  it("writes no control characters when the output is piped", () => {
+    const { out, write } = collect();
+    const step = createReporter({ write, tty: false });
+    step.line("downloading");
+    step.progress("[###...] 50%");
+    step.done();
+    expect(out).toEqual(["downloading\n"]);
+  });
+
+  it("says nothing at all under --json", () => {
+    const { out, write } = collect();
+    const step = createReporter({ write, tty: true, silent: true });
+    step.line("downloading");
+    step.progress("50%");
+    step.done();
+    expect(out).toEqual([]);
   });
 });

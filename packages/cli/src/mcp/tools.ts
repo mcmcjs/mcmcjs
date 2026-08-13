@@ -20,7 +20,28 @@ export interface ToolSpec {
   args: (input: Record<string, unknown>) => string[];
   /** Fits can take minutes; a listing cannot. */
   timeoutMs: number;
+  /**
+   * The shape of the JSON the command prints, so a client gets typed data
+   * rather than a blob to re-parse. Loose on purpose: these describe the
+   * fields worth acting on, and the CLI is free to print more.
+   */
+  output: z.ZodType;
+  /** Commands that print a bare array are wrapped under this key. */
+  outputKey?: string;
 }
+
+/** Only the fields an agent decides on; the rest passes through. */
+const DIAGNOSTICS = z.looseObject({
+  converged: z.boolean().describe("whether every threshold passed"),
+  variables: z.array(
+    z.looseObject({
+      variable: z.string(),
+      mean: z.number(),
+      rhat: z.number(),
+      essBulk: z.number(),
+    }),
+  ),
+});
 
 const target = z
   .string()
@@ -80,6 +101,10 @@ export const TOOLS: ToolSpec[] = [
       ]),
     ],
     timeoutMs: 30 * MINUTE,
+    output: z.looseObject({
+      run: z.looseObject({ id: z.string(), dir: z.string(), cached: z.boolean() }),
+      report: DIAGNOSTICS,
+    }),
   },
   {
     name: "mcmc_diagnose",
@@ -90,6 +115,7 @@ export const TOOLS: ToolSpec[] = [
     input: { target, store },
     args: (input) => [...(input.target ? [String(input.target)] : []), ...flags(input, ["store"])],
     timeoutMs: 2 * MINUTE,
+    output: DIAGNOSTICS,
   },
   {
     name: "mcmc_summary",
@@ -108,6 +134,18 @@ export const TOOLS: ToolSpec[] = [
       ...flags(input, ["store"]),
     ],
     timeoutMs: 2 * MINUTE,
+    outputKey: "variables",
+    output: z.looseObject({
+      variables: z.array(
+        z.looseObject({
+          variable: z.string(),
+          mean: z.number(),
+          std: z.number(),
+          r_hat: z.number(),
+          hdi: z.array(z.number()),
+        }),
+      ),
+    }),
   },
   {
     name: "mcmc_runs",
@@ -118,6 +156,17 @@ export const TOOLS: ToolSpec[] = [
     input: { store },
     args: (input) => flags(input, ["store"]),
     timeoutMs: MINUTE,
+    outputKey: "runs",
+    output: z.looseObject({
+      runs: z.array(
+        z.looseObject({
+          id: z.string(),
+          status: z.string().describe("ok, failed, or cancelled"),
+          model_path: z.string(),
+          started_at: z.string(),
+        }),
+      ),
+    }),
   },
   {
     name: "mcmc_loo",
@@ -128,6 +177,13 @@ export const TOOLS: ToolSpec[] = [
     input: { target, store },
     args: (input) => [...(input.target ? [String(input.target)] : []), ...flags(input, ["store"])],
     timeoutMs: 15 * MINUTE,
+    output: z.looseObject({
+      label: z.string(),
+      elpd_loo: z.number().describe("higher is better"),
+      elpd_loo_se: z.number(),
+      p_loo: z.number().describe("effective number of parameters"),
+      reliable: z.boolean().describe("false when a Pareto k is too high to trust"),
+    }),
   },
   {
     name: "mcmc_compare",
@@ -141,6 +197,16 @@ export const TOOLS: ToolSpec[] = [
     },
     args: (input) => [...(input.targets as string[]), ...flags(input, ["store"])],
     timeoutMs: 15 * MINUTE,
+    outputKey: "models",
+    output: z.looseObject({
+      models: z.array(
+        z.looseObject({
+          rank: z.number().describe("1 is the best fit"),
+          label: z.string(),
+          elpd_loo: z.number(),
+        }),
+      ),
+    }),
   },
   {
     name: "mcmc_sbc",
@@ -160,6 +226,16 @@ export const TOOLS: ToolSpec[] = [
       ...flags(input, ["simulations", "draws", "chains", "data"]),
     ],
     timeoutMs: 60 * MINUTE,
+    output: z.looseObject({
+      calibrated: z.boolean().describe("false means the ranks are not uniform"),
+      simulations: z.number(),
+      parameters: z.array(
+        z.looseObject({
+          name: z.string(),
+          pValue: z.number().describe("small means the model is miscalibrated"),
+        }),
+      ),
+    }),
   },
   {
     name: "mcmc_doctor",
@@ -170,6 +246,15 @@ export const TOOLS: ToolSpec[] = [
     input: {},
     args: () => [],
     timeoutMs: 2 * MINUTE,
+    outputKey: "engines",
+    output: z.looseObject({
+      engines: z.array(
+        z.looseObject({
+          engineId: z.string(),
+          ready: z.boolean().describe("false means `mcmc setup` has to run first"),
+        }),
+      ),
+    }),
   },
 ];
 
