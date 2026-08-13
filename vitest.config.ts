@@ -15,6 +15,8 @@ export default defineConfig({
       },
     },
   ],
+  // The CLI build stamps its version in; tests get a stand-in.
+  define: { __MCMC_VERSION__: '"0.0.0-test"' },
   test: {
     include: ["packages/**/test/**/*.test.ts", "report/test/**/*.test.ts"],
     globalSetup: "./vitest.global-setup.ts",

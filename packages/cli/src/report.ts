@@ -1,14 +1,19 @@
 import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { createServer, type Server } from "node:http";
 import { resolve } from "node:path";
 import { readLedger, resolveRunRef } from "@mcmcjs/core";
 import type { Command } from "commander";
-import { assembleBundle } from "./export";
+import {
+  ensureDaemon,
+  findDaemon,
+  readOrCreateToken,
+  registerStore,
+  runDaemon,
+  stopDaemon,
+  storeUrl,
+} from "./report-daemon";
 import { locateStore } from "./store-cli";
 
 export const DEFAULT_REPORT_APP = "https://mcmcjs.github.io/mcmcjs/report/";
-const SERVE_TIMEOUT_MS = 120_000;
 
 /** The report-app deep link for one run: the app resolves it from its connected store. */
 export function reportUrl(
@@ -30,7 +35,7 @@ export function resolveAppUrl(flag?: string): string {
   return flag ?? process.env.MCMC_REPORT_APP ?? DEFAULT_REPORT_APP;
 }
 
-function openInBrowser(url: string): void {
+export function openInBrowser(url: string): void {
   const command =
     process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
   const child = spawn(command, [url], { stdio: "ignore", detached: true, shell: false });
@@ -38,154 +43,88 @@ function openInBrowser(url: string): void {
   child.unref();
 }
 
-export interface StoreServerOptions {
-  /** Keep serving until the process is stopped instead of the default window. */
-  persistent?: boolean;
-}
-
 /**
- * Serves the run store on the loopback interface: the linked run at /<token>,
- * the ledger at /<token>/ledger, and any run at /<token>/run/<id>. The app
- * browses the store with no file-picker interaction; CORS is pinned to the app
- * origin and every path carries the single-use session token.
+ * Prepares the hosted app to read one run: registers the store and its app
+ * origin, makes sure the local store server is up, and builds the deep link.
+ * The link carries a stable port and token, so the app can pair once and
+ * reconnect by itself afterwards.
  */
-export function serveStore(
+export async function stageReport(
   storeDir: string,
-  linkedRunId: string,
-  appOrigin: string,
-  onDone: () => void,
-  opts: StoreServerOptions = {},
-): Promise<{ url: string; server: Server }> {
-  const token = randomBytes(16).toString("hex");
-  const bundles = new Map<string, string>();
-  const bundleFor = (id: string): string | null => {
-    const cached = bundles.get(id);
-    if (cached) return cached;
-    const entry = readLedger(storeDir).runs.find((r) => r.id === id);
-    if (!entry) return null;
-    try {
-      const payload = JSON.stringify(assembleBundle(storeDir, entry));
-      bundles.set(id, payload);
-      return payload;
-    } catch {
-      return null;
-    }
-  };
-
-  const server = createServer((req, res) => {
-    const cors = {
-      "Access-Control-Allow-Origin": appOrigin,
-      Vary: "Origin",
-    };
-    if (req.method === "OPTIONS") {
-      res.writeHead(204, {
-        ...cors,
-        "Access-Control-Allow-Methods": "GET",
-        "Access-Control-Allow-Private-Network": "true",
-      });
-      res.end();
-      return;
-    }
-    const path = req.url ?? "";
-    if (req.method !== "GET" || !path.startsWith(`/${token}`)) {
-      res.writeHead(404, cors);
-      res.end();
-      return;
-    }
-    const rest = path.slice(token.length + 1);
-    const json = (body: string): void => {
-      res.writeHead(200, { ...cors, "Content-Type": "application/json" });
-      res.end(body);
-    };
-    if (rest === "" || rest === "/") {
-      const payload = bundleFor(linkedRunId);
-      if (payload) json(payload);
-      else {
-        res.writeHead(404, cors);
-        res.end();
-      }
-      return;
-    }
-    if (rest === "/ledger") {
-      json(JSON.stringify([...readLedger(storeDir).runs].reverse()));
-      return;
-    }
-    if (rest.startsWith("/run/")) {
-      const payload = bundleFor(rest.slice(5));
-      if (payload) json(payload);
-      else {
-        res.writeHead(404, cors);
-        res.end();
-      }
-      return;
-    }
-    res.writeHead(404, cors);
-    res.end();
-  });
-
-  if (!opts.persistent) {
-    const timeout = setTimeout(() => {
-      server.close();
-      onDone();
-    }, SERVE_TIMEOUT_MS);
-    timeout.unref();
-  }
-  return new Promise((resolvePort) => {
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address ? address.port : 0;
-      resolvePort({ url: `http://127.0.0.1:${port}/${token}`, server });
-    });
-  });
+  runId: string,
+  appUrl: string,
+): Promise<string> {
+  const origin = new URL(appUrl).origin;
+  const store = registerStore(storeDir, origin);
+  const daemon = await ensureDaemon();
+  const connect = storeUrl(daemon.port, readOrCreateToken(), store.id);
+  return reportUrl(appUrl, storeDir, runId, connect);
 }
 
 export function registerReport(program: Command): void {
-  program
+  const report = program
     .command("report")
     .summary("open a run in the report web app")
     .helpGroup("Inspect runs:")
     .argument("[ref]", "run ref: latest (default), @N, or a run-id prefix")
     .description(
-      "Open a run in the report web app. The run is handed to the app over the loopback interface; nothing leaves this machine.",
+      "Open a run in the report web app. The app reads the run from a small server on the loopback interface; nothing leaves this machine.",
     )
     .option("--store <dir>", "run store directory (default: nearest .mcmc above cwd)")
     .option("--app-url <url>", "report app URL (default: MCMC_REPORT_APP or the hosted app)")
     .option("--no-open", "print the URL without opening a browser")
-    .option("--no-serve", "print a store-only link without serving the store")
-    .option("--watch", "keep serving the store until stopped, for browsing every run")
+    .option("--no-serve", "print a store-only link without starting the store server")
+    .option("--watch", "accepted for compatibility; the store server now runs on its own")
     .action(
       async (
         ref: string | undefined,
-        opts: { store?: string; appUrl?: string; open: boolean; serve: boolean; watch?: boolean },
+        opts: { store?: string; appUrl?: string; open: boolean; serve: boolean },
       ) => {
         const storeDir = locateStore(opts.store);
         const entry = resolveRunRef(readLedger(storeDir), ref);
         const appUrl = resolveAppUrl(opts.appUrl);
 
-        let connect: string | undefined;
+        let url = reportUrl(appUrl, storeDir, entry.id);
         if (opts.serve) {
           try {
-            const handoff = await serveStore(storeDir, entry.id, new URL(appUrl).origin, () => {}, {
-              persistent: opts.watch,
-            });
-            connect = handoff.url;
+            url = await stageReport(storeDir, entry.id, appUrl);
           } catch (error) {
             process.stderr.write(
-              `warning: could not stage the run for direct handoff: ${(error as Error).message}\n`,
+              `warning: could not start the store server: ${(error as Error).message}\n`,
             );
           }
         }
 
-        const url = reportUrl(appUrl, storeDir, entry.id, connect);
         process.stdout.write(`${url}\n`);
-        if (connect && !process.env.MCMC_REPORT_QUIET) {
-          process.stderr.write(
-            opts.watch
-              ? "serving the store to the report app until stopped (Ctrl+C)...\n"
-              : "serving the store to the report app for 2 min...\n",
-          );
-        }
         if (opts.open) openInBrowser(url);
       },
     );
+
+  report
+    .command("status")
+    .summary("show whether the store server is running")
+    .action(async () => {
+      const daemon = await findDaemon();
+      process.stdout.write(
+        daemon
+          ? `running on port ${daemon.port} (pid ${daemon.pid}, since ${daemon.started_at})\n`
+          : "not running; `mcmc report` starts it\n",
+      );
+    });
+
+  report
+    .command("stop")
+    .summary("stop the store server")
+    .action(async () => {
+      const outcome = await stopDaemon();
+      process.stdout.write(
+        outcome === "stopped"
+          ? "stopped the store server\n"
+          : outcome === "stale"
+            ? "the store server was already gone; cleared its state\n"
+            : "the store server is not running\n",
+      );
+    });
+
+  program.command("__report-daemon", { hidden: true }).action(runDaemon);
 }
