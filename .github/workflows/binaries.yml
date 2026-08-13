@@ -1,16 +1,26 @@
 name: Binaries
 
-# Attaches single-file `mcmc` binaries to each CLI release, so the install
-# script can fetch one without npm or Node.js. Runs when the release workflow
-# publishes an mcmcjs@* tag, and can be re-run by hand against an existing tag.
+# Attaches single-file `mcmc` binaries to a CLI release, so the install script
+# can fetch one without npm or Node.js.
+#
+# The release workflow calls this directly after publishing. It cannot be
+# triggered by the release itself: changesets creates that release with
+# GITHUB_TOKEN, and GitHub does not start workflows from events raised by that
+# token. `release: published` stays for releases a human publishes by hand.
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to attach binaries to (e.g. mcmcjs@0.26.0)"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to attach binaries to (e.g. mcmcjs@0.25.1)"
+        description: "Release tag to attach binaries to (e.g. mcmcjs@0.26.0)"
         required: true
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -18,12 +28,12 @@ permissions:
 jobs:
   build:
     # Only the CLI package ships a binary; the libraries do not.
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'mcmcjs@')
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'mcmcjs@')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
       - uses: ./.github/actions/setup
       - uses: oven-sh/setup-bun@v2
         with:
@@ -55,5 +65,5 @@ jobs:
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
         run: gh release upload "$TAG" dist-bin/* --clobber --repo "$GITHUB_REPOSITORY"

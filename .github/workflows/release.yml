@@ -14,6 +14,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      # The CLI version just published, empty when this run only opened the PR.
+      cli-version: ${{ steps.cli.outputs.version }}
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup
@@ -37,6 +40,14 @@ jobs:
           commitMode: github-api # signed, verified version commits and tags
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Which CLI version (if any) went out, for the binaries that follow.
+      - id: cli
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
+        run: |
+          version=$(printf '%s' "$PUBLISHED" | jq -r '.[] | select(.name == "mcmcjs") | .version')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       # The action's title input is static, so refine it with the actual versions
       # parsed from the release PR body (the "## name@version" headers it wrote).
       - name: Add versions to the release PR title
@@ -50,3 +61,15 @@ jobs:
           if [ -n "$versions" ]; then
             gh pr edit "$PR" --title "Release: $versions"
           fi
+
+  # Called from here rather than triggered by the release: changesets creates
+  # that release with GITHUB_TOKEN, and GitHub raises no workflow-starting
+  # event for it.
+  binaries:
+    needs: release
+    if: needs.release.outputs.cli-version != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/binaries.yml
+    with:
+      tag: mcmcjs@${{ needs.release.outputs.cli-version }}

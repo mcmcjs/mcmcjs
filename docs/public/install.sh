@@ -52,12 +52,17 @@ if [ -n "$existing" ] && [ "$existing" != "$INSTALL_DIR/mcmc" ]; then
   say ""
 fi
 
-# The repo's "latest release" may be one of the libraries, which ship no
-# binary, so the CLI's current version is published beside this script.
+# The repo's "latest release" may be one of the libraries, which ship no binary,
+# so ask for the newest mcmcjs@ tag specifically. The version published beside
+# this script is the fallback for a rate-limited API.
 if [ "$VERSION" = latest ]; then
-  VERSION=$(curl -fsSL "https://mcmcjs.github.io/mcmcjs/latest.txt" 2>/dev/null | tr -d '\r\n ')
-  [ -n "$VERSION" ] || fail "could not look up the latest version; set MCMC_VERSION=x.y.z"
+  VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=50" 2>/dev/null |
+    grep -o '"tag_name": *"mcmcjs@[^"]*"' | head -1 | sed 's/.*mcmcjs@//; s/"$//')
 fi
+if [ -z "${VERSION:-}" ] || [ "$VERSION" = latest ]; then
+  VERSION=$(curl -fsSL "https://mcmcjs.github.io/mcmcjs/latest.txt" 2>/dev/null | tr -d '\r\n ')
+fi
+[ -n "$VERSION" ] || fail "could not look up the latest version; set MCMC_VERSION=x.y.z"
 base="https://github.com/$REPO/releases/download/mcmcjs@$VERSION"
 
 tmp=$(mktemp -d)
