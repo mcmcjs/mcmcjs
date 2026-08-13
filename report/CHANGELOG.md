@@ -1,5 +1,11 @@
 # mcmcjs-report
 
+## 0.0.7
+
+### Patch Changes
+
+- 3fdfa50: The report app's base path comes from BASE_PATH, so the same build can be served under /mcmcjs/report/ or at /report/ on the org site.
+
 ## 0.0.6
 
 ### Patch Changes
