@@ -5,6 +5,14 @@
 // into transformed data / transformed parameters / generated quantities, and
 // constructs Stan cannot express (discrete latents, unmapped distributions)
 // are emitted as explanatory comments.
+import {
+  analyzeDiscreteLatents,
+  type DiscreteAnalysis,
+  marginalizedLatentNames,
+  type PlatePlan,
+  type ScalarDagPlan,
+  type SupportInfo,
+} from "../core/discrete-analysis";
 import { buildTopologicalOrder } from "../core/topo-sort";
 import type { GraphEdge, GraphElement, GraphNode } from "../core/types";
 import { renderTemplate } from "../templates/render";
@@ -820,6 +828,379 @@ function nodeEquationHasMatrixResult(node: GraphNode, nameToNode: Map<string, Gr
   return false;
 }
 
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function densityTerm(
+  node: GraphNode,
+  nameToNode: Map<string, GraphNode>,
+  target?: string,
+): string | null {
+  const info = formatStanDistribution(node, nameToNode);
+  if (info === null || "error" in info) return null;
+  const suffix =
+    node.distribution && DISCRETE_DISTRIBUTIONS.has(node.distribution) ? "lpmf" : "lpdf";
+  const lhs = target ?? `${convertBugsName(node.name)}${node.indices ? `[${node.indices}]` : ""}`;
+  return `${info.stanDist}_${suffix}(${lhs} | ${info.stanParams})`;
+}
+
+function inlineDetRefs(term: string, dets: GraphNode[], depth = 0): string {
+  if (depth > 8 || dets.length === 0) return term;
+  let out = term;
+  for (const d of dets) {
+    const eq = `(${convertExpression(String(d.equation ?? ""))})`;
+    const name = escapeRe(convertBugsName(d.name));
+    const idx = d.indices?.trim();
+    const re = idx
+      ? new RegExp(`(?<![A-Za-z0-9_])${name}\\s*\\[\\s*${escapeRe(idx)}\\s*\\]`, "g")
+      : new RegExp(`(?<![A-Za-z0-9_])${name}(?![A-Za-z0-9_])`, "g");
+    out = out.replace(re, eq);
+  }
+  return out === term ? out : inlineDetRefs(out, dets, depth + 1);
+}
+
+function substLatentRef(
+  term: string,
+  latentName: string,
+  loopVar: string | null,
+  valExpr: string,
+): string {
+  const name = escapeRe(latentName);
+  const re = loopVar
+    ? new RegExp(`(?<![A-Za-z0-9_])${name}\\s*\\[\\s*${escapeRe(loopVar)}\\s*\\]`, "g")
+    : new RegExp(`(?<![A-Za-z0-9_])${name}(?![A-Za-z0-9_])`, "g");
+  return term.replace(re, valExpr);
+}
+
+// dcat loops support values directly; dbern loops 1-based positions with a shifted value.
+function latentLoopVars(latent: GraphNode, support: SupportInfo) {
+  const stanName = convertBugsName(latent.name);
+  if (support.lo === 1) {
+    const v = `${stanName}_val`;
+    return { posVar: v, valExpr: v, valDecl: null as string | null };
+  }
+  const pos = `${stanName}_idx`;
+  const val = `${stanName}_val`;
+  const shift = support.lo - 1;
+  const offset = shift >= 0 ? `+ ${shift}` : `- ${-shift}`;
+  return { posVar: pos, valExpr: val, valDecl: `int ${val} = ${pos} ${offset};` };
+}
+
+function plateUpper(plate: GraphNode): string {
+  const range = convertBugsName(plate.loopRange || "1:N");
+  const parts = range.split(":");
+  return parts.length === 2 ? (parts[1] as string).trim() : range;
+}
+
+function plateTerms(plan: PlatePlan, nameToNode: Map<string, GraphNode>): string[] {
+  const loopVar = plan.plate.loopVariable || "i";
+  const { valExpr } = latentLoopVars(plan.latent, plan.support);
+  const terms: string[] = [];
+  const prior = densityTerm(plan.latent, nameToNode, valExpr);
+  if (prior) terms.push(prior);
+  for (const f of plan.factors) {
+    const raw = densityTerm(f, nameToNode);
+    if (!raw) continue;
+    const inlined = inlineDetRefs(raw, plan.inlineDets);
+    terms.push(substLatentRef(inlined, plan.latent.name, loopVar, valExpr));
+  }
+  return terms;
+}
+
+function sumLines(lhs: string, terms: string[], indent: string): string[] {
+  const [first, ...rest] = terms;
+  const lines = [`${indent}${lhs} = ${first ?? "0"}${rest.length === 0 ? ";" : ""}`];
+  rest.forEach((t, i) => {
+    lines.push(`${indent}  + ${t}${i === rest.length - 1 ? ";" : ""}`);
+  });
+  return lines;
+}
+
+function emitPlateMarginalization(
+  plan: PlatePlan,
+  indent: string,
+  nameToNode: Map<string, GraphNode>,
+): string[] {
+  const stanName = convertBugsName(plan.latent.name);
+  const { posVar, valDecl } = latentLoopVars(plan.latent, plan.support);
+  const acc = `${stanName}_lp`;
+  const terms = plateTerms(plan, nameToNode);
+  const lines = [
+    `${indent}// marginalize out ${stanName}[${plan.plate.loopVariable || "i"}]`,
+    `${indent}{`,
+    `${indent}  vector[${plan.support.size}] ${acc};`,
+    `${indent}  for (${posVar} in 1:${plan.support.size}) {`,
+  ];
+  if (valDecl) lines.push(`${indent}    ${valDecl}`);
+  lines.push(...sumLines(`${acc}[${posVar}]`, terms, `${indent}    `));
+  lines.push(`${indent}  }`, `${indent}  target += log_sum_exp(${acc});`, `${indent}}`);
+  return lines;
+}
+
+function emitPlateRecovery(
+  plan: PlatePlan,
+  nameToNode: Map<string, GraphNode>,
+): { decl: string; lines: string[] } {
+  const stanName = convertBugsName(plan.latent.name);
+  const loopVar = plan.plate.loopVariable || "i";
+  const upper = plateUpper(plan.plate);
+  const { posVar, valDecl } = latentLoopVars(plan.latent, plan.support);
+  const acc = `${stanName}_lp`;
+  const terms = plateTerms(plan, nameToNode);
+  const shift = plan.support.lo === 1 ? "" : ` + ${plan.support.lo - 1}`;
+  const lines = [
+    `  // recover ${stanName} from its conditional posterior`,
+    `  for (${loopVar} in 1:${upper}) {`,
+    `    vector[${plan.support.size}] ${acc};`,
+    `    for (${posVar} in 1:${plan.support.size}) {`,
+  ];
+  if (valDecl) lines.push(`      ${valDecl}`);
+  lines.push(...sumLines(`${acc}[${posVar}]`, terms, "      "));
+  lines.push(
+    "    }",
+    `    ${stanName}[${loopVar}] = categorical_rng(softmax(${acc}))${shift};`,
+    "  }",
+  );
+  return { decl: `  array[${upper}] int ${stanName};`, lines };
+}
+
+interface ScalarNaming {
+  vars: Map<string, ReturnType<typeof latentLoopVars>>;
+  supports: Map<string, SupportInfo>;
+  phiScopes: Map<string, GraphNode[]>;
+}
+
+function scalarNaming(plan: ScalarDagPlan): ScalarNaming {
+  const vars = new Map<string, ReturnType<typeof latentLoopVars>>();
+  const supports = new Map<string, SupportInfo>();
+  for (const step of plan.steps) {
+    vars.set(step.latent.id, latentLoopVars(step.latent, step.support));
+    supports.set(step.latent.id, step.support);
+  }
+  return { vars, supports, phiScopes: new Map() };
+}
+
+function scalarBucketTerms(
+  step: ScalarDagPlan["steps"][number],
+  plan: ScalarDagPlan,
+  naming: ScalarNaming,
+  nameToNode: Map<string, GraphNode>,
+): string[] {
+  const inScope = [step.latent, ...step.scopeAfter];
+  const substAll = (raw: string): string => {
+    let out = inlineDetRefs(raw, plan.inlineDets);
+    for (const l of inScope) {
+      out = substLatentRef(out, l.name, null, naming.vars.get(l.id)?.valExpr ?? l.name);
+    }
+    return out;
+  };
+  const terms: string[] = [];
+  const prior = densityTerm(step.latent, nameToNode, naming.vars.get(step.latent.id)?.valExpr);
+  if (prior) terms.push(substAll(prior));
+  for (const f of step.bucketFactors) {
+    const raw = densityTerm(f, nameToNode);
+    if (raw) terms.push(substAll(raw));
+  }
+  for (const phi of step.bucketPhis) {
+    const scope = naming.phiScopes.get(phi.id) ?? [];
+    const idx = scope.map((l) => naming.vars.get(l.id)?.posVar ?? "1").join(", ");
+    terms.push(`phi_${convertBugsName(phi.name)}[${idx}]`);
+  }
+  return terms;
+}
+
+function emitScalarElimination(plan: ScalarDagPlan, nameToNode: Map<string, GraphNode>): string[] {
+  const naming = scalarNaming(plan);
+  const decls: string[] = [];
+  const body: string[] = [];
+
+  for (const step of plan.steps) {
+    const stanName = convertBugsName(step.latent.name);
+    const { posVar, valDecl } = naming.vars.get(step.latent.id) as ReturnType<
+      typeof latentLoopVars
+    >;
+    const acc = `${stanName}_lp`;
+    const terms = scalarBucketTerms(step, plan, naming, nameToNode);
+    body.push(`    // eliminate ${stanName}`);
+
+    let indent = "    ";
+    for (const outer of step.scopeAfter) {
+      const ov = naming.vars.get(outer.id) as ReturnType<typeof latentLoopVars>;
+      const size = naming.supports.get(outer.id)?.size ?? "1";
+      body.push(`${indent}for (${ov.posVar} in 1:${size}) {`);
+      indent += "  ";
+      if (ov.valDecl) body.push(`${indent}${ov.valDecl}`);
+    }
+
+    body.push(`${indent}vector[${step.support.size}] ${acc};`);
+    body.push(`${indent}for (${posVar} in 1:${step.support.size}) {`);
+    if (valDecl) body.push(`${indent}  ${valDecl}`);
+    body.push(...sumLines(`${acc}[${posVar}]`, terms, `${indent}  `));
+    body.push(`${indent}}`);
+
+    if (step.scopeAfter.length === 0) {
+      body.push(`${indent}target += log_sum_exp(${acc});`);
+    } else {
+      const dims = step.scopeAfter.map((l) => naming.supports.get(l.id)?.size ?? "1").join(", ");
+      decls.push(`    array[${dims}] real phi_${stanName};`);
+      const idx = step.scopeAfter.map((l) => naming.vars.get(l.id)?.posVar ?? "1").join(", ");
+      body.push(`${indent}phi_${stanName}[${idx}] = log_sum_exp(${acc});`);
+      naming.phiScopes.set(step.latent.id, step.scopeAfter);
+    }
+
+    for (let i = step.scopeAfter.length; i > 0; i--) {
+      indent = indent.slice(2);
+      body.push(`${indent}}`);
+    }
+  }
+
+  return [
+    "  // marginalize scalar discrete latents by variable elimination",
+    "  {",
+    ...decls,
+    ...body,
+    "  }",
+  ];
+}
+
+function emitScalarRecovery(
+  plan: ScalarDagPlan,
+  nameToNode: Map<string, GraphNode>,
+): { decls: string[]; lines: string[] } {
+  const naming = scalarNaming(plan);
+  const substAll = (raw: string): string => {
+    let out = inlineDetRefs(raw, plan.inlineDets);
+    for (const l of plan.latents) {
+      out = substLatentRef(out, l.name, null, naming.vars.get(l.id)?.valExpr ?? l.name);
+    }
+    return out;
+  };
+  const terms: string[] = [];
+  for (const l of plan.latents) {
+    const prior = densityTerm(l, nameToNode, naming.vars.get(l.id)?.valExpr);
+    if (prior) terms.push(substAll(prior));
+  }
+  for (const f of plan.factors) {
+    const raw = densityTerm(f, nameToNode);
+    if (raw) terms.push(substAll(raw));
+  }
+
+  const sizes = plan.latents.map((l) => naming.supports.get(l.id)?.size ?? "1");
+  const total = sizes.join(" * ");
+  const decls = plan.latents.map((l) => `  int ${convertBugsName(l.name)};`);
+  const lines: string[] = [
+    "  // recover the scalar discrete latents from their joint conditional posterior",
+    "  {",
+    `    vector[${total}] marg_joint_lp;`,
+    ...plan.latents.map((l) => `    array[${total}] int marg_conf_${convertBugsName(l.name)};`),
+    "    int marg_c = 0;",
+    "    int marg_pick;",
+  ];
+  let indent = "    ";
+  for (const l of plan.latents) {
+    const v = naming.vars.get(l.id) as ReturnType<typeof latentLoopVars>;
+    lines.push(`${indent}for (${v.posVar} in 1:${naming.supports.get(l.id)?.size ?? "1"}) {`);
+    indent += "  ";
+    if (v.valDecl) lines.push(`${indent}${v.valDecl}`);
+  }
+  lines.push(`${indent}marg_c += 1;`);
+  lines.push(...sumLines("marg_joint_lp[marg_c]", terms, indent));
+  for (const l of plan.latents) {
+    const v = naming.vars.get(l.id) as ReturnType<typeof latentLoopVars>;
+    lines.push(`${indent}marg_conf_${convertBugsName(l.name)}[marg_c] = ${v.valExpr};`);
+  }
+  for (let i = plan.latents.length; i > 0; i--) {
+    indent = indent.slice(2);
+    lines.push(`${indent}}`);
+  }
+  lines.push("    marg_pick = categorical_rng(softmax(marg_joint_lp));");
+  for (const l of plan.latents) {
+    const n = convertBugsName(l.name);
+    lines.push(`    ${n} = marg_conf_${n}[marg_pick];`);
+  }
+  lines.push("  }");
+  return { decls, lines };
+}
+
+// Data arrays indexed by a latent (e.g. muX[X], deltaC[C + 1]) need the latent's
+// support size as their dimension; nothing else in the graph carries that size.
+function latentIndexedDataDims(analysis: DiscreteAnalysis): Map<string, string[]> {
+  const latentSize = new Map<string, string>();
+  const exprNodes: GraphNode[] = [];
+  for (const l of analysis.latents) {
+    if (l.tier === "unsupported" || !l.support) continue;
+    latentSize.set(l.node.name, l.support.size);
+    exprNodes.push(l.node);
+  }
+  if (latentSize.size === 0) return new Map();
+  for (const plan of analysis.platePlans) exprNodes.push(...plan.factors, ...plan.inlineDets);
+  if (analysis.scalarPlan) {
+    exprNodes.push(...analysis.scalarPlan.factors, ...analysis.scalarPlan.inlineDets);
+  }
+
+  const dims = new Map<string, string[]>();
+  const INDEXED_RE = /(?<![0-9.])([A-Za-z_][A-Za-z0-9_.]*)\s*\[([^\][]*(?:\[[^\]]*\][^\][]*)*)\]/g;
+  for (const node of exprNodes) {
+    for (const expr of [node.equation, node.param1, node.param2, node.param3]) {
+      if (!expr) continue;
+      INDEXED_RE.lastIndex = 0;
+      let m: RegExpExecArray | null = INDEXED_RE.exec(String(expr));
+      while (m !== null) {
+        const base = m[1] as string;
+        const subs = splitTopLevel(m[2] as string);
+        const resolved: string[] = [];
+        let hasLatent = false;
+        for (const sub of subs) {
+          const latent = [...latentSize.keys()].find((n) =>
+            new RegExp(`(?<![A-Za-z0-9_])${escapeRe(n)}(?![A-Za-z0-9_])`).test(sub),
+          );
+          if (latent) {
+            hasLatent = true;
+            resolved.push(latentSize.get(latent) as string);
+          } else {
+            resolved.push("");
+          }
+        }
+        if (hasLatent && resolved.every((d) => d !== "")) {
+          dims.set(convertBugsName(base), resolved);
+        }
+        m = INDEXED_RE.exec(String(expr));
+      }
+    }
+  }
+  return dims;
+}
+
+function splitTopLevel(subs: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of subs) {
+    if (ch === "[") depth++;
+    if (ch === "]") depth--;
+    if (ch === "," && depth === 0) {
+      parts.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  parts.push(current.trim());
+  return parts;
+}
+
+function catPriorVectorOverrides(analysis: DiscreteAnalysis): Map<string, string> {
+  const overrides = new Map<string, string>();
+  for (const l of analysis.latents) {
+    if (l.tier === "unsupported" || l.node.distribution !== "dcat" || !l.support) continue;
+    const p1 = String(l.node.param1 ?? "").trim();
+    const m = p1.match(/^([A-Za-z_][A-Za-z0-9_.]*)\s*(?:\[\s*(?::|1\s*:\s*[^\]]+)?\s*\])?$/);
+    if (m) overrides.set(convertBugsName(m[1] as string), `vector[${l.support.size}]`);
+  }
+  return overrides;
+}
+
 /** Generate Stan model code from a DoodleBUGS graph. */
 export function generateStanModel(elements: GraphElement[]): string {
   const nodes = elements.filter((el): el is GraphNode => el.type === "node");
@@ -836,6 +1217,21 @@ export function generateStanModel(elements: GraphElement[]): string {
   const topoOrder = buildTopologicalOrder(nodes, edges);
   const topoIndex = new Map(topoOrder.map((id, i) => [id, i]));
 
+  const marg = analyzeDiscreteLatents(elements, topoOrder);
+  const margLatentIds = new Set(
+    marg.latents.filter((l) => l.tier !== "unsupported").map((l) => l.node.id),
+  );
+  const margReasons = new Map(
+    marg.latents
+      .filter((l) => l.tier === "unsupported" && l.reason)
+      .map((l) => [l.node.id, l.reason as string]),
+  );
+  const platePlanByLatent = new Map(marg.platePlans.map((p) => [p.latent.id, p]));
+  const consumedFactorIds = new Set(
+    [...marg.consumedFactorIds].filter((id) => !margLatentIds.has(id)),
+  );
+  const latentDims = latentIndexedDataDims(marg);
+
   const sortByTopo = (a: GraphNode, b: GraphNode) =>
     (topoIndex.get(a.id) ?? 0) - (topoIndex.get(b.id) ?? 0);
 
@@ -843,7 +1239,7 @@ export function generateStanModel(elements: GraphElement[]): string {
   const parameterDeclarations: string[] = [];
   const transformedParamLines: string[] = [];
 
-  const mvTypeOverrides = new Map<string, string>();
+  const mvTypeOverrides = catPriorVectorOverrides(marg);
   // Don't override types for names that already correspond to stochastic or deterministic
   // nodes — those are handled by their own declaration loops using inferStanType / per-dist
   // logic. Overriding them here could mis-type a shared base name (e.g. mu[i] stripped to
@@ -899,7 +1295,8 @@ export function generateStanModel(elements: GraphElement[]): string {
 
   for (const node of constantNodes.sort(sortByTopo)) {
     const stanName = convertBugsName(node.name);
-    const dims = getArrayDimsFromNode(node, nodeMap, plates);
+    const ownDims = getArrayDimsFromNode(node, nodeMap, plates);
+    const dims = ownDims.length > 0 ? ownDims : (latentDims.get(stanName) ?? ownDims);
     const mvType = mvTypeOverrides.get(stanName);
     if (mvType) {
       if (dims.length > 0) {
@@ -956,8 +1353,9 @@ export function generateStanModel(elements: GraphElement[]): string {
   const alreadyDeclared = new Set(
     dataDeclarations.map((d) => (d.trim().split(/\s+/).pop() ?? "").replace(";", "")),
   );
-  for (const { stanName, dims } of findUndeclaredDataVars(nodes, plateSizeVars)) {
+  for (const { stanName, dims: foundDims } of findUndeclaredDataVars(nodes, plateSizeVars)) {
     if (alreadyDeclared.has(stanName)) continue;
+    const dims = foundDims.length > 0 ? foundDims : (latentDims.get(stanName) ?? foundDims);
     const mvType = mvTypeOverrides.get(stanName);
     if (mvType) {
       if (dims.length > 0) {
@@ -1005,6 +1403,7 @@ export function generateStanModel(elements: GraphElement[]): string {
   }
 
   for (const node of stochasticParams.sort(sortByTopo)) {
+    if (margLatentIds.has(node.id)) continue;
     const stanName = convertBugsName(node.name);
     const dims = getArrayDimsFromNode(node, nodeMap, plates);
     const bounds = needsBoundsFromDistribution(node.distribution, node, nameToNode);
@@ -1067,6 +1466,10 @@ export function generateStanModel(elements: GraphElement[]): string {
       parameterDeclarations.push(
         `  // Stan cannot sample discrete latent parameters. Marginalize out ${stanName} or restructure the model.`,
       );
+      const reason = margReasons.get(node.id);
+      if (reason) {
+        parameterDeclarations.push(`  // (automatic marginalization not applied: ${reason})`);
+      }
     }
 
     if (dims.length > 0) {
@@ -1089,7 +1492,7 @@ export function generateStanModel(elements: GraphElement[]): string {
     transformedParams: tpDetNodes,
     generatedQuantities: gqDetNodes,
   } = classifyDeterministicBlocks(
-    deterministicNodes,
+    deterministicNodes.filter((n) => !marg.inlinedDetIds.has(n.id)),
     constantNodes,
     observedNodes,
     stochasticParams,
@@ -1167,6 +1570,14 @@ export function generateStanModel(elements: GraphElement[]): string {
     const sorted = [...nodesToProcess].sort(sortByTopo);
 
     for (const node of sorted) {
+      if (blockType === "model") {
+        const platePlan = platePlanByLatent.get(node.id);
+        if (platePlan) {
+          lines.push(...emitPlateMarginalization(platePlan, indent, nameToNode));
+          continue;
+        }
+        if (consumedFactorIds.has(node.id) || margLatentIds.has(node.id)) continue;
+      }
       if (node.nodeType === "plate") {
         const plateVar = node.loopVariable || "i";
         const plateRange = convertBugsName(node.loopRange || "1:N");
@@ -1179,7 +1590,11 @@ export function generateStanModel(elements: GraphElement[]): string {
         if (blockType === "model") {
           const canVectorize = lower === "1";
           const plateNodes = children
-            .filter((c) => c.nodeType === "stochastic" || c.nodeType === "observed")
+            .filter(
+              (c) =>
+                (c.nodeType === "stochastic" || c.nodeType === "observed") &&
+                !consumedFactorIds.has(c.id),
+            )
             .sort(sortByTopo);
 
           const vectorizedLines: string[] = [];
@@ -1343,6 +1758,12 @@ export function generateStanModel(elements: GraphElement[]): string {
     "  ",
     "model",
   );
+  if (marg.scalarPlan) {
+    modelStatements.push(...emitScalarElimination(marg.scalarPlan, nameToNode));
+  }
+  if (marg.issues.length > 0) {
+    modelStatements.unshift(...marg.issues.map((i) => `  // NOTE: ${i}`));
+  }
 
   const gqStatements = generateBlockStatements(
     [...rootDeterministic, ...rootPlates],
@@ -1350,6 +1771,19 @@ export function generateStanModel(elements: GraphElement[]): string {
     "transformed",
     gqIds,
   );
+
+  const recoveryDecls: string[] = [];
+  const recoveryLines: string[] = [];
+  for (const plan of marg.platePlans) {
+    const { decl, lines } = emitPlateRecovery(plan, nameToNode);
+    recoveryDecls.push(decl);
+    recoveryLines.push(...lines);
+  }
+  if (marg.scalarPlan) {
+    const { decls, lines } = emitScalarRecovery(marg.scalarPlan, nameToNode);
+    recoveryDecls.push(...decls);
+    recoveryLines.push(...lines);
+  }
 
   const sections: string[] = [];
 
@@ -1381,9 +1815,12 @@ export function generateStanModel(elements: GraphElement[]): string {
     sections.push(`model {\n${modelStatements.join("\n")}\n}`);
   }
 
-  if (gqStatements.length > 0) {
-    const gqDeclBlock = gqDeclLines.length > 0 ? `${gqDeclLines.join("\n")}\n` : "";
-    sections.push(`generated quantities {\n${gqDeclBlock}${gqStatements.join("\n")}\n}`);
+  if (gqStatements.length > 0 || recoveryLines.length > 0) {
+    const decls = [...recoveryDecls, ...gqDeclLines];
+    const gqDeclBlock = decls.length > 0 ? `${decls.join("\n")}\n` : "";
+    // Recovery runs first so generated quantities can read the recovered latents.
+    const body = [...recoveryLines, ...gqStatements].join("\n");
+    sections.push(`generated quantities {\n${gqDeclBlock}${body}\n}`);
   }
 
   if (sections.length === 0) {
@@ -1479,6 +1916,14 @@ export function generateStanInitsJson(
         }
         delete converted[pp.stanName];
       }
+    }
+    const nodes = elements.filter((el): el is GraphNode => el.type === "node");
+    const graphEdges = elements.filter((el): el is GraphEdge => el.type === "edge");
+    for (const name of marginalizedLatentNames(
+      elements,
+      buildTopologicalOrder(nodes, graphEdges),
+    )) {
+      delete converted[convertBugsName(name)];
     }
   }
   return JSON.stringify(replaceNullsWithZero(converted), null, 2);

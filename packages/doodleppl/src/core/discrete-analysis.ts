@@ -455,8 +455,34 @@ function validateLatent(
   byId: Map<string, DiscreteLatent>,
 ): string | null {
   const latent = entry.node;
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(latent.name)) {
+    return `latent name '${latent.name}' is not a plain identifier`;
+  }
+  if (latent.censorLower || latent.censorUpper || latent.equation?.trim()) {
+    return `'${latent.name}' has censoring or a data transform`;
+  }
   if (factors.length === 0) {
     return `'${latent.name}' has no factors reading it; marginalizing it would be a no-op`;
+  }
+  for (const f of factors) {
+    if (f.censorLower || f.censorUpper || f.equation?.trim()) {
+      return `factor '${f.name}' of '${latent.name}' has censoring or a data transform`;
+    }
+    const dist = f.distribution ?? "";
+    if (dist === "" || dist === "dflat") {
+      return `factor '${f.name}' of '${latent.name}' has no translatable distribution`;
+    }
+  }
+  // Every deterministic node carrying this latent must be inlinable into some factor;
+  // a deterministic reader that reaches no factor (e.g. one feeding only generated
+  // quantities) would reference a variable that no longer exists.
+  const latentOnly = new Set([latent.id]);
+  const enRoute = new Set(factors.flatMap((f) => detsEnRoute(f, ctx, latentOnly)).map((d) => d.id));
+  for (const det of ctx.nodes) {
+    if (det.nodeType !== "deterministic") continue;
+    if (discreteScope(det, ctx, latentOnly).size > 0 && !enRoute.has(det.id)) {
+      return `deterministic node '${det.name}' reads '${latent.name}' but feeds no factor`;
+    }
   }
 
   if (entry.tier === "iid-plate") {
