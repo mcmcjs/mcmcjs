@@ -101,6 +101,42 @@ export function mixedDagElements(): GraphElement[] {
   ];
 }
 
+/** The mixture drawn idiomatically: the latent reaches y only through deterministic nodes. */
+export function mixtureDetElements(): GraphElement[] {
+  const base = mixtureElements().filter(
+    (el) => !(el.type === "edge" && ["z->y", "mu->y", "sigma->y"].includes(el.id)),
+  );
+  return [
+    ...base.map((el) =>
+      el.type === "node" && el.id === "y"
+        ? ({ ...el, param1: "muY[i]", param2: "tauY[i]" } as GraphNode)
+        : el,
+    ),
+    node({
+      id: "muY",
+      name: "muY",
+      nodeType: "deterministic",
+      equation: "mu[z[i]]",
+      indices: "i",
+      parent: "plate_i",
+    }),
+    node({
+      id: "tauY",
+      name: "tauY",
+      nodeType: "deterministic",
+      equation: "1 / (sigma[z[i]] * sigma[z[i]])",
+      indices: "i",
+      parent: "plate_i",
+    }),
+    edge("z", "muY"),
+    edge("mu", "muY"),
+    edge("z", "tauY"),
+    edge("sigma", "tauY"),
+    edge("muY", "y"),
+    edge("tauY", "y"),
+  ];
+}
+
 /** Dependent discrete priors: X ~ dcat(piX); Y ~ dcat(theta[X, 1:2]); yobs ~ dnorm(mu[Y], tau(sigma)). */
 export function chainDagElements(): GraphElement[] {
   return [

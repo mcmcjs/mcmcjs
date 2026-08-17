@@ -19,6 +19,7 @@ import {
   mixedDagElements,
   mixedDagPoints,
   mixtureData,
+  mixtureDetElements,
   mixtureElements,
   mixturePoints,
 } from "./helpers/marginalization-fixtures";
@@ -63,6 +64,7 @@ function pairwiseDiffs(values: number[]): number[] {
 
 describe.runIf(PARITY)("generated Stan matches the brute-force reference", () => {
   let mixtureBin: string;
+  let mixtureDetBin: string;
   let dagBin: string;
   let chainBin: string;
   let mixtureLp: LogProbResult[];
@@ -71,6 +73,7 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
 
   beforeAll(() => {
     mixtureBin = compileModel("mixture", generateStanModel(mixtureElements()));
+    mixtureDetBin = compileModel("mixture_det", generateStanModel(mixtureDetElements()));
     dagBin = compileModel("mixeddag", generateStanModel(mixedDagElements()));
     chainBin = compileModel("chaindag", generateStanModel(chainDagElements()));
     mixtureLp = mixturePoints.map((p) => logProb(mixtureBin, mixtureData, p));
@@ -93,6 +96,14 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
       expect(d).toBeCloseTo(ref[i] as number, 9);
     });
   });
+
+  it("deterministic indirection yields the identical density as the direct mixture", () => {
+    mixturePoints.forEach((p) => {
+      const direct = logProb(mixtureBin, mixtureData, p);
+      const indirect = logProb(mixtureDetBin, mixtureData, p);
+      expect(indirect.lp).toBeCloseTo(direct.lp, 9);
+    });
+  }, 120_000);
 
   it("chain DAG (dependent priors) log density differences match to double precision", () => {
     const stan = pairwiseDiffs(chainLp.map((r) => r.lp));

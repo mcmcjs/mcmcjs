@@ -1,0 +1,147 @@
+{
+  "name": "Mixture: Two-Component Gaussian Mixture",
+  "elements": [
+    {
+      "id": "node_w",
+      "name": "w",
+      "type": "node",
+      "nodeType": "constant",
+      "position": { "x": 60, "y": 60 }
+    },
+    {
+      "id": "plate_k",
+      "name": "Plate.k",
+      "type": "node",
+      "nodeType": "plate",
+      "position": { "x": 430, "y": 120 },
+      "loopVariable": "k",
+      "loopRange": "1:2"
+    },
+    {
+      "id": "node_mu",
+      "name": "mu",
+      "type": "node",
+      "nodeType": "stochastic",
+      "position": { "x": 380, "y": 120 },
+      "parent": "plate_k",
+      "distribution": "dnorm",
+      "indices": "k",
+      "param1": "0",
+      "param2": "0.01"
+    },
+    {
+      "id": "node_sigma",
+      "name": "sigma",
+      "type": "node",
+      "nodeType": "stochastic",
+      "position": { "x": 480, "y": 120 },
+      "parent": "plate_k",
+      "distribution": "dexp",
+      "indices": "k",
+      "param1": "1"
+    },
+    {
+      "id": "plate_i",
+      "name": "Plate.i",
+      "type": "node",
+      "nodeType": "plate",
+      "position": { "x": 220, "y": 320 },
+      "loopVariable": "i",
+      "loopRange": "1:N"
+    },
+    {
+      "id": "node_z",
+      "name": "z",
+      "type": "node",
+      "nodeType": "stochastic",
+      "position": { "x": 120, "y": 260 },
+      "parent": "plate_i",
+      "distribution": "dcat",
+      "indices": "i",
+      "param1": "w[1:2]"
+    },
+    {
+      "id": "node_muY",
+      "name": "muY",
+      "type": "node",
+      "nodeType": "deterministic",
+      "position": { "x": 240, "y": 260 },
+      "parent": "plate_i",
+      "equation": "mu[z[i]]",
+      "indices": "i"
+    },
+    {
+      "id": "node_tauY",
+      "name": "tauY",
+      "type": "node",
+      "nodeType": "deterministic",
+      "position": { "x": 360, "y": 260 },
+      "parent": "plate_i",
+      "equation": "1 / (sigma[z[i]] * sigma[z[i]])",
+      "indices": "i"
+    },
+    {
+      "id": "node_y",
+      "name": "y",
+      "type": "node",
+      "nodeType": "observed",
+      "position": { "x": 280, "y": 380 },
+      "parent": "plate_i",
+      "distribution": "dnorm",
+      "indices": "i",
+      "param1": "muY[i]",
+      "param2": "tauY[i]"
+    },
+    {
+      "id": "edge_w_z",
+      "type": "edge",
+      "source": "node_w",
+      "target": "node_z",
+      "relationshipType": "stochastic"
+    },
+    {
+      "id": "edge_z_muY",
+      "type": "edge",
+      "source": "node_z",
+      "target": "node_muY",
+      "relationshipType": "deterministic"
+    },
+    {
+      "id": "edge_mu_muY",
+      "type": "edge",
+      "source": "node_mu",
+      "target": "node_muY",
+      "relationshipType": "deterministic"
+    },
+    {
+      "id": "edge_z_tauY",
+      "type": "edge",
+      "source": "node_z",
+      "target": "node_tauY",
+      "relationshipType": "deterministic"
+    },
+    {
+      "id": "edge_sigma_tauY",
+      "type": "edge",
+      "source": "node_sigma",
+      "target": "node_tauY",
+      "relationshipType": "deterministic"
+    },
+    {
+      "id": "edge_muY_y",
+      "type": "edge",
+      "source": "node_muY",
+      "target": "node_y",
+      "relationshipType": "stochastic"
+    },
+    {
+      "id": "edge_tauY_y",
+      "type": "edge",
+      "source": "node_tauY",
+      "target": "node_y",
+      "relationshipType": "stochastic"
+    }
+  ],
+  "dataContent": "{\n  \"data\": {\n    \"w\": [0.3, 0.7],\n    \"y\": [-2.1, 1.8, -1.7, 2.3, 0.4, -2.5, 1.9, 2.2, -1.9, 1.5, -2.4, 2.6],\n    \"N\": 12\n  },\n  \"inits\": {\n    \"mu\": [-1, 1],\n    \"sigma\": [1, 1]\n  }\n}",
+  "version": 1
+}
