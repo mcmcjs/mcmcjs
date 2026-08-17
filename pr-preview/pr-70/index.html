@@ -2,24 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Mirrors the JuliaBUGS DoodlePPL site's configuration, with the bundle served
+         from this preview instead of unpkg. The widget-mode usage is on widget.html. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <title>DoodlePPL preview</title>
     <style>
       html,
       body {
-        height: 100%;
         margin: 0;
-      }
-      #editor {
         height: 100%;
       }
     </style>
+    <script src="./doodleppl.global.js" defer></script>
   </head>
+
   <body>
-    <div id="editor"></div>
-    <script src="./doodleppl.global.js"></script>
-    <script>
-      new DoodlePPL({ element: "#editor", example: "rats" });
-    </script>
+    <doodle-ppl mode="fullpage" model="rats" width="100%" height="100vh"></doodle-ppl>
   </body>
 </html>
