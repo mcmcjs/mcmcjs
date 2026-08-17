@@ -10,6 +10,11 @@ import {
   parseModelData,
   parseUnifiedModel,
 } from "@mcmcjs/doodleppl";
+import {
+  extractCensoredFields,
+  generateStanDataJson,
+  generateStanModel,
+} from "@mcmcjs/doodleppl/stan";
 import type { Command } from "commander";
 
 const DEFAULT_SEED = 1;
@@ -54,6 +59,23 @@ export function buildSpec(
   };
 }
 
+/** Build a minimal, fit-able stan spec object referencing the generated Stan program. */
+export function buildStanSpec(
+  modelFileName: string,
+  data: Record<string, unknown>,
+  seed: number,
+  sampler: SamplerSettings = DEFAULT_SAMPLER,
+): Record<string, unknown> {
+  return {
+    schema_version: "0",
+    seed,
+    backend: { id: "stan" },
+    model: { kind: "file", path: `./${modelFileName}` },
+    sampler: { algorithm: "NUTS", ...sampler },
+    data,
+  };
+}
+
 export interface ConvertResult {
   name: string;
   modelPath: string;
@@ -66,6 +88,7 @@ export function convertGraph(
   out: string | undefined,
   seed: number,
   sampler?: SamplerSettings,
+  target: "juliabugs" | "stan" = "juliabugs",
 ): ConvertResult {
   const model = parseUnifiedModel(readFileSync(resolve(graphPath), "utf8"));
   const elements = getElements(model);
@@ -77,17 +100,31 @@ export function convertGraph(
     throw new Error("graph has a cycle; a BUGS model must be a directed acyclic graph");
   }
 
-  const modelCode = generateBugsModel(elements);
   const { data } = parseModelData(model);
 
   const prefix = out ?? graphPath.replace(/\.json$/i, "");
-  const modelFileName = `${basename(prefix)}.jl`;
-  const modelPath = resolve(`${prefix}.jl`);
+  const ext = target === "stan" ? "stan" : "jl";
+  const modelFileName = `${basename(prefix)}.${ext}`;
+  const modelPath = resolve(`${prefix}.${ext}`);
   const specPath = resolve(`${prefix}.toml`);
 
+  let modelFile: string;
+  let spec: Record<string, unknown>;
+  if (target === "stan") {
+    modelFile = generateStanModel(elements);
+    // Stan data uses converted names, null fills, and censoring indicators.
+    const stanData = JSON.parse(
+      generateStanDataJson(data, extractCensoredFields(elements)),
+    ) as Record<string, unknown>;
+    spec = buildStanSpec(modelFileName, stanData, seed, sampler);
+  } else {
+    modelFile = juliaBugsModelFile(generateBugsModel(elements));
+    spec = buildSpec(modelFileName, data, seed, sampler);
+  }
+
   mkdirSync(dirname(modelPath), { recursive: true });
-  writeFileSync(modelPath, juliaBugsModelFile(modelCode));
-  writeFileSync(specPath, serializeSpecToml(buildSpec(modelFileName, data, seed, sampler)));
+  writeFileSync(modelPath, modelFile);
+  writeFileSync(specPath, serializeSpecToml(spec));
 
   return { name: model.name, modelPath, specPath };
 }
@@ -104,19 +141,30 @@ export function registerConvert(program: Command): void {
     .summary("DoodleBUGS graph -> model file + spec")
     .helpGroup("Start a project:")
     .argument("<graph>", "DoodleBUGS graph file (.json)")
-    .description("Convert a DoodleBUGS graph into a JuliaBUGS model file and a fit-able spec")
+    .description(
+      "Convert a DoodleBUGS graph into a JuliaBUGS model file (or a Stan program with --stan) and a fit-able spec",
+    )
     .option("-o, --out <prefix>", "output path prefix (default: the graph file without .json)")
+    .option("--stan", "emit a Stan program and a stan-backend spec instead of JuliaBUGS")
     .option("--seed <n>", "seed to write into the spec", parseSeed, DEFAULT_SEED)
     .option("--json", "print the result as JSON")
-    .action((graphPath: string, opts: { out?: string; seed: number; json?: boolean }) => {
-      const result = convertGraph(graphPath, opts.out, opts.seed);
-      if (opts.json) {
-        process.stdout.write(`${JSON.stringify({ ok: true, ...result }, null, 2)}\n`);
-      } else {
-        process.stdout.write(
-          `wrote ${result.modelPath}\nwrote ${result.specPath}\n\nfit it with: mcmc fit ${result.specPath}\n`,
+    .action(
+      (graphPath: string, opts: { out?: string; seed: number; json?: boolean; stan?: boolean }) => {
+        const result = convertGraph(
+          graphPath,
+          opts.out,
+          opts.seed,
+          undefined,
+          opts.stan ? "stan" : "juliabugs",
         );
-      }
-      process.exitCode = 0;
-    });
+        if (opts.json) {
+          process.stdout.write(`${JSON.stringify({ ok: true, ...result }, null, 2)}\n`);
+        } else {
+          process.stdout.write(
+            `wrote ${result.modelPath}\nwrote ${result.specPath}\n\nfit it with: mcmc fit ${result.specPath}\n`,
+          );
+        }
+        process.exitCode = 0;
+      },
+    );
 }

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseSpec } from "@mcmcjs/core";
 import { describe, expect, it } from "vitest";
-import { buildSpec, convertGraph, juliaBugsModelFile } from "../src/convert";
+import { buildSpec, buildStanSpec, convertGraph, juliaBugsModelFile } from "../src/convert";
 
 const GRAPH = JSON.stringify({
   name: "Demo",
@@ -101,5 +101,37 @@ describe("convertGraph", () => {
       ],
     });
     expect(() => convertGraph(write(cyclic), undefined, 1)).toThrow(/cycle/);
+  });
+});
+
+describe("convertGraph with the stan target", () => {
+  it("writes a Stan program and a parseable stan-backend spec", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mcmcjs-convert-stan-"));
+    const graphPath = join(dir, "demo.json");
+    writeFileSync(graphPath, GRAPH);
+
+    const result = convertGraph(graphPath, undefined, 7, undefined, "stan");
+    expect(result.modelPath.endsWith("demo.stan")).toBe(true);
+
+    const model = readFileSync(result.modelPath, "utf8");
+    expect(model).toContain("data {");
+    expect(model).toContain("model {");
+    expect(model).not.toContain("@bugs");
+
+    const spec = parseSpec(result.specPath);
+    expect(spec.backend.id).toBe("stan");
+    expect(spec.model.path).toBe("./demo.stan");
+    expect(spec.seed).toBe(7);
+    expect(spec.data).toMatchObject({ N: 3, y: [1.0, 0.8, 1.2] });
+  });
+
+  it("buildStanSpec validates against the spec schema", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mcmcjs-convert-stan-"));
+    const specPath = join(dir, "demo.json");
+    writeFileSync(specPath, JSON.stringify(buildStanSpec("demo.stan", { N: 3 }, 42)));
+    const parsed = parseSpec(specPath);
+    expect(parsed.backend.id).toBe("stan");
+    expect(parsed.backend.runtime).toBe("cmdstan");
+    expect(parsed.sampler.algorithm).toBe("NUTS");
   });
 });
