@@ -17,6 +17,8 @@ const example = (id: string, name: string): ExampleModelConfig => ({
 })
 
 export const examples: ExampleModelConfig[] = [
+  example('mixture', 'Mixture Model'),
+  example('mixed-dag', 'Mixed Discrete DAG'),
   example('rats', 'Rats Model'),
   example('pumps', 'Pumps Model'),
   example('seeds', 'Seeds Model'),

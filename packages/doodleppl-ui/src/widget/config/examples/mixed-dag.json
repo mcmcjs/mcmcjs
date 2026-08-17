@@ -1,0 +1,151 @@
+{
+  "name": "Mixed DAG: Discrete and Continuous Latents",
+  "elements": [
+    {
+      "id": "node_X",
+      "name": "X",
+      "type": "node",
+      "nodeType": "stochastic",
+      "position": { "x": 60, "y": 60 },
+      "distribution": "dcat",
+      "param1": "piX[1:2]"
+    },
+    {
+      "id": "node_Z",
+      "name": "Z",
+      "type": "node",
+      "nodeType": "stochastic",
+      "position": { "x": 360, "y": 60 },
+      "distribution": "dcat",
+      "param1": "piZ[1:2]"
+    },
+    {
+      "id": "node_muA",
+      "name": "muA",
+      "type": "node",
+      "nodeType": "deterministic",
+      "position": { "x": 60, "y": 150 },
+      "equation": "muX[X]"
+    },
+    {
+      "id": "node_A",
+      "name": "A",
+      "type": "node",
+      "nodeType": "stochastic",
+      "position": { "x": 60, "y": 240 },
+      "distribution": "dnorm",
+      "param1": "muA",
+      "param2": "tauA"
+    },
+    {
+      "id": "node_B",
+      "name": "B",
+      "type": "node",
+      "nodeType": "stochastic",
+      "position": { "x": 60, "y": 360 },
+      "distribution": "dnorm",
+      "param1": "A",
+      "param2": "tauB"
+    },
+    {
+      "id": "node_pC",
+      "name": "pC",
+      "type": "node",
+      "nodeType": "deterministic",
+      "position": { "x": 220, "y": 280 },
+      "equation": "ilogit(alpha0 + alpha1 * A)"
+    },
+    {
+      "id": "node_C",
+      "name": "C",
+      "type": "node",
+      "nodeType": "stochastic",
+      "position": { "x": 220, "y": 360 },
+      "distribution": "dbern",
+      "param1": "pC"
+    },
+    {
+      "id": "node_muD",
+      "name": "muD",
+      "type": "node",
+      "nodeType": "deterministic",
+      "position": { "x": 200, "y": 450 },
+      "equation": "B + deltaC[C + 1] + deltaZ[Z]"
+    },
+    {
+      "id": "node_D",
+      "name": "D",
+      "type": "node",
+      "nodeType": "observed",
+      "position": { "x": 200, "y": 540 },
+      "distribution": "dnorm",
+      "param1": "muD",
+      "param2": "tauD"
+    },
+    {
+      "id": "edge_X_muA",
+      "type": "edge",
+      "source": "node_X",
+      "target": "node_muA",
+      "relationshipType": "deterministic"
+    },
+    {
+      "id": "edge_muA_A",
+      "type": "edge",
+      "source": "node_muA",
+      "target": "node_A",
+      "relationshipType": "stochastic"
+    },
+    {
+      "id": "edge_A_B",
+      "type": "edge",
+      "source": "node_A",
+      "target": "node_B",
+      "relationshipType": "stochastic"
+    },
+    {
+      "id": "edge_A_pC",
+      "type": "edge",
+      "source": "node_A",
+      "target": "node_pC",
+      "relationshipType": "deterministic"
+    },
+    {
+      "id": "edge_pC_C",
+      "type": "edge",
+      "source": "node_pC",
+      "target": "node_C",
+      "relationshipType": "stochastic"
+    },
+    {
+      "id": "edge_B_muD",
+      "type": "edge",
+      "source": "node_B",
+      "target": "node_muD",
+      "relationshipType": "deterministic"
+    },
+    {
+      "id": "edge_C_muD",
+      "type": "edge",
+      "source": "node_C",
+      "target": "node_muD",
+      "relationshipType": "deterministic"
+    },
+    {
+      "id": "edge_Z_muD",
+      "type": "edge",
+      "source": "node_Z",
+      "target": "node_muD",
+      "relationshipType": "deterministic"
+    },
+    {
+      "id": "edge_muD_D",
+      "type": "edge",
+      "source": "node_muD",
+      "target": "node_D",
+      "relationshipType": "stochastic"
+    }
+  ],
+  "dataContent": "{\n  \"data\": {\n    \"piX\": [0.4, 0.6],\n    \"piZ\": [0.3, 0.7],\n    \"muX\": [-1.0, 1.0],\n    \"tauA\": 1.0,\n    \"tauB\": 4.0,\n    \"alpha0\": 0.2,\n    \"alpha1\": 1.5,\n    \"deltaC\": [-0.8, 0.8],\n    \"deltaZ\": [-0.5, 0.5],\n    \"tauD\": 9.0,\n    \"D\": 0.7\n  },\n  \"inits\": {\n    \"A\": 0.0,\n    \"B\": 0.0\n  }\n}",
+  "version": 1
+}
