@@ -1,5 +1,16 @@
 # doodleppl
 
+## 0.7.0
+
+### Minor Changes
+
+- bd0610f: Bundle two example models with discrete latent variables, a two-component Gaussian mixture and a mixed discrete-continuous DAG, whose Stan exports demonstrate automatic marginalization.
+
+### Patch Changes
+
+- Updated dependencies [bd0610f]
+  - @mcmcjs/doodleppl@0.3.0
+
 ## 0.6.0
 
 ### Minor Changes
