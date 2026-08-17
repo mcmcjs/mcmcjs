@@ -33,6 +33,8 @@ export interface DiscreteLatent {
   node: GraphNode;
   tier: LatentTier;
   support: SupportInfo | null;
+  /** True for an observed node with missing entries: only those entries are marginalized. */
+  partial: boolean;
   /** Why the latent cannot be marginalized (tier "unsupported" only). */
   reason?: string;
 }
@@ -42,6 +44,8 @@ export interface PlatePlan {
   latent: GraphNode;
   plate: GraphNode;
   support: SupportInfo;
+  /** Partially observed: iterations with data score pointwise, the rest marginalize. */
+  partial: boolean;
   /** Stochastic nodes whose density term joins the per-iteration sum (excluding the latent's own prior). */
   factors: GraphNode[];
   /** Deterministic nodes that must be inlined into factor expressions. */
@@ -85,6 +89,8 @@ export interface DiscreteAnalysis {
 export interface AnalyzeOptions {
   /** Whether the target-language generator can translate a distribution's density. */
   canTranslate?: (dist: string) => boolean;
+  /** Ids of observed discrete nodes whose data has missing entries. */
+  partialIds?: Set<string>;
 }
 
 /** Discrete distributions with enumerable finite support handled by the marginalizer. */
@@ -290,7 +296,15 @@ function referencesAreSubstitutable(
 
 /** Local names the emitters generate for a latent; a user variable with such a name wins. */
 function helperNameCollision(name: string, ctx: Ctx): string | null {
-  const helpers = [`${name}_lp`, `${name}_val`, `${name}_idx`, `phi_${name}`, `marg_conf_${name}`];
+  const helpers = [
+    `${name}_lp`,
+    `${name}_val`,
+    `${name}_idx`,
+    `${name}_obs`,
+    `${name}_is_obs`,
+    `phi_${name}`,
+    `marg_conf_${name}`,
+  ];
   for (const h of helpers) {
     if (ctx.nodeNames.has(h)) return h;
   }
@@ -343,11 +357,12 @@ export function analyzeDiscreteLatents(
   const ctx = buildCtx(elements);
   const topoIndex = new Map(topoOrder.map((id, i) => [id, i]));
   const canTranslate = options.canTranslate ?? (() => true);
+  const partialIds = options.partialIds ?? new Set<string>();
   const issues: string[] = [];
 
   const candidates = ctx.nodes.filter(
     (n) =>
-      n.nodeType === "stochastic" &&
+      (n.nodeType === "stochastic" || (n.nodeType === "observed" && partialIds.has(n.id))) &&
       n.distribution !== undefined &&
       MARGINALIZABLE_DISTS.has(n.distribution) &&
       /^[A-Za-z_][A-Za-z0-9_]*$/.test(n.name),
@@ -373,12 +388,24 @@ export function analyzeDiscreteLatents(
   // First pass: structural tier assignment and support resolution.
   const latents: DiscreteLatent[] = [];
   for (const latent of candidates) {
+    const partial = partialIds.has(latent.id);
     const plate = plateOf(latent, ctx);
+    if (partial && !plate) {
+      latents.push({
+        node: latent,
+        tier: "unsupported",
+        support: null,
+        partial,
+        reason: `partially observed '${latent.name}' is only supported inside a plate`,
+      });
+      continue;
+    }
     if (plate && hasOffsetRef(latent, latent.name, plate.loopVariable || "i")) {
       latents.push({
         node: latent,
         tier: "unsupported",
         support: null,
+        partial,
         reason: `'${latent.name}' depends on itself across plate iterations (chain structure)`,
       });
       continue;
@@ -389,11 +416,12 @@ export function analyzeDiscreteLatents(
         node: latent,
         tier: "unsupported",
         support: null,
+        partial,
         reason: `support size of '${latent.name}' could not be resolved from its parameters`,
       });
       continue;
     }
-    latents.push({ node: latent, tier: plate ? "iid-plate" : "scalar-dag", support });
+    latents.push({ node: latent, tier: plate ? "iid-plate" : "scalar-dag", support, partial });
   }
 
   // Second pass: validate structural constraints, demoting until stable so that
@@ -437,6 +465,7 @@ export function analyzeDiscreteLatents(
         latent: entry.node,
         plate: plateOf(entry.node, ctx) as GraphNode,
         support: entry.support as SupportInfo,
+        partial: entry.partial,
         factors,
         inlineDets: dedupe(factors.flatMap((f) => detsEnRoute(f, ctx, candidateIds))),
       });
@@ -558,7 +587,8 @@ function validateLatent(
   if (collision) {
     return `marginalizing '${latent.name}' would collide with the variable '${collision}'`;
   }
-  if (factors.length === 0) {
+  // A partial latent's observed entries contribute their density even with no readers.
+  if (factors.length === 0 && !entry.partial) {
     return `'${latent.name}' has no factors reading it; marginalizing it would be a no-op`;
   }
 
@@ -617,6 +647,9 @@ function validateLatent(
     for (const f of factors) {
       if (plateOf(f, ctx)?.id !== plate.id) {
         return `factor '${f.name}' reads '${latent.name}' from outside its plate`;
+      }
+      if (candidateIds.has(f.id)) {
+        return `factor '${f.name}' of '${latent.name}' is itself a marginalization candidate`;
       }
       const others = [...(scopes.get(f.id) ?? [])].filter((id) => id !== latent.id);
       if (others.length > 0) {

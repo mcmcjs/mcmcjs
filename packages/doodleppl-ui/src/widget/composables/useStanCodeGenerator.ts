@@ -6,14 +6,19 @@ import type { GraphElement } from '../types'
 /**
  * Composable that generates Stan model code from graph elements.
  * @param elements - A ref to the graph elements.
+ * @param data - Optional ref to the parsed model data; enables marginalizing
+ * the missing entries of partially observed discrete nodes.
  */
-export function useStanCodeGenerator(elements: Ref<GraphElement[]>) {
+export function useStanCodeGenerator(
+  elements: Ref<GraphElement[]>,
+  data?: Ref<Record<string, unknown> | undefined>,
+) {
   const generatedStanCode = computed(() => {
     const hasNodes = elements.value.some((el) => el.type === 'node')
     if (!hasNodes) {
       return '// Your Stan model will appear here...\n'
     }
-    return generateStanModel(elements.value)
+    return generateStanModel(elements.value, data?.value)
   })
 
   return {

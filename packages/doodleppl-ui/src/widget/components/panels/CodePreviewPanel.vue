@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useGraphStore } from '../../stores/graphStore'
+import { useDataStore } from '../../stores/dataStore'
 import { useBugsCodeGenerator } from '../../composables/useBugsCodeGenerator'
 import { useStanCodeGenerator } from '../../composables/useStanCodeGenerator'
 
@@ -49,7 +50,9 @@ const targetElements = computed(() => {
 })
 
 const { generatedCode: bugsCode } = useBugsCodeGenerator(targetElements)
-const { generatedStanCode: stanCode } = useStanCodeGenerator(targetElements)
+const dataStore = useDataStore()
+const parsedData = computed(() => dataStore.parsedGraphData?.data)
+const { generatedStanCode: stanCode } = useStanCodeGenerator(targetElements, parsedData)
 
 const generatedCode = computed(() => {
   if (props.code !== undefined) return props.code

@@ -15,7 +15,20 @@ spec = JSON.parsefile(ARGS[1])
 data = spec["data"]
 fvec(x) = Float64.(collect(x))
 
-if spec["model"] == "mixture"
+if spec["model"] == "mixturepartial"
+    model_def = @bugs begin
+        for i in 1:N
+            z[i] ~ dcat(w[1:2])
+            y[i] ~ dnorm(mu[z[i]], 1 / (sigma[z[i]] * sigma[z[i]]))
+        end
+        for k in 1:2
+            sigma[k] ~ dexp(1)
+            mu[k] ~ dnorm(0, 0.01)
+        end
+    end
+    z = Union{Missing,Int}[v === nothing ? missing : Int(v) for v in data["z"]]
+    model_data = (N=Int(data["N"]), y=fvec(data["y"]), w=fvec(data["w"]), z=z)
+elseif spec["model"] == "mixture"
     model_def = @bugs begin
         for i in 1:N
             z[i] ~ dcat(w[1:2])
