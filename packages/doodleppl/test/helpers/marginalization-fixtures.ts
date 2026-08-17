@@ -190,6 +190,18 @@ export const mixedDagPoints = [
   { A: 2.0, B: -0.5 },
 ];
 
+/** The mixture with z partially observed: entries with data score pointwise. */
+export function mixturePartialElements(): GraphElement[] {
+  return mixtureElements().map((el) =>
+    el.type === "node" && el.id === "z" ? ({ ...el, nodeType: "observed" } as GraphNode) : el,
+  );
+}
+
+export const mixturePartialData = {
+  ...mixtureData,
+  z: [2, null, 1, null, null, 2] as (number | null)[],
+};
+
 /** Binomial count latent: phi ~ dbeta(2,2); z[i] ~ dbin(phi, 3); y[i] ~ dnorm(mu0 + delta * z[i], 1). */
 export function binMixElements(): GraphElement[] {
   return [

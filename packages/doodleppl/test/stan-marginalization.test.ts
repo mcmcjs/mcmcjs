@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { generateStanInitsJson, generateStanModel } from "../src/codegen/stan";
+import {
+  extractPartialDiscreteFields,
+  generateStanDataJson,
+  generateStanInitsJson,
+  generateStanModel,
+} from "../src/codegen/stan";
+import type { GraphNode } from "../src/core/types";
 import { edge, mixedDagElements, mixtureElements, node } from "./helpers/marginalization-fixtures";
 
 describe("marginalized Stan generation: iid plate latent", () => {
@@ -300,5 +306,49 @@ describe("marginalized Stan generation: dbin latents and dcat slices", () => {
     expect(code).toContain("vector[3] w;");
     expect(code).toContain("categorical_lpmf(Z_val | w[2:3])");
     expect(code).toContain("vector[2] Z_lp;");
+  });
+});
+
+describe("marginalized Stan generation: partially observed discrete vectors", () => {
+  const elements = () =>
+    mixtureElements().map((el) =>
+      el.type === "node" && el.id === "z" ? ({ ...el, nodeType: "observed" } as GraphNode) : el,
+    );
+  const data = { N: 4, w: [0.3, 0.7], y: [1.0, 2.0, -1.0, 3.0], z: [2, null, 1, null] };
+  const code = generateStanModel(elements(), data);
+
+  it("declares the observed values and indicator instead of the latent", () => {
+    expect(code).toContain("array[N] int z_obs;");
+    expect(code).toContain("array[N] int z_is_obs;");
+    expect(code).not.toMatch(/array\[N\] int z;\n.*data/);
+  });
+
+  it("scores observed entries pointwise and marginalizes the missing ones", () => {
+    expect(code).toContain("if (z_is_obs[i] == 1) {");
+    expect(code).toContain("target += categorical_lpmf(z_obs[i] | w[1:2])");
+    expect(code).toContain("normal_lpdf(y[i] | mu[z_obs[i]]");
+    expect(code).toContain("} else {");
+    expect(code).toContain("target += log_sum_exp(z_lp);");
+  });
+
+  it("recovers observed entries verbatim and missing entries from the posterior", () => {
+    expect(code).toContain("array[N] int z;");
+    expect(code).toContain("z[i] = z_obs[i];");
+    expect(code).toContain("z[i] = categorical_rng(softmax(z_lp));");
+  });
+
+  it("without data the node stays fully observed", () => {
+    const plain = generateStanModel(elements());
+    expect(plain).not.toContain("z_is_obs");
+    expect(plain).toContain("array[N] int z;");
+  });
+
+  it("generateStanDataJson renames the vector and adds the indicator", () => {
+    const json = JSON.parse(
+      generateStanDataJson(data, [], extractPartialDiscreteFields(elements(), data)),
+    );
+    expect(json.z_obs).toEqual([2, 1, 1, 1]);
+    expect(json.z_is_obs).toEqual([1, 0, 1, 0]);
+    expect(json.z).toBeUndefined();
   });
 });

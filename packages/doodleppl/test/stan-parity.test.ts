@@ -9,7 +9,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
-import { generateStanModel } from "../src/codegen/stan";
+import {
+  extractPartialDiscreteFields,
+  generateStanDataJson,
+  generateStanModel,
+} from "../src/codegen/stan";
 import { compileModel, type LogProbResult, logProb, sample } from "./helpers/cmdstan";
 import {
   binMixData,
@@ -24,6 +28,8 @@ import {
   mixtureData,
   mixtureDetElements,
   mixtureElements,
+  mixturePartialData,
+  mixturePartialElements,
   mixturePoints,
 } from "./helpers/marginalization-fixtures";
 import {
@@ -34,6 +40,7 @@ import {
   mixedDagJointPosterior,
   mixedDagLogDensity,
   mixtureLogDensity,
+  mixturePartialLogDensity,
   mixtureZPosterior,
 } from "./helpers/reference-math";
 
@@ -74,7 +81,10 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
   let dagBin: string;
   let chainBin: string;
   let binMixBin: string;
+  let partialBin: string;
+  let partialData: Record<string, unknown>;
   let mixtureLp: LogProbResult[];
+  let partialLp: LogProbResult[];
   let dagLp: LogProbResult[];
   let chainLp: LogProbResult[];
   let binMixLp: LogProbResult[];
@@ -85,10 +95,22 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
     dagBin = compileModel("mixeddag", generateStanModel(mixedDagElements()));
     chainBin = compileModel("chaindag", generateStanModel(chainDagElements()));
     binMixBin = compileModel("binmix", generateStanModel(binMixElements()));
+    partialBin = compileModel(
+      "mixturepartial",
+      generateStanModel(mixturePartialElements(), mixturePartialData),
+    );
+    partialData = JSON.parse(
+      generateStanDataJson(
+        mixturePartialData,
+        [],
+        extractPartialDiscreteFields(mixturePartialElements(), mixturePartialData),
+      ),
+    );
     mixtureLp = mixturePoints.map((p) => logProb(mixtureBin, mixtureData, p));
     dagLp = mixedDagPoints.map((p) => logProb(dagBin, mixedDagData, p));
     chainLp = chainDagPoints.map((p) => logProb(chainBin, chainDagData, p));
     binMixLp = binMixPoints.map((p) => logProb(binMixBin, binMixData, p));
+    partialLp = mixturePoints.map((p) => logProb(partialBin, partialData, p));
   }, 600_000);
 
   it("mixture log density differences match to double precision", () => {
@@ -118,6 +140,16 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
   it("chain DAG (dependent priors) log density differences match to double precision", () => {
     const stan = pairwiseDiffs(chainLp.map((r) => r.lp));
     const ref = pairwiseDiffs(chainDagPoints.map((p) => chainDagLogDensity(chainDagData, p)));
+    stan.forEach((d, i) => {
+      expect(d).toBeCloseTo(ref[i] as number, 9);
+    });
+  });
+
+  it("partially observed mixture log density differences match to double precision", () => {
+    const stan = pairwiseDiffs(partialLp.map((r) => r.lp));
+    const ref = pairwiseDiffs(
+      mixturePoints.map((p) => mixturePartialLogDensity(mixturePartialData, p)),
+    );
     stan.forEach((d, i) => {
       expect(d).toBeCloseTo(ref[i] as number, 9);
     });
@@ -158,6 +190,23 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
       julia.forEach((ref, i) => {
         for (const [name, g] of Object.entries(ref.gradient)) {
           expect(dagLp[i]?.gradient[name]).toBeCloseTo(g, 8);
+        }
+      });
+    }, 120_000);
+
+    it("partially observed mixture values (up to a constant) and gradients agree", () => {
+      const julia = juliaReference("mixturepartial", mixturePartialData, mixturePoints, {
+        sigma: "log",
+      });
+      expect(julia).toHaveLength(mixturePoints.length);
+      const stanDiffs = pairwiseDiffs(partialLp.map((r) => r.lp));
+      const juliaDiffs = pairwiseDiffs(julia.map((r) => r.logdensity));
+      stanDiffs.forEach((d, i) => {
+        expect(d).toBeCloseTo(juliaDiffs[i] as number, 9);
+      });
+      julia.forEach((ref, i) => {
+        for (const [name, g] of Object.entries(ref.gradient)) {
+          expect(partialLp[i]?.gradient[name]).toBeCloseTo(g, 8);
         }
       });
     }, 120_000);
@@ -241,6 +290,34 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
       for (const [key, sum] of expected) {
         const freq = (observed.get(key) ?? 0) / A.length;
         expect(Math.abs(freq - sum / A.length)).toBeLessThan(0.05);
+      }
+    }, 120_000);
+
+    it("partially observed mixture: observed entries are verbatim, missing follow the posterior", () => {
+      const fit = sample(partialBin, partialData, { warmup: 500, draws: 1500, seed: 3 });
+      const mu1 = fit.columns.get("mu[1]") as number[];
+      const mu2 = fit.columns.get("mu[2]") as number[];
+      const s1 = fit.columns.get("sigma[1]") as number[];
+      const s2 = fit.columns.get("sigma[2]") as number[];
+      for (let i = 0; i < mixturePartialData.N; i++) {
+        const z = fit.columns.get(`z[${i + 1}]`) as number[];
+        expect(z).toBeDefined();
+        const observed = mixturePartialData.z[i];
+        if (observed !== null && observed !== undefined) {
+          expect(z.every((v) => v === observed)).toBe(true);
+          continue;
+        }
+        let expected = 0;
+        let freq = 0;
+        for (let t = 0; t < z.length; t++) {
+          const p = {
+            mu: [mu1[t] as number, mu2[t] as number],
+            sigma: [s1[t] as number, s2[t] as number],
+          };
+          expected += mixtureZPosterior(mixturePartialData, p, i)[0] as number;
+          freq += (z[t] as number) === 1 ? 1 : 0;
+        }
+        expect(Math.abs(freq / z.length - expected / z.length)).toBeLessThan(0.05);
       }
     }, 120_000);
 

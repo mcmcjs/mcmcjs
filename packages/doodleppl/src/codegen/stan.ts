@@ -703,6 +703,21 @@ const ANALYZE_OPTS = {
   canTranslate: (dist: string) => DISTRIBUTION_MAP[dist] !== undefined,
 };
 
+const PARTIALIZABLE_DISTS = new Set(["dcat", "dbern", "dbin"]);
+
+function partialDiscreteNodes(
+  elements: GraphElement[],
+  data: Record<string, unknown> | undefined,
+): GraphNode[] {
+  if (!data) return [];
+  return elements.filter((el): el is GraphNode => {
+    if (el.type !== "node" || el.nodeType !== "observed") return false;
+    if (!el.distribution || !PARTIALIZABLE_DISTS.has(el.distribution)) return false;
+    const values = data[el.name];
+    return Array.isArray(values) && values.some((v) => v === null || v === undefined);
+  });
+}
+
 // Given a raw BUGS param string and the current plate's loop variable, attempt to strip
 // the loop-variable index so the expression works on the whole array.
 // Returns null if the param depends on the loop var in a non-strippable way.
@@ -886,9 +901,13 @@ function plateUpper(plate: GraphNode): string {
   return parts.length === 2 ? (parts[1] as string).trim() : range;
 }
 
-function plateTerms(plan: PlatePlan, nameToNode: Map<string, GraphNode>): string[] {
+function plateTerms(
+  plan: PlatePlan,
+  nameToNode: Map<string, GraphNode>,
+  valOverride?: string,
+): string[] {
   const loopVar = plan.plate.loopVariable || "i";
-  const { valExpr } = latentLoopVars(plan.latent, plan.support);
+  const valExpr = valOverride ?? latentLoopVars(plan.latent, plan.support).valExpr;
   const terms: string[] = [];
   const prior = densityTerm(plan.latent, nameToNode, valExpr);
   if (prior) terms.push(prior);
@@ -902,15 +921,19 @@ function plateTerms(plan: PlatePlan, nameToNode: Map<string, GraphNode>): string
 }
 
 function sumLines(lhs: string, terms: string[], indent: string): string[] {
+  return sumStatement(`${lhs} =`, terms, indent);
+}
+
+function sumStatement(head: string, terms: string[], indent: string): string[] {
   const [first, ...rest] = terms;
-  const lines = [`${indent}${lhs} = ${first ?? "0"}${rest.length === 0 ? ";" : ""}`];
+  const lines = [`${indent}${head} ${first ?? "0"}${rest.length === 0 ? ";" : ""}`];
   rest.forEach((t, i) => {
     lines.push(`${indent}  + ${t}${i === rest.length - 1 ? ";" : ""}`);
   });
   return lines;
 }
 
-function emitPlateMarginalization(
+function marginalizationBlock(
   plan: PlatePlan,
   indent: string,
   nameToNode: Map<string, GraphNode>,
@@ -920,7 +943,6 @@ function emitPlateMarginalization(
   const acc = `${stanName}_lp`;
   const terms = plateTerms(plan, nameToNode);
   const lines = [
-    `${indent}// marginalize out ${stanName}[${plan.plate.loopVariable || "i"}]`,
     `${indent}{`,
     `${indent}  vector[${plan.support.size}] ${acc};`,
     `${indent}  for (${posVar} in 1:${plan.support.size}) {`,
@@ -929,6 +951,30 @@ function emitPlateMarginalization(
   lines.push(...sumLines(`${acc}[${posVar}]`, terms, `${indent}    `));
   lines.push(`${indent}  }`, `${indent}  target += log_sum_exp(${acc});`, `${indent}}`);
   return lines;
+}
+
+function emitPlateMarginalization(
+  plan: PlatePlan,
+  indent: string,
+  nameToNode: Map<string, GraphNode>,
+): string[] {
+  const stanName = convertBugsName(plan.latent.name);
+  const loopVar = plan.plate.loopVariable || "i";
+  if (!plan.partial) {
+    return [
+      `${indent}// marginalize out ${stanName}[${loopVar}]`,
+      ...marginalizationBlock(plan, indent, nameToNode),
+    ];
+  }
+  const obsTerms = plateTerms(plan, nameToNode, `${stanName}_obs[${loopVar}]`);
+  return [
+    `${indent}// marginalize out ${stanName}[${loopVar}] where it is missing`,
+    `${indent}if (${stanName}_is_obs[${loopVar}] == 1) {`,
+    ...sumStatement("target +=", obsTerms, `${indent}  `),
+    `${indent}} else {`,
+    ...marginalizationBlock(plan, `${indent}  `, nameToNode),
+    `${indent}}`,
+  ];
 }
 
 function emitPlateRecovery(
@@ -943,19 +989,30 @@ function emitPlateRecovery(
   const terms = plateTerms(plan, nameToNode);
   const delta = plan.support.lo - 1;
   const shift = delta === 0 ? "" : delta > 0 ? ` + ${delta}` : ` - ${-delta}`;
+  const inner = plan.partial ? "      " : "    ";
+  const draw: string[] = [`${inner}vector[${plan.support.size}] ${acc};`];
+  draw.push(`${inner}for (${posVar} in 1:${plan.support.size}) {`);
+  if (valDecl) draw.push(`${inner}  ${valDecl}`);
+  draw.push(...sumLines(`${acc}[${posVar}]`, terms, `${inner}  `));
+  draw.push(`${inner}}`);
+  draw.push(`${inner}${stanName}[${loopVar}] = categorical_rng(softmax(${acc}))${shift};`);
+
   const lines = [
     `  // recover ${stanName} from its conditional posterior`,
     `  for (${loopVar} in 1:${upper}) {`,
-    `    vector[${plan.support.size}] ${acc};`,
-    `    for (${posVar} in 1:${plan.support.size}) {`,
   ];
-  if (valDecl) lines.push(`      ${valDecl}`);
-  lines.push(...sumLines(`${acc}[${posVar}]`, terms, "      "));
-  lines.push(
-    "    }",
-    `    ${stanName}[${loopVar}] = categorical_rng(softmax(${acc}))${shift};`,
-    "  }",
-  );
+  if (plan.partial) {
+    lines.push(
+      `    if (${stanName}_is_obs[${loopVar}] == 1) {`,
+      `      ${stanName}[${loopVar}] = ${stanName}_obs[${loopVar}];`,
+      "    } else {",
+      ...draw,
+      "    }",
+    );
+  } else {
+    lines.push(...draw);
+  }
+  lines.push("  }");
   return { decl: `  array[${upper}] int ${stanName};`, lines };
 }
 
@@ -1245,8 +1302,12 @@ function catPriorVectorOverrides(analysis: DiscreteAnalysis): Map<string, string
   return overrides;
 }
 
-/** Generate Stan model code from a DoodleBUGS graph. */
-export function generateStanModel(elements: GraphElement[]): string {
+/** Generate Stan model code from a DoodleBUGS graph. Passing the model data
+enables marginalizing the missing entries of partially observed discrete nodes. */
+export function generateStanModel(
+  elements: GraphElement[],
+  data?: Record<string, unknown>,
+): string {
   const nodes = elements.filter((el): el is GraphNode => el.type === "node");
   const edges = elements.filter((el): el is GraphEdge => el.type === "edge");
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
@@ -1261,7 +1322,8 @@ export function generateStanModel(elements: GraphElement[]): string {
   const topoOrder = buildTopologicalOrder(nodes, edges);
   const topoIndex = new Map(topoOrder.map((id, i) => [id, i]));
 
-  const marg = analyzeDiscreteLatents(elements, topoOrder, ANALYZE_OPTS);
+  const partialIds = new Set(partialDiscreteNodes(elements, data).map((n) => n.id));
+  const marg = analyzeDiscreteLatents(elements, topoOrder, { ...ANALYZE_OPTS, partialIds });
   const margLatentIds = new Set(
     marg.latents.filter((l) => l.tier !== "unsupported").map((l) => l.node.id),
   );
@@ -1368,8 +1430,18 @@ export function generateStanModel(elements: GraphElement[]): string {
     }
   }
 
+  const partialPlans = new Map(
+    marg.platePlans.filter((pl) => pl.partial).map((pl) => [pl.latent.id, pl]),
+  );
   for (const node of observedNodes.sort(sortByTopo)) {
     const stanName = convertBugsName(node.name);
+    const partialPlan = partialPlans.get(node.id);
+    if (partialPlan) {
+      const upper = plateUpper(partialPlan.plate);
+      dataDeclarations.push(`  array[${upper}] int ${stanName}_obs;`);
+      dataDeclarations.push(`  array[${upper}] int ${stanName}_is_obs;`);
+      continue;
+    }
     const stanType = inferStanType(node, nodeMap, plates);
     dataDeclarations.push(`  ${stanType} ${stanName};`);
 
@@ -1650,9 +1722,10 @@ export function generateStanModel(elements: GraphElement[]): string {
           const vectorizedLines: string[] = [];
           const loopNodes: GraphNode[] = [];
           for (const child of plateNodes) {
-            const vLine = canVectorize
-              ? tryVectorizeNode(child, plateVar, indent, nameToNode)
-              : null;
+            const vLine =
+              canVectorize && !platePlanByLatent.has(child.id)
+                ? tryVectorizeNode(child, plateVar, indent, nameToNode)
+                : null;
             if (vLine !== null) {
               vectorizedLines.push(vLine);
             } else {
@@ -1926,9 +1999,27 @@ export interface CensoredField {
   censorBoundName: string;
 }
 
+export interface PartialDiscreteField {
+  varName: string;
+  /** Placeholder written where the value is missing; the density never reads it. */
+  fill: number;
+}
+
+/** Observed discrete nodes whose data has missing entries to marginalize. */
+export function extractPartialDiscreteFields(
+  elements: GraphElement[],
+  data: Record<string, unknown>,
+): PartialDiscreteField[] {
+  return partialDiscreteNodes(elements, data).map((n) => ({
+    varName: n.name,
+    fill: n.distribution === "dcat" ? 1 : 0,
+  }));
+}
+
 export function generateStanDataJson(
   data: Record<string, unknown>,
   censoredFields?: CensoredField[],
+  partialFields?: PartialDiscreteField[],
 ): string {
   const converted = convertDataKeys(data);
 
@@ -1945,6 +2036,17 @@ export function generateStanDataJson(
           converted[stanVar] = fillMissingWithCensor(obsData, cenData);
         }
       }
+    }
+  }
+
+  if (partialFields) {
+    for (const { varName, fill } of partialFields) {
+      const stanVar = convertBugsName(varName);
+      const values = converted[stanVar];
+      if (!Array.isArray(values)) continue;
+      converted[`${stanVar}_is_obs`] = buildIsObsIndicator(values);
+      converted[`${stanVar}_obs`] = values.map((v) => (v === null || v === undefined ? fill : v));
+      delete converted[stanVar];
     }
   }
 
@@ -2014,7 +2116,8 @@ export interface StanScriptInput {
 export function generateStanStandaloneScript(input: StanScriptInput): string {
   const { modelCode, data, inits, elements, censoredFields, settings } = input;
 
-  const dataJson = generateStanDataJson(data, censoredFields);
+  const partialFields = elements ? extractPartialDiscreteFields(elements, data) : undefined;
+  const dataJson = generateStanDataJson(data, censoredFields, partialFields);
   const initsJson = generateStanInitsJson(inits, elements);
 
   const nSamples = settings?.n_samples ?? 1000;

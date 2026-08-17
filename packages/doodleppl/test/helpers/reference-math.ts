@@ -50,6 +50,34 @@ export function mixtureLogDensity(data: MixtureData, p: MixturePoint): number {
   return lp;
 }
 
+/** Full log density of the partially observed mixture (missing z summed out). */
+export function mixturePartialLogDensity(
+  data: MixtureData & { z: (number | null)[] },
+  p: MixturePoint,
+): number {
+  let lp = 0;
+  for (let k = 0; k < 2; k++) {
+    lp += normalLpdf(p.mu[k] as number, 0, 10);
+    lp += expLpdf(p.sigma[k] as number, 1) + Math.log(p.sigma[k] as number);
+  }
+  for (let i = 0; i < data.N; i++) {
+    const z = data.z[i];
+    if (z === null || z === undefined) {
+      const terms = [0, 1].map(
+        (k) =>
+          Math.log(data.w[k] as number) +
+          normalLpdf(data.y[i] as number, p.mu[k] as number, p.sigma[k] as number),
+      );
+      lp += logSumExp(terms);
+    } else {
+      lp +=
+        Math.log(data.w[z - 1] as number) +
+        normalLpdf(data.y[i] as number, p.mu[z - 1] as number, p.sigma[z - 1] as number);
+    }
+  }
+  return lp;
+}
+
 /** Exact per-observation posterior over z given the parameters. */
 export function mixtureZPosterior(data: MixtureData, p: MixturePoint, i: number): number[] {
   const terms = [0, 1].map(

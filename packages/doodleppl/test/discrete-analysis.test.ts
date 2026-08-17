@@ -612,6 +612,99 @@ describe("analyzeDiscreteLatents: review regressions", () => {
   });
 });
 
+describe("analyzeDiscreteLatents: partially observed latents", () => {
+  const partial = (elements: GraphElement[], ids: string[]) => {
+    const nodes = elements.filter((el): el is GraphNode => el.type === "node");
+    const edges = elements.filter((el): el is GraphEdge => el.type === "edge");
+    return analyzeDiscreteLatents(elements, buildTopologicalOrder(nodes, edges), {
+      partialIds: new Set(ids),
+    });
+  };
+
+  it("classifies an observed plate node with missing entries as a partial plate latent", () => {
+    const elements = mixtureElements().map((el) =>
+      el.type === "node" && el.id === "z" ? ({ ...el, nodeType: "observed" } as GraphNode) : el,
+    );
+    const analysis = partial(elements, ["z"]);
+    const z = analysis.latents.find((l) => l.node.id === "z");
+    expect(z?.tier).toBe("iid-plate");
+    expect(z?.partial).toBe(true);
+    expect(analysis.platePlans[0]?.partial).toBe(true);
+  });
+
+  it("without the partial id, an observed discrete node is not a candidate", () => {
+    const elements = mixtureElements().map((el) =>
+      el.type === "node" && el.id === "z" ? ({ ...el, nodeType: "observed" } as GraphNode) : el,
+    );
+    const analysis = analyze(elements);
+    expect(analysis.latents).toHaveLength(0);
+  });
+
+  it("allows a partial latent with no factors reading it", () => {
+    const elements: GraphElement[] = [
+      node({ id: "plate_i", name: "ip", nodeType: "plate", loopVariable: "i", loopRange: "1:N" }),
+      node({
+        id: "z",
+        name: "z",
+        nodeType: "observed",
+        distribution: "dbern",
+        param1: "0.4",
+        indices: "i",
+        parent: "plate_i",
+      }),
+    ];
+    const analysis = partial(elements, ["z"]);
+    expect(analysis.latents[0]?.tier).toBe("iid-plate");
+    expect(analysis.platePlans[0]?.factors).toEqual([]);
+  });
+
+  it("demotes a scalar partially observed node", () => {
+    const elements: GraphElement[] = [
+      node({ id: "Z", name: "Z", nodeType: "observed", distribution: "dcat", param1: "pi[1:2]" }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dnorm",
+        param1: "mu[Z]",
+        param2: "1",
+      }),
+      edge("Z", "y"),
+    ];
+    const analysis = partial(elements, ["Z"]);
+    expect(analysis.latents[0]?.tier).toBe("unsupported");
+    expect(analysis.latents[0]?.reason).toContain("only supported inside a plate");
+  });
+
+  it("demotes a latent whose factor is a partial candidate", () => {
+    const elements: GraphElement[] = [
+      node({ id: "plate_i", name: "ip", nodeType: "plate", loopVariable: "i", loopRange: "1:N" }),
+      node({
+        id: "u",
+        name: "u",
+        distribution: "dbern",
+        param1: "0.5",
+        indices: "i",
+        parent: "plate_i",
+      }),
+      node({
+        id: "z",
+        name: "z",
+        nodeType: "observed",
+        distribution: "dbern",
+        param1: "p[u[i] + 1]",
+        indices: "i",
+        parent: "plate_i",
+      }),
+      edge("u", "z"),
+    ];
+    const analysis = partial(elements, ["z"]);
+    for (const latent of analysis.latents) {
+      expect(latent.tier).toBe("unsupported");
+    }
+  });
+});
+
 describe("marginalizedLatentNames", () => {
   it("lists only the latents that leave the parameter space", () => {
     const elements = [...mixedDagElements(), ...mixtureElements()];
