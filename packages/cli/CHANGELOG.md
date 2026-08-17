@@ -1,5 +1,16 @@
 # mcmcjs
 
+## 0.31.0
+
+### Minor Changes
+
+- 89e2521: mcmc convert gains a --stan flag that emits a Stan program and a fit-able stan-backend spec from a DoodleBUGS graph, next to the existing JuliaBUGS target.
+
+### Patch Changes
+
+- Updated dependencies [bd0610f]
+  - @mcmcjs/doodleppl@0.3.0
+
 ## 0.30.0
 
 ### Minor Changes
