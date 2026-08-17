@@ -12,6 +12,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { generateStanModel } from "../src/codegen/stan";
 import { compileModel, type LogProbResult, logProb, sample } from "./helpers/cmdstan";
 import {
+  chainDagData,
+  chainDagElements,
+  chainDagPoints,
   mixedDagData,
   mixedDagElements,
   mixedDagPoints,
@@ -20,6 +23,8 @@ import {
   mixturePoints,
 } from "./helpers/marginalization-fixtures";
 import {
+  chainDagJointPosterior,
+  chainDagLogDensity,
   mixedDagJointPosterior,
   mixedDagLogDensity,
   mixtureLogDensity,
@@ -59,14 +64,18 @@ function pairwiseDiffs(values: number[]): number[] {
 describe.runIf(PARITY)("generated Stan matches the brute-force reference", () => {
   let mixtureBin: string;
   let dagBin: string;
+  let chainBin: string;
   let mixtureLp: LogProbResult[];
   let dagLp: LogProbResult[];
+  let chainLp: LogProbResult[];
 
   beforeAll(() => {
     mixtureBin = compileModel("mixture", generateStanModel(mixtureElements()));
     dagBin = compileModel("mixeddag", generateStanModel(mixedDagElements()));
+    chainBin = compileModel("chaindag", generateStanModel(chainDagElements()));
     mixtureLp = mixturePoints.map((p) => logProb(mixtureBin, mixtureData, p));
     dagLp = mixedDagPoints.map((p) => logProb(dagBin, mixedDagData, p));
+    chainLp = chainDagPoints.map((p) => logProb(chainBin, chainDagData, p));
   }, 600_000);
 
   it("mixture log density differences match to double precision", () => {
@@ -85,9 +94,18 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
     });
   });
 
+  it("chain DAG (dependent priors) log density differences match to double precision", () => {
+    const stan = pairwiseDiffs(chainLp.map((r) => r.lp));
+    const ref = pairwiseDiffs(chainDagPoints.map((p) => chainDagLogDensity(chainDagData, p)));
+    stan.forEach((d, i) => {
+      expect(d).toBeCloseTo(ref[i] as number, 9);
+    });
+  });
+
   describe.runIf(Boolean(JULIA_PROJECT))("and JuliaBUGS auto-marginalization", () => {
     it("mixture values (up to a constant) and gradients agree", () => {
       const julia = juliaReference("mixture", mixtureData, mixturePoints);
+      expect(julia).toHaveLength(mixturePoints.length);
       const stanDiffs = pairwiseDiffs(mixtureLp.map((r) => r.lp));
       const juliaDiffs = pairwiseDiffs(julia.map((r) => r.logdensity));
       stanDiffs.forEach((d, i) => {
@@ -102,6 +120,7 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
 
     it("mixed DAG values (up to a constant) and gradients agree", () => {
       const julia = juliaReference("mixeddag", mixedDagData, mixedDagPoints);
+      expect(julia).toHaveLength(mixedDagPoints.length);
       const stanDiffs = pairwiseDiffs(dagLp.map((r) => r.lp));
       const juliaDiffs = pairwiseDiffs(julia.map((r) => r.logdensity));
       stanDiffs.forEach((d, i) => {
@@ -110,6 +129,21 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
       julia.forEach((ref, i) => {
         for (const [name, g] of Object.entries(ref.gradient)) {
           expect(dagLp[i]?.gradient[name]).toBeCloseTo(g, 8);
+        }
+      });
+    }, 120_000);
+
+    it("chain DAG values (up to a constant) and gradients agree", () => {
+      const julia = juliaReference("chaindag", chainDagData, chainDagPoints);
+      expect(julia).toHaveLength(chainDagPoints.length);
+      const stanDiffs = pairwiseDiffs(chainLp.map((r) => r.lp));
+      const juliaDiffs = pairwiseDiffs(julia.map((r) => r.logdensity));
+      stanDiffs.forEach((d, i) => {
+        expect(d).toBeCloseTo(juliaDiffs[i] as number, 9);
+      });
+      julia.forEach((ref, i) => {
+        for (const [name, g] of Object.entries(ref.gradient)) {
+          expect(chainLp[i]?.gradient[name]).toBeCloseTo(g, 8);
         }
       });
     }, 120_000);
@@ -163,6 +197,29 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
       for (const [key, sum] of expected) {
         const freq = (observed.get(key) ?? 0) / A.length;
         expect(Math.abs(freq - sum / A.length)).toBeLessThan(0.05);
+      }
+    }, 120_000);
+
+    it("chain DAG: joint (X, Y) frequencies match the averaged exact posterior", () => {
+      const fit = sample(chainBin, chainDagData, { warmup: 500, draws: 2000, seed: 13 });
+      const sigma = fit.columns.get("sigma") as number[];
+      const X = fit.columns.get("X") as number[];
+      const Y = fit.columns.get("Y") as number[];
+      expect(X).toBeDefined();
+      expect(Y).toBeDefined();
+      const expected = new Map<string, number>();
+      const observed = new Map<string, number>();
+      for (let t = 0; t < sigma.length; t++) {
+        const joint = chainDagJointPosterior(chainDagData, { sigma: sigma[t] as number });
+        for (const [key, p] of joint) {
+          expected.set(key, (expected.get(key) ?? 0) + p);
+        }
+        const key = `${X[t]},${Y[t]}`;
+        observed.set(key, (observed.get(key) ?? 0) + 1);
+      }
+      for (const [key, sum] of expected) {
+        const freq = (observed.get(key) ?? 0) / sigma.length;
+        expect(Math.abs(freq - sum / sigma.length)).toBeLessThan(0.05);
       }
     }, 120_000);
   });

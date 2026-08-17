@@ -7,7 +7,9 @@
 // are emitted as explanatory comments.
 import {
   analyzeDiscreteLatents,
+  DISCRETE_DISTRIBUTIONS,
   type DiscreteAnalysis,
+  FRONTIER_COST_WARN,
   marginalizedLatentNames,
   type PlatePlan,
   type ScalarDagPlan,
@@ -697,18 +699,9 @@ function findUndeclaredDataVars(
 // Distributions that cannot be vectorized in Stan (multivariate / non-scalar support)
 const NON_VECTORIZABLE_DISTS = new Set(["dmnorm", "dmt", "dwish", "ddirich", "dmulti"]);
 
-// Discrete distributions: Stan cannot sample these as latent (parameters block) variables.
-// They require marginalizing out the discrete parameter or using a specialized sampler.
-const DISCRETE_DISTRIBUTIONS = new Set([
-  "dbern",
-  "dbin",
-  "dpois",
-  "dcat",
-  "dnegbin",
-  "dgeom",
-  "dhyper",
-  "dbetabin",
-]);
+const ANALYZE_OPTS = {
+  canTranslate: (dist: string) => DISTRIBUTION_MAP[dist] !== undefined,
+};
 
 // Given a raw BUGS param string and the current plate's loop variable, attempt to strip
 // the loop-variable index so the expression works on the whole array.
@@ -839,8 +832,8 @@ function densityTerm(
 ): string | null {
   const info = formatStanDistribution(node, nameToNode);
   if (info === null || "error" in info) return null;
-  const suffix =
-    node.distribution && DISCRETE_DISTRIBUTIONS.has(node.distribution) ? "lpmf" : "lpdf";
+  const dist = node.distribution ?? "";
+  const suffix = DISCRETE_DISTRIBUTIONS.has(dist) || dist === "dmulti" ? "lpmf" : "lpdf";
   const lhs = target ?? `${convertBugsName(node.name)}${node.indices ? `[${node.indices}]` : ""}`;
   return `${info.stanDist}_${suffix}(${lhs} | ${info.stanParams})`;
 }
@@ -996,10 +989,9 @@ function scalarBucketTerms(
     return out;
   };
   const terms: string[] = [];
-  const prior = densityTerm(step.latent, nameToNode, naming.vars.get(step.latent.id)?.valExpr);
-  if (prior) terms.push(substAll(prior));
   for (const f of step.bucketFactors) {
-    const raw = densityTerm(f, nameToNode);
+    // A latent node in the bucket stands for its own prior, scored at its value var.
+    const raw = densityTerm(f, nameToNode, naming.vars.get(f.id)?.valExpr);
     if (raw) terms.push(substAll(raw));
   }
   for (const phi of step.bucketPhis) {
@@ -1087,6 +1079,16 @@ function emitScalarRecovery(
   }
 
   const sizes = plan.latents.map((l) => naming.supports.get(l.id)?.size ?? "1");
+  const numericSizes = sizes.map(Number);
+  if (numericSizes.every(Number.isFinite)) {
+    const cost = numericSizes.reduce((a, b) => a * b, 1);
+    if (cost > FRONTIER_COST_WARN) {
+      return {
+        decls: [],
+        lines: [`  // latent recovery skipped: joint enumeration of ${cost} configurations`],
+      };
+    }
+  }
   const total = sizes.join(" * ");
   const decls = plan.latents.map((l) => `  int ${convertBugsName(l.name)};`);
   const lines: string[] = [
@@ -1123,9 +1125,12 @@ function emitScalarRecovery(
   return { decls, lines };
 }
 
-// Data arrays indexed by a latent (e.g. muX[X], deltaC[C + 1]) need the latent's
-// support size as their dimension; nothing else in the graph carries that size.
-function latentIndexedDataDims(analysis: DiscreteAnalysis): Map<string, string[]> {
+// Data arrays indexed by a latent (e.g. muX[X], deltaC[C + 1], P[Z, 1:2]) need the
+// latent's support size as their dimension; nothing else in the graph carries it.
+function latentIndexedDataDims(
+  analysis: DiscreteAnalysis,
+  loopVarToUpper: Map<string, string>,
+): Map<string, string[]> {
   const latentSize = new Map<string, string>();
   const exprNodes: GraphNode[] = [];
   for (const l of analysis.latents) {
@@ -1139,6 +1144,22 @@ function latentIndexedDataDims(analysis: DiscreteAnalysis): Map<string, string[]
     exprNodes.push(...analysis.scalarPlan.factors, ...analysis.scalarPlan.inlineDets);
   }
 
+  const resolveSub = (sub: string): string => {
+    const latent = [...latentSize.keys()].find((n) =>
+      new RegExp(`(?<![A-Za-z0-9_])${escapeRe(n)}(?![A-Za-z0-9_])`).test(sub),
+    );
+    if (latent) return latentSize.get(latent) as string;
+    const upper = loopVarToUpper.get(sub);
+    if (upper) return upper;
+    const range = sub.match(/^(\S+)\s*:\s*(\S+)$/);
+    if (range) {
+      if (range[1] === "1" || /^\d+$/.test(range[2] as string)) return range[2] as string;
+      return "";
+    }
+    if (/^\d+$/.test(sub)) return sub;
+    return "";
+  };
+
   const dims = new Map<string, string[]>();
   const INDEXED_RE = /(?<![0-9.])([A-Za-z_][A-Za-z0-9_.]*)\s*\[([^\][]*(?:\[[^\]]*\][^\][]*)*)\]/g;
   for (const node of exprNodes) {
@@ -1149,19 +1170,12 @@ function latentIndexedDataDims(analysis: DiscreteAnalysis): Map<string, string[]
       while (m !== null) {
         const base = m[1] as string;
         const subs = splitTopLevel(m[2] as string);
-        const resolved: string[] = [];
-        let hasLatent = false;
-        for (const sub of subs) {
-          const latent = [...latentSize.keys()].find((n) =>
+        const resolved = subs.map(resolveSub);
+        const hasLatent = subs.some((sub) =>
+          [...latentSize.keys()].some((n) =>
             new RegExp(`(?<![A-Za-z0-9_])${escapeRe(n)}(?![A-Za-z0-9_])`).test(sub),
-          );
-          if (latent) {
-            hasLatent = true;
-            resolved.push(latentSize.get(latent) as string);
-          } else {
-            resolved.push("");
-          }
-        }
+          ),
+        );
         if (hasLatent && resolved.every((d) => d !== "")) {
           dims.set(convertBugsName(base), resolved);
         }
@@ -1190,13 +1204,36 @@ function splitTopLevel(subs: string): string[] {
   return parts;
 }
 
+// The probability argument of categorical_lpmf must be vector-typed, so the
+// prior vectors of marginalized dcat latents override the default real arrays.
+// A prior indexed by another latent (theta[X, 1:2]) becomes an array of vectors.
 function catPriorVectorOverrides(analysis: DiscreteAnalysis): Map<string, string> {
+  const latentSize = new Map(
+    analysis.latents
+      .filter((l) => l.tier !== "unsupported" && l.support)
+      .map((l) => [l.node.name, (l.support as SupportInfo).size]),
+  );
   const overrides = new Map<string, string>();
   for (const l of analysis.latents) {
     if (l.tier === "unsupported" || l.node.distribution !== "dcat" || !l.support) continue;
     const p1 = String(l.node.param1 ?? "").trim();
-    const m = p1.match(/^([A-Za-z_][A-Za-z0-9_.]*)\s*(?:\[\s*(?::|1\s*:\s*[^\]]+)?\s*\])?$/);
-    if (m) overrides.set(convertBugsName(m[1] as string), `vector[${l.support.size}]`);
+    const plain = p1.match(/^([A-Za-z_][A-Za-z0-9_.]*)\s*(?:\[\s*(?::|1\s*:\s*[^\]]+)?\s*\])?$/);
+    if (plain) {
+      overrides.set(convertBugsName(plain[1] as string), `vector[${l.support.size}]`);
+      continue;
+    }
+    const rowIndexed = p1.match(
+      /^([A-Za-z_][A-Za-z0-9_.]*)\s*\[\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*1\s*:\s*([^\]]+?)\s*\]$/,
+    );
+    if (rowIndexed) {
+      const rowDim = latentSize.get(rowIndexed[2] as string);
+      if (rowDim) {
+        overrides.set(
+          convertBugsName(rowIndexed[1] as string),
+          `array[${rowDim}] vector[${rowIndexed[3]}]`,
+        );
+      }
+    }
   }
   return overrides;
 }
@@ -1217,7 +1254,7 @@ export function generateStanModel(elements: GraphElement[]): string {
   const topoOrder = buildTopologicalOrder(nodes, edges);
   const topoIndex = new Map(topoOrder.map((id, i) => [id, i]));
 
-  const marg = analyzeDiscreteLatents(elements, topoOrder);
+  const marg = analyzeDiscreteLatents(elements, topoOrder, ANALYZE_OPTS);
   const margLatentIds = new Set(
     marg.latents.filter((l) => l.tier !== "unsupported").map((l) => l.node.id),
   );
@@ -1230,7 +1267,13 @@ export function generateStanModel(elements: GraphElement[]): string {
   const consumedFactorIds = new Set(
     [...marg.consumedFactorIds].filter((id) => !margLatentIds.has(id)),
   );
-  const latentDims = latentIndexedDataDims(marg);
+  const plateUppers = new Map<string, string>();
+  for (const n of nodes) {
+    if (n.nodeType !== "plate") continue;
+    const parts = convertBugsName(n.loopRange || "1:N").split(":");
+    if (parts.length === 2) plateUppers.set(n.loopVariable || "i", (parts[1] as string).trim());
+  }
+  const latentDims = latentIndexedDataDims(marg, plateUppers);
 
   const sortByTopo = (a: GraphNode, b: GraphNode) =>
     (topoIndex.get(a.id) ?? 0) - (topoIndex.get(b.id) ?? 0);
@@ -1299,7 +1342,7 @@ export function generateStanModel(elements: GraphElement[]): string {
     const dims = ownDims.length > 0 ? ownDims : (latentDims.get(stanName) ?? ownDims);
     const mvType = mvTypeOverrides.get(stanName);
     if (mvType) {
-      if (dims.length > 0) {
+      if (dims.length > 0 && !mvType.startsWith("array[")) {
         dataDeclarations.push(`  array[${dims.join(", ")}] ${mvType} ${stanName};`);
       } else {
         dataDeclarations.push(`  ${mvType} ${stanName};`);
@@ -1358,7 +1401,7 @@ export function generateStanModel(elements: GraphElement[]): string {
     const dims = foundDims.length > 0 ? foundDims : (latentDims.get(stanName) ?? foundDims);
     const mvType = mvTypeOverrides.get(stanName);
     if (mvType) {
-      if (dims.length > 0) {
+      if (dims.length > 0 && !mvType.startsWith("array[")) {
         dataDeclarations.push(`  array[${dims.join(", ")}] ${mvType} ${stanName};`);
       } else {
         dataDeclarations.push(`  ${mvType} ${stanName};`);
@@ -1922,6 +1965,7 @@ export function generateStanInitsJson(
     for (const name of marginalizedLatentNames(
       elements,
       buildTopologicalOrder(nodes, graphEdges),
+      ANALYZE_OPTS,
     )) {
       delete converted[convertBugsName(name)];
     }

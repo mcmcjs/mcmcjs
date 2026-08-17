@@ -101,6 +101,26 @@ export function mixedDagElements(): GraphElement[] {
   ];
 }
 
+/** Dependent discrete priors: X ~ dcat(piX); Y ~ dcat(theta[X, 1:2]); yobs ~ dnorm(mu[Y], tau(sigma)). */
+export function chainDagElements(): GraphElement[] {
+  return [
+    node({ id: "X", name: "X", distribution: "dcat", param1: "piX[1:2]" }),
+    node({ id: "Y", name: "Y", distribution: "dcat", param1: "theta[X, 1:2]" }),
+    node({ id: "sigma", name: "sigma", distribution: "dexp", param1: "1" }),
+    node({
+      id: "yobs",
+      name: "yobs",
+      nodeType: "observed",
+      distribution: "dnorm",
+      param1: "mu[Y]",
+      param2: "1 / (sigma * sigma)",
+    }),
+    edge("X", "Y"),
+    edge("Y", "yobs"),
+    edge("sigma", "yobs"),
+  ];
+}
+
 export const mixtureData = {
   N: 6,
   y: [-2.1, 1.8, -1.7, 2.3, 0.4, -2.5],
@@ -133,3 +153,15 @@ export const mixedDagPoints = [
   { A: -1.2, B: 0.8 },
   { A: 2.0, B: -0.5 },
 ];
+
+export const chainDagData = {
+  piX: [0.4, 0.6],
+  theta: [
+    [0.9, 0.1],
+    [0.2, 0.8],
+  ],
+  mu: [-1.5, 1.5],
+  yobs: 0.7,
+};
+
+export const chainDagPoints = [{ sigma: 0.8 }, { sigma: 1.6 }, { sigma: 0.4 }];

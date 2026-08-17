@@ -168,14 +168,15 @@ describe("analyzeDiscreteLatents: scalar DAG tier", () => {
     expect(plan?.latents.map((n) => n.id)).toEqual(["Z", "C", "X"]);
     // Elimination is the reverse; the frontier after eliminating C is {Z}.
     expect(plan?.steps.map((s) => s.latent.id)).toEqual(["X", "C", "Z"]);
+    // Each bucket lists the latent's own prior node first, then consumed factors.
     const stepX = plan?.steps[0];
-    expect(stepX?.bucketFactors.map((f) => f.id)).toEqual(["A"]);
+    expect(stepX?.bucketFactors.map((f) => f.id)).toEqual(["X", "A"]);
     expect(stepX?.scopeAfter).toEqual([]);
     const stepC = plan?.steps[1];
-    expect(stepC?.bucketFactors.map((f) => f.id)).toEqual(["D"]);
+    expect(stepC?.bucketFactors.map((f) => f.id)).toEqual(["C", "D"]);
     expect(stepC?.scopeAfter.map((n) => n.id)).toEqual(["Z"]);
     const stepZ = plan?.steps[2];
-    expect(stepZ?.bucketFactors).toEqual([]);
+    expect(stepZ?.bucketFactors.map((f) => f.id)).toEqual(["Z"]);
     expect(stepZ?.bucketPhis.map((n) => n.id)).toEqual(["C"]);
     expect(stepZ?.scopeAfter).toEqual([]);
 
@@ -362,6 +363,182 @@ describe("analyzeDiscreteLatents: unsupported structures fall back", () => {
     ];
     const analysis = analyze(elements);
     expect(analysis.issues.some((i) => i.includes("40000 configurations"))).toBe(true);
+  });
+});
+
+describe("analyzeDiscreteLatents: review regressions", () => {
+  const CAN_TRANSLATE = (d: string) => d !== "dgeom";
+
+  it("demotes a latent whose factor has an untranslatable distribution", () => {
+    const elements: GraphElement[] = [
+      node({ id: "plate_i", name: "ip", nodeType: "plate", loopVariable: "i", loopRange: "1:N" }),
+      node({
+        id: "z",
+        name: "z",
+        distribution: "dbern",
+        param1: "0.3",
+        indices: "i",
+        parent: "plate_i",
+      }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dgeom",
+        param1: "p[z[i] + 1]",
+        indices: "i",
+        parent: "plate_i",
+      }),
+      edge("z", "y"),
+    ];
+    const nodes = elements.filter((el): el is GraphNode => el.type === "node");
+    const edges = elements.filter((el): el is GraphEdge => el.type === "edge");
+    const analysis = analyzeDiscreteLatents(elements, buildTopologicalOrder(nodes, edges), {
+      canTranslate: CAN_TRANSLATE,
+    });
+    expect(analysis.latents[0]?.tier).toBe("unsupported");
+    expect(analysis.latents[0]?.reason).toContain("no translatable distribution");
+    expect(analysis.consumedFactorIds.size).toBe(0);
+  });
+
+  it("supports a dependent scalar prior, consuming it in the parent's bucket only", () => {
+    const elements: GraphElement[] = [
+      node({ id: "X", name: "X", distribution: "dcat", param1: "piX[1:2]" }),
+      node({ id: "Y", name: "Y", distribution: "dcat", param1: "theta[X, 1:2]" }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dnorm",
+        param1: "mu[Y]",
+        param2: "1",
+      }),
+      edge("X", "Y"),
+      edge("Y", "y"),
+    ];
+    const analysis = analyze(elements);
+    const tiers = Object.fromEntries(analysis.latents.map((l) => [l.node.id, l.tier]));
+    expect(tiers).toEqual({ X: "scalar-dag", Y: "scalar-dag" });
+    const plan = analysis.scalarPlan;
+    expect(plan?.latents.map((n) => n.id)).toEqual(["Y", "X"]);
+    // X's bucket consumes both priors (Y's prior reads X); Y's bucket gets phi_X plus the data factor.
+    const stepX = plan?.steps[0];
+    expect(stepX?.bucketFactors.map((f) => f.id)).toEqual(["Y", "X"]);
+    expect(stepX?.scopeAfter.map((n) => n.id)).toEqual(["Y"]);
+    const stepY = plan?.steps[1];
+    expect(stepY?.bucketFactors.map((f) => f.id)).toEqual(["y"]);
+    expect(stepY?.bucketPhis.map((n) => n.id)).toEqual(["X"]);
+  });
+
+  it("demotes a plate latent referenced in a non-substitutable form", () => {
+    const elements = mixtureElements().map((el) =>
+      el.type === "node" && el.id === "y" ? ({ ...el, param1: "mu[z[idx[i]]]" } as GraphNode) : el,
+    );
+    const analysis = analyze(elements);
+    expect(analysis.latents[0]?.tier).toBe("unsupported");
+    expect(analysis.latents[0]?.reason).toContain("referenced in a form other than");
+  });
+
+  it("demotes a scalar latent referenced with a subscript", () => {
+    const elements: GraphElement[] = [
+      node({ id: "Z", name: "Z", distribution: "dcat", param1: "pi[1:2]" }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dnorm",
+        param1: "mu[Z[1]]",
+        param2: "1",
+      }),
+      edge("Z", "y"),
+    ];
+    const analysis = analyze(elements);
+    expect(analysis.latents[0]?.tier).toBe("unsupported");
+    expect(analysis.latents[0]?.reason).toContain("subscript");
+  });
+
+  it("demotes a latent read by an unsampleable discrete latent factor", () => {
+    const elements: GraphElement[] = [
+      node({ id: "Z", name: "Z", distribution: "dcat", param1: "pi[1:2]" }),
+      node({ id: "n", name: "n", distribution: "dpois", param1: "lambda[Z]" }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dnorm",
+        param1: "mu[Z]",
+        param2: "1",
+      }),
+      edge("Z", "n"),
+      edge("Z", "y"),
+    ];
+    const analysis = analyze(elements);
+    expect(analysis.latents[0]?.tier).toBe("unsupported");
+    expect(analysis.latents[0]?.reason).toContain("discrete latent Stan cannot sample");
+  });
+
+  it("demotes a dcat latent whose probability slice does not start at 1", () => {
+    const elements: GraphElement[] = [
+      node({ id: "Z", name: "Z", distribution: "dcat", param1: "w[2:3]" }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dnorm",
+        param1: "mu[Z]",
+        param2: "1",
+      }),
+      edge("Z", "y"),
+    ];
+    const analysis = analyze(elements);
+    expect(analysis.latents[0]?.tier).toBe("unsupported");
+    expect(analysis.latents[0]?.reason).toContain("support size");
+  });
+
+  it("demotes a latent whose helper names collide with user variables", () => {
+    const elements: GraphElement[] = [
+      ...mixtureElements(),
+      node({ id: "clash", name: "z_lp", nodeType: "constant" }),
+    ];
+    const analysis = analyze(elements);
+    expect(analysis.latents[0]?.tier).toBe("unsupported");
+    expect(analysis.latents[0]?.reason).toContain("collide");
+  });
+
+  it("demotes a chain hidden behind a deterministic node", () => {
+    const elements: GraphElement[] = [
+      node({ id: "plate_t", name: "tp", nodeType: "plate", loopVariable: "t", loopRange: "1:T" }),
+      node({
+        id: "z",
+        name: "z",
+        distribution: "dcat",
+        param1: "w[1:2]",
+        indices: "t",
+        parent: "plate_t",
+      }),
+      node({
+        id: "m",
+        name: "m",
+        nodeType: "deterministic",
+        equation: "mu[z[t - 1]]",
+        indices: "t",
+        parent: "plate_t",
+      }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dnorm",
+        param1: "m[t]",
+        param2: "1",
+        indices: "t",
+        parent: "plate_t",
+      }),
+      edge("z", "m"),
+      edge("m", "y"),
+    ];
+    const analysis = analyze(elements);
+    expect(analysis.latents[0]?.tier).toBe("unsupported");
   });
 });
 

@@ -102,6 +102,44 @@ export function mixedDagLogDensity(d: MixedDagData, p: MixedDagPoint): number {
   return normalLpdf(p.B, p.A, 1 / Math.sqrt(d.tauB)) + logSumExp(configs);
 }
 
+interface ChainDagData {
+  piX: number[];
+  theta: number[][];
+  mu: number[];
+  yobs: number;
+}
+interface ChainDagPoint {
+  sigma: number;
+}
+
+function chainDagConfigLp(d: ChainDagData, p: ChainDagPoint, x: number, y: number): number {
+  return (
+    Math.log(d.piX[x - 1] as number) +
+    Math.log((d.theta[x - 1] as number[])[y - 1] as number) +
+    normalLpdf(d.yobs, d.mu[y - 1] as number, p.sigma)
+  );
+}
+
+/** Full log density of the chain DAG fixture with X, Y summed out (sigma log-transformed). */
+export function chainDagLogDensity(d: ChainDagData, p: ChainDagPoint): number {
+  const configs: number[] = [];
+  for (const x of [1, 2]) for (const y of [1, 2]) configs.push(chainDagConfigLp(d, p, x, y));
+  return expLpdf(p.sigma, 1) + Math.log(p.sigma) + logSumExp(configs);
+}
+
+/** Exact joint posterior over (X, Y) configurations given the parameters. */
+export function chainDagJointPosterior(d: ChainDagData, p: ChainDagPoint): Map<string, number> {
+  const keys: string[] = [];
+  const lps: number[] = [];
+  for (const x of [1, 2])
+    for (const y of [1, 2]) {
+      keys.push(`${x},${y}`);
+      lps.push(chainDagConfigLp(d, p, x, y));
+    }
+  const probs = softmax(lps);
+  return new Map(keys.map((k, i) => [k, probs[i] as number]));
+}
+
 /** Exact joint posterior over (X, Z, C) configurations given the parameters. */
 export function mixedDagJointPosterior(d: MixedDagData, p: MixedDagPoint): Map<string, number> {
   const keys: string[] = [];

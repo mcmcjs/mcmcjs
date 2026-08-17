@@ -44,6 +44,18 @@ elseif spec["model"] == "mixeddag"
         deltaC=fvec(data["deltaC"]), deltaZ=fvec(data["deltaZ"]),
         tauD=Float64(data["tauD"]), D=Float64(data["D"]),
     )
+elseif spec["model"] == "chaindag"
+    model_def = @bugs begin
+        X ~ dcat(piX[1:2])
+        Y ~ dcat(theta[X, 1:2])
+        sigma ~ dexp(1)
+        yobs ~ dnorm(mu[Y], 1 / (sigma * sigma))
+    end
+    theta = permutedims(reduce(hcat, [fvec(r) for r in data["theta"]]))
+    model_data = (
+        piX=fvec(data["piX"]), theta=theta, mu=fvec(data["mu"]),
+        yobs=Float64(data["yobs"]),
+    )
 else
     error("unknown model $(spec["model"])")
 end

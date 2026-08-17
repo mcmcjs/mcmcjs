@@ -114,6 +114,85 @@ describe("marginalized Stan generation: inlined deterministic carriers", () => {
   });
 });
 
+describe("marginalized Stan generation: review regressions", () => {
+  it("emits a dependent discrete prior exactly once, in the parent's bucket", () => {
+    const code = generateStanModel([
+      node({ id: "X", name: "X", distribution: "dcat", param1: "piX[1:2]" }),
+      node({ id: "Y", name: "Y", distribution: "dcat", param1: "theta[X, 1:2]" }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dnorm",
+        param1: "mu[Y]",
+        param2: "1",
+      }),
+      edge("X", "Y"),
+      edge("Y", "y"),
+    ]);
+    expect(code).toContain("array[2] vector[2] theta;");
+    // once inside the elimination block, once in the generated-quantities recovery
+    expect(code.match(/categorical_lpmf\(Y_val \| theta\[X_val, 1:2\]\)/g)).toHaveLength(2);
+    expect(code.match(/categorical_lpmf\(X_val \| piX\[1:2\]\)/g)).toHaveLength(2);
+    expect(code).toContain("phi_X[Y_val] = log_sum_exp(X_lp);");
+    expect(code).not.toContain("int Y;\n  // WARNING");
+  });
+
+  it("falls back with the original error comment when a factor is untranslatable", () => {
+    const code = generateStanModel([
+      node({
+        id: "plate_i",
+        name: "ip",
+        nodeType: "plate",
+        loopVariable: "i",
+        loopRange: "1:N",
+      }),
+      node({
+        id: "z",
+        name: "z",
+        distribution: "dbern",
+        param1: "0.3",
+        indices: "i",
+        parent: "plate_i",
+      }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dgeom",
+        param1: "p[z[i] + 1]",
+        indices: "i",
+        parent: "plate_i",
+      }),
+      edge("z", "y"),
+    ]);
+    expect(code).toContain("// WARNING: z ~ dbern is a discrete distribution.");
+    expect(code).toContain("no translatable distribution");
+    expect(code).toContain("'dgeom' has no Stan equivalent");
+    expect(code).not.toContain("log_sum_exp");
+  });
+
+  it("skips joint recovery when the configuration count is too large", () => {
+    const code = generateStanModel([
+      node({ id: "a", name: "a", distribution: "dcat", param1: "pa[1:200]" }),
+      node({ id: "b", name: "b", distribution: "dcat", param1: "pb[1:200]" }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dnorm",
+        param1: "mu[a] + nu[b]",
+        param2: "1",
+      }),
+      edge("a", "y"),
+      edge("b", "y"),
+    ]);
+    expect(code).toContain("// NOTE: eliminating");
+    expect(code).toContain("// latent recovery skipped: joint enumeration of 40000 configurations");
+    expect(code).not.toContain("marg_joint_lp");
+  });
+});
+
 describe("marginalized Stan generation: unsupported latents keep the warning", () => {
   it("keeps the discrete warning plus the reason for a chain-structured latent", () => {
     const code = generateStanModel([

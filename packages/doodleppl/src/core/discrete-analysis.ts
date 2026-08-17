@@ -3,7 +3,21 @@
 // marginalization: classify discrete-finite latents, resolve their support,
 // group the factors that read them, and compute a variable-elimination plan
 // whose intermediate factor scopes are the minimal discrete frontiers.
+// Any structure the analysis cannot prove safe demotes the latent, so the
+// generator falls back to its warning comments instead of emitting wrong code.
 import type { GraphEdge, GraphElement, GraphNode } from "./types";
+
+/** Discrete distributions Stan cannot sample as latent parameters. */
+export const DISCRETE_DISTRIBUTIONS = new Set([
+  "dbern",
+  "dbin",
+  "dpois",
+  "dcat",
+  "dnegbin",
+  "dgeom",
+  "dhyper",
+  "dbetabin",
+]);
 
 /** Finite support of a discrete latent: values lo .. lo + size - 1 (size may be symbolic). */
 export interface SupportInfo {
@@ -38,7 +52,7 @@ export interface PlatePlan {
 export interface ScalarElimStep {
   latent: GraphNode;
   support: SupportInfo;
-  /** Original factors consumed by this step (the latent's own prior is implicit). */
+  /** Factors consumed by this step; a latent node here stands for its own prior term. */
   bucketFactors: GraphNode[];
   /** Latents whose intermediate phi tables are consumed by this step. */
   bucketPhis: GraphNode[];
@@ -68,13 +82,22 @@ export interface DiscreteAnalysis {
   issues: string[];
 }
 
+export interface AnalyzeOptions {
+  /** Whether the target-language generator can translate a distribution's density. */
+  canTranslate?: (dist: string) => boolean;
+}
+
 /** Discrete distributions with enumerable finite support handled by the marginalizer. */
 const MARGINALIZABLE_DISTS = new Set(["dcat", "dbern"]);
 
 /** Frontier configurations above this count get a cost warning in the generated code. */
-const FRONTIER_COST_WARN = 10_000;
+export const FRONTIER_COST_WARN = 10_000;
 
 const IDENT_RE = /(?<![0-9.])([A-Za-z_][A-Za-z0-9_.]*)\s*(\[([^\]]*)\])?/g;
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 function nodeExprs(node: GraphNode): string[] {
   const vals = [node.equation, node.param1, node.param2, node.param3];
@@ -100,6 +123,7 @@ interface Ctx {
   nodes: GraphNode[];
   nodeMap: Map<string, GraphNode>;
   nameToNode: Map<string, GraphNode>;
+  nodeNames: Set<string>;
   /** node id -> parent node ids (edges plus parsed expression references). */
   parents: Map<string, Set<string>>;
 }
@@ -108,7 +132,8 @@ function buildCtx(elements: GraphElement[]): Ctx {
   const nodes = elements.filter((el): el is GraphNode => el.type === "node");
   const edges = elements.filter((el): el is GraphEdge => el.type === "edge");
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-  const nameToNode = new Map(nodes.filter((n) => n.nodeType !== "plate").map((n) => [n.name, n]));
+  const nonPlate = nodes.filter((n) => n.nodeType !== "plate");
+  const nameToNode = new Map(nonPlate.map((n) => [n.name, n]));
 
   const parents = new Map<string, Set<string>>();
   for (const n of nodes) parents.set(n.id, new Set());
@@ -124,7 +149,7 @@ function buildCtx(elements: GraphElement[]): Ctx {
       if (ref && ref.id !== n.id) parents.get(n.id)?.add(ref.id);
     }
   }
-  return { nodes, nodeMap, nameToNode, parents };
+  return { nodes, nodeMap, nameToNode, nodeNames: new Set(nonPlate.map((n) => n.name)), parents };
 }
 
 /** Ids from `targetIds` reachable upward from `node` through deterministic-only chains. */
@@ -177,13 +202,8 @@ function resolveSupport(node: GraphNode, ctx: Ctx): SupportInfo | null {
     const last = subs[subs.length - 1] ?? "";
     const range = last.match(/^(\S+)\s*:\s*(\S+)$/);
     if (range) {
-      const a = range[1] as string;
-      const b = range[2] as string;
-      if (a === "1") return { size: b, lo: 1 };
-      if (/^\d+$/.test(a) && /^\d+$/.test(b)) {
-        return { size: String(Number(b) - Number(a) + 1), lo: 1 };
-      }
-      return { size: `(${b} - ${a} + 1)`, lo: 1 };
+      // Only 1-based slices: the support values then equal the vector positions.
+      return range[1] === "1" ? { size: range[2] as string, lo: 1 } : null;
     }
     if (last === "" || last === ":") {
       return resolveSupportFromRef(idxMatch[1] as string, ctx);
@@ -215,8 +235,51 @@ function plateOf(node: GraphNode, ctx: Ctx): GraphNode | undefined {
 
 /** Whether any expression of `node` references `name[...loopVar +/- ...]`. */
 function hasOffsetRef(node: GraphNode, name: string, loopVar: string): boolean {
-  const re = new RegExp(`\\b${name}\\s*\\[[^\\]]*\\b${loopVar}\\s*[+-][^\\]]*\\]`);
+  const re = new RegExp(
+    `(?<![A-Za-z0-9_])${escapeRe(name)}\\s*\\[[^\\]]*\\b${escapeRe(loopVar)}\\s*[+-][^\\]]*\\]`,
+  );
   return nodeExprs(node).some((e) => re.test(e));
+}
+
+/**
+ * Every reference to the latent in `exprs` must be substitutable: exactly
+ * `name[loopVar]` in the plate tier, exactly bare `name` in the scalar tier.
+ */
+function referencesAreSubstitutable(
+  exprs: string[],
+  latentName: string,
+  loopVar: string | null,
+): boolean {
+  const re = new RegExp(
+    `(?<![A-Za-z0-9_.])${escapeRe(latentName)}(?![A-Za-z0-9_])(\\s*\\[([^\\]]*)\\])?`,
+    "g",
+  );
+  for (const expr of exprs) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null = re.exec(expr);
+    while (m !== null) {
+      const sub = m[2];
+      if (loopVar === null) {
+        if (sub !== undefined) return false;
+      } else if (sub === undefined || sub.trim() !== loopVar) {
+        return false;
+      }
+      m = re.exec(expr);
+    }
+  }
+  return true;
+}
+
+/** Local names the emitters generate for a latent; a user variable with such a name wins. */
+function helperNameCollision(name: string, ctx: Ctx): string | null {
+  const helpers = [`${name}_lp`, `${name}_val`, `${name}_idx`, `phi_${name}`, `marg_conf_${name}`];
+  for (const h of helpers) {
+    if (ctx.nodeNames.has(h)) return h;
+  }
+  for (const global of ["marg_joint_lp", "marg_c", "marg_pick"]) {
+    if (ctx.nodeNames.has(global)) return global;
+  }
+  return null;
 }
 
 /**
@@ -257,16 +320,19 @@ function scalarEliminationOrder(
 export function analyzeDiscreteLatents(
   elements: GraphElement[],
   topoOrder: string[],
+  options: AnalyzeOptions = {},
 ): DiscreteAnalysis {
   const ctx = buildCtx(elements);
   const topoIndex = new Map(topoOrder.map((id, i) => [id, i]));
+  const canTranslate = options.canTranslate ?? (() => true);
   const issues: string[] = [];
 
   const candidates = ctx.nodes.filter(
     (n) =>
       n.nodeType === "stochastic" &&
       n.distribution !== undefined &&
-      MARGINALIZABLE_DISTS.has(n.distribution),
+      MARGINALIZABLE_DISTS.has(n.distribution) &&
+      /^[A-Za-z_][A-Za-z0-9_]*$/.test(n.name),
   );
   const candidateIds = new Set(candidates.map((n) => n.id));
 
@@ -313,24 +379,28 @@ export function analyzeDiscreteLatents(
   }
 
   // Second pass: validate structural constraints, demoting until stable so that
-  // a demoted latent invalidates any latent sharing a factor with it.
+  // a demoted latent invalidates any latent sharing structure with it.
   const byId = new Map(latents.map((l) => [l.node.id, l]));
   const isSupported = (id: string) => (byId.get(id)?.tier ?? "unsupported") !== "unsupported";
-  const demote = (entry: DiscreteLatent, reason: string) => {
-    entry.tier = "unsupported";
-    entry.reason = reason;
-  };
 
   let changed = true;
   while (changed) {
     changed = false;
     for (const entry of latents) {
       if (entry.tier === "unsupported") continue;
-      const latent = entry.node;
-      const factors = factorsOf(latent.id);
-      const fail = validateLatent(entry, factors, ctx, scopes, isSupported, byId);
+      const fail = validateLatent(
+        entry,
+        factorsOf(entry.node.id),
+        ctx,
+        scopes,
+        isSupported,
+        byId,
+        candidateIds,
+        canTranslate,
+      );
       if (fail) {
-        demote(entry, fail);
+        entry.tier = "unsupported";
+        entry.reason = fail;
         changed = true;
       }
     }
@@ -364,6 +434,8 @@ export function analyzeDiscreteLatents(
   }
 
   // Scalar tier: bucket variable elimination in reverse marginalization order.
+  // Each latent's own prior enters the pending pool as an ordinary factor and is
+  // consumed by exactly one bucket (dependent priors land in the parent's bucket).
   let scalarPlan: ScalarDagPlan | null = null;
   if (scalarLatents.length > 0) {
     const order = scalarEliminationOrder(scalarLatents, ctx, topoIndex, scopes);
@@ -408,8 +480,7 @@ export function analyzeDiscreteLatents(
         support: supportOf(latent.id),
         bucketFactors: bucket
           .filter((p): p is Extract<Pending, { kind: "factor" }> => p.kind === "factor")
-          .map((p) => p.node)
-          .filter((n) => n.id !== latent.id),
+          .map((p) => p.node),
         bucketPhis: bucket
           .filter((p): p is Extract<Pending, { kind: "phi" }> => p.kind === "phi")
           .map((p) => p.latent),
@@ -423,7 +494,9 @@ export function analyzeDiscreteLatents(
       latents: order,
       steps,
       factors: allFactors,
-      inlineDets: dedupe(allFactors.flatMap((f) => detsEnRoute(f, ctx, candidateIds))),
+      inlineDets: dedupe(
+        [...allFactors, ...order].flatMap((f) => detsEnRoute(f, ctx, candidateIds)),
+      ),
     };
     for (const latent of order) consumedFactorIds.add(latent.id);
     for (const f of allFactors) consumedFactorIds.add(f.id);
@@ -453,37 +526,62 @@ function validateLatent(
   scopes: Map<string, Set<string>>,
   isSupported: (id: string) => boolean,
   byId: Map<string, DiscreteLatent>,
+  candidateIds: Set<string>,
+  canTranslate: (dist: string) => boolean,
 ): string | null {
   const latent = entry.node;
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(latent.name)) {
-    return `latent name '${latent.name}' is not a plain identifier`;
-  }
   if (latent.censorLower || latent.censorUpper || latent.equation?.trim()) {
     return `'${latent.name}' has censoring or a data transform`;
+  }
+  const collision = helperNameCollision(latent.name, ctx);
+  if (collision) {
+    return `marginalizing '${latent.name}' would collide with the variable '${collision}'`;
   }
   if (factors.length === 0) {
     return `'${latent.name}' has no factors reading it; marginalizing it would be a no-op`;
   }
+
+  const isScalarSupported = (id: string) => isSupported(id) && byId.get(id)?.tier === "scalar-dag";
+
   for (const f of factors) {
     if (f.censorLower || f.censorUpper || f.equation?.trim()) {
       return `factor '${f.name}' of '${latent.name}' has censoring or a data transform`;
     }
     const dist = f.distribution ?? "";
-    if (dist === "" || dist === "dflat") {
+    if (dist === "" || dist === "dflat" || !canTranslate(dist)) {
       return `factor '${f.name}' of '${latent.name}' has no translatable distribution`;
     }
+    if (dist === "dmulti") {
+      return `factor '${f.name}' of '${latent.name}' is multinomial, which the marginalizer does not handle`;
+    }
+    // An unobserved discrete factor is itself an unsampleable latent; only a
+    // co-marginalized scalar latent (a dependent prior) is acceptable.
+    if (f.nodeType === "stochastic" && DISCRETE_DISTRIBUTIONS.has(dist)) {
+      const ok = entry.tier === "scalar-dag" && isScalarSupported(f.id);
+      if (!ok) {
+        return `factor '${f.name}' of '${latent.name}' is itself a discrete latent Stan cannot sample`;
+      }
+    }
   }
-  // Every deterministic node carrying this latent must be inlinable into some factor;
-  // a deterministic reader that reaches no factor (e.g. one feeding only generated
-  // quantities) would reference a variable that no longer exists.
+
+  // Every deterministic node carrying this latent must be inlinable into some
+  // factor or a co-marginalized prior; a reader that reaches neither would
+  // reference a variable that no longer exists.
   const latentOnly = new Set([latent.id]);
-  const enRoute = new Set(factors.flatMap((f) => detsEnRoute(f, ctx, latentOnly)).map((d) => d.id));
+  const enRoute = new Set(
+    [...factors, latent].flatMap((f) => detsEnRoute(f, ctx, latentOnly)).map((d) => d.id),
+  );
   for (const det of ctx.nodes) {
     if (det.nodeType !== "deterministic") continue;
     if (discreteScope(det, ctx, latentOnly).size > 0 && !enRoute.has(det.id)) {
       return `deterministic node '${det.name}' reads '${latent.name}' but feeds no factor`;
     }
   }
+
+  // All textual references in factors and inlined deterministic nodes must be
+  // the exact substitutable form; anything else would survive substitution.
+  const inlineDets = dedupe([...factors, latent].flatMap((f) => detsEnRoute(f, ctx, candidateIds)));
+  const scannedExprs = [...factors, ...inlineDets].flatMap(nodeExprs);
 
   if (entry.tier === "iid-plate") {
     const plate = plateOf(latent, ctx) as GraphNode;
@@ -499,13 +597,13 @@ function validateLatent(
       if (plateOf(f, ctx)?.id !== plate.id) {
         return `factor '${f.name}' reads '${latent.name}' from outside its plate`;
       }
-      if (hasOffsetRef(f, latent.name, loopVar)) {
-        return `factor '${f.name}' reads '${latent.name}' across plate iterations`;
-      }
       const others = [...(scopes.get(f.id) ?? [])].filter((id) => id !== latent.id);
       if (others.length > 0) {
         return `factor '${f.name}' reads '${latent.name}' and another discrete latent`;
       }
+    }
+    if (!referencesAreSubstitutable(scannedExprs, latent.name, loopVar)) {
+      return `'${latent.name}' is referenced in a form other than ${latent.name}[${loopVar}]`;
     }
     const priorScope = scopes.get(latent.id) ?? new Set();
     if (priorScope.size > 0) {
@@ -515,20 +613,26 @@ function validateLatent(
   }
 
   // scalar-dag: the latent, its factors, and every co-read latent must be scalar and supported
+  if ((latent.indices || "").trim() !== "") {
+    return `scalar latent '${latent.name}' has array indices`;
+  }
   for (const f of factors) {
     if (plateOf(f, ctx) !== undefined) {
       return `factor '${f.name}' of scalar latent '${latent.name}' is inside a plate`;
     }
     for (const id of scopes.get(f.id) ?? []) {
-      if (!isSupported(id) || byId.get(id)?.tier !== "scalar-dag") {
+      if (!isScalarSupported(id)) {
         return `factor '${f.name}' also reads a discrete latent the marginalizer cannot handle`;
       }
     }
   }
   for (const id of scopes.get(latent.id) ?? []) {
-    if (!isSupported(id) || byId.get(id)?.tier !== "scalar-dag") {
+    if (!isScalarSupported(id)) {
       return `the prior of '${latent.name}' reads a discrete latent the marginalizer cannot handle`;
     }
+  }
+  if (!referencesAreSubstitutable(scannedExprs, latent.name, null)) {
+    return `'${latent.name}' is referenced with a subscript, which a scalar latent cannot have`;
   }
   return null;
 }
@@ -543,7 +647,11 @@ function dedupe(nodes: GraphNode[]): GraphNode[] {
 }
 
 /** Base names of latents that the marginalized Stan program no longer declares as parameters. */
-export function marginalizedLatentNames(elements: GraphElement[], topoOrder: string[]): string[] {
-  const analysis = analyzeDiscreteLatents(elements, topoOrder);
+export function marginalizedLatentNames(
+  elements: GraphElement[],
+  topoOrder: string[],
+  options: AnalyzeOptions = {},
+): string[] {
+  const analysis = analyzeDiscreteLatents(elements, topoOrder, options);
   return analysis.latents.filter((l) => l.tier !== "unsupported").map((l) => l.node.name);
 }
