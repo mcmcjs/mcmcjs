@@ -1,3 +1,62 @@
 <!doctype html>
-<title>DoodlePPL PR previews</title>
-<p>Per-PR previews of the DoodlePPL editor live under <code>pr-preview/pr-&lt;number&gt;/</code>.</p>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DoodlePPL PR previews</title>
+    <style>
+      body {
+        margin: 40px auto;
+        max-width: 640px;
+        padding: 0 16px;
+        font-family: system-ui, sans-serif;
+        line-height: 1.5;
+      }
+      li {
+        margin: 6px 0;
+      }
+      .muted {
+        color: #667;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>DoodlePPL PR previews</h1>
+    <p>
+      Live previews of the DoodlePPL editor for open pull requests of
+      <a href="https://github.com/mcmcjs/mcmcjs">mcmcjs/mcmcjs</a>, deployed under
+      <code>pr-preview/pr-&lt;number&gt;/</code>. Each preview also serves the embedded
+      widget-mode page at <code>widget.html</code>.
+    </p>
+    <ul id="previews">
+      <li class="muted">Loading open pull requests...</li>
+    </ul>
+    <script>
+      const list = document.getElementById("previews");
+      fetch("https://api.github.com/repos/mcmcjs/mcmcjs/pulls?state=open&per_page=50")
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then(async (prs) => {
+          const rows = [];
+          for (const pr of prs) {
+            const url = `./pr-preview/pr-${pr.number}/`;
+            const head = await fetch(url, { method: "HEAD" });
+            if (head.ok) rows.push({ number: pr.number, title: pr.title, url });
+          }
+          list.innerHTML = rows.length
+            ? rows
+                .map(
+                  (r) =>
+                    `<li><a href="${r.url}">#${r.number}</a> ${r.title
+                      .replaceAll("&", "&amp;")
+                      .replaceAll("<", "&lt;")} <a class="muted" href="${r.url}widget.html">(widget)</a></li>`,
+                )
+                .join("")
+            : '<li class="muted">No open pull requests have a preview right now.</li>';
+        })
+        .catch(() => {
+          list.innerHTML =
+            '<li class="muted">Could not list pull requests; append pr-preview/pr-&lt;number&gt;/ to this URL.</li>';
+        });
+    </script>
+  </body>
+</html>
