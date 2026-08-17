@@ -1,0 +1,41 @@
+name: DoodlePPL preview
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+    paths:
+      - "packages/doodleppl-ui/**"
+      - "packages/doodleppl/**"
+      - ".github/workflows/doodleppl-preview.yml"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency: doodleppl-preview-${{ github.event.pull_request.number }}
+
+jobs:
+  preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+        if: github.event.action != 'closed'
+      - name: Build the editor bundle
+        if: github.event.action != 'closed'
+        run: |
+          pnpm --filter @mcmcjs/doodleppl build
+          pnpm --filter doodleppl build
+      - name: Assemble the preview pages
+        if: github.event.action != 'closed'
+        run: |
+          mkdir -p preview-site
+          cp -r packages/doodleppl-ui/preview/. preview-site/
+          cp packages/doodleppl-ui/dist/doodleppl.global.js preview-site/
+      - uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: preview-site
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview
+          action: auto
