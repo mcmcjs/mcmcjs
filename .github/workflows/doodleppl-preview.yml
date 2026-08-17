@@ -1,0 +1,49 @@
+name: DoodlePPL preview
+
+# Deploys a live preview of the DoodlePPL editor for pull requests that touch
+# it, under https://mcmcjs.github.io/mcmcjs/pr-preview/pr-<number>/. The
+# production editor is embedded in the JuliaBUGS docs from the published
+# package, so this is the only way to see a PR's editor running.
+#
+# Previews live on this repo's gh-pages branch (served by repo Pages) and are
+# removed when the pull request closes.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+    paths:
+      - "packages/doodleppl-ui/**"
+      - "packages/doodleppl/**"
+      - ".github/workflows/doodleppl-preview.yml"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency: doodleppl-preview-${{ github.event.pull_request.number }}
+
+jobs:
+  preview:
+    # Fork PRs get a read-only token, so they cannot deploy or comment.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+        if: github.event.action != 'closed'
+      - name: Build the editor bundle
+        if: github.event.action != 'closed'
+        run: |
+          pnpm --filter @mcmcjs/doodleppl build
+          pnpm --filter doodleppl build
+      - name: Assemble the preview page
+        if: github.event.action != 'closed'
+        run: |
+          mkdir -p preview-site
+          cp packages/doodleppl-ui/preview/index.html preview-site/
+          cp packages/doodleppl-ui/dist/doodleppl.global.js preview-site/
+      - uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: preview-site
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview
+          action: auto

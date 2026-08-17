@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DoodlePPL preview</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      #editor {
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="editor"></div>
+    <script src="./doodleppl.global.js"></script>
+    <script>
+      new DoodlePPL({ element: "#editor", example: "rats" });
+    </script>
+  </body>
+</html>
