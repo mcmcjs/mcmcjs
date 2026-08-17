@@ -35,11 +35,11 @@ jobs:
         run: |
           pnpm --filter @mcmcjs/doodleppl build
           pnpm --filter doodleppl build
-      - name: Assemble the preview page
+      - name: Assemble the preview pages
         if: github.event.action != 'closed'
         run: |
           mkdir -p preview-site
-          cp packages/doodleppl-ui/preview/index.html preview-site/
+          cp -r packages/doodleppl-ui/preview/. preview-site/
           cp packages/doodleppl-ui/dist/doodleppl.global.js preview-site/
       - uses: rossjrw/pr-preview-action@v1
         with:
