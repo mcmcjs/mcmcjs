@@ -102,6 +102,65 @@ export function mixedDagLogDensity(d: MixedDagData, p: MixedDagPoint): number {
   return normalLpdf(p.B, p.A, 1 / Math.sqrt(d.tauB)) + logSumExp(configs);
 }
 
+function logChoose(n: number, k: number): number {
+  let lp = 0;
+  for (let i = 1; i <= k; i++) lp += Math.log(n - k + i) - Math.log(i);
+  return lp;
+}
+
+export function binomialLpmf(k: number, n: number, p: number): number {
+  return logChoose(n, k) + k * Math.log(p) + (n - k) * Math.log(1 - p);
+}
+
+export function betaLpdf(x: number, a: number, b: number): number {
+  const logBeta = lgamma(a) + lgamma(b) - lgamma(a + b);
+  return (a - 1) * Math.log(x) + (b - 1) * Math.log(1 - x) - logBeta;
+}
+
+// Lanczos approximation, accurate to ~1e-13 for the small shape values used here.
+function lgamma(x: number): number {
+  const g = [
+    676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
+    12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+  ];
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);
+  const z = x - 1;
+  let a = 0.99999999999980993;
+  for (let i = 0; i < g.length; i++) a += (g[i] as number) / (z + i + 1);
+  const t = z + g.length - 0.5;
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(a);
+}
+
+interface BinMixData {
+  N: number;
+  y: number[];
+  mu0: number;
+  delta: number;
+}
+interface BinMixPoint {
+  phi: number;
+}
+
+/** Full log density of the binomial mixture with z summed out (phi logit-transformed). */
+export function binMixLogDensity(d: BinMixData, p: BinMixPoint): number {
+  let lp = betaLpdf(p.phi, 2, 2) + Math.log(p.phi * (1 - p.phi));
+  for (let i = 0; i < d.N; i++) {
+    const terms = [0, 1, 2, 3].map(
+      (k) => binomialLpmf(k, 3, p.phi) + normalLpdf(d.y[i] as number, d.mu0 + d.delta * k, 1),
+    );
+    lp += logSumExp(terms);
+  }
+  return lp;
+}
+
+/** Exact per-observation posterior over z given phi. */
+export function binMixZPosterior(d: BinMixData, p: BinMixPoint, i: number): number[] {
+  const terms = [0, 1, 2, 3].map(
+    (k) => binomialLpmf(k, 3, p.phi) + normalLpdf(d.y[i] as number, d.mu0 + d.delta * k, 1),
+  );
+  return softmax(terms);
+}
+
 interface ChainDagData {
   piX: number[];
   theta: number[][];

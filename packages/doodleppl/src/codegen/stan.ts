@@ -941,7 +941,8 @@ function emitPlateRecovery(
   const { posVar, valDecl } = latentLoopVars(plan.latent, plan.support);
   const acc = `${stanName}_lp`;
   const terms = plateTerms(plan, nameToNode);
-  const shift = plan.support.lo === 1 ? "" : ` + ${plan.support.lo - 1}`;
+  const delta = plan.support.lo - 1;
+  const shift = delta === 0 ? "" : delta > 0 ? ` + ${delta}` : ` - ${-delta}`;
   const lines = [
     `  // recover ${stanName} from its conditional posterior`,
     `  for (${loopVar} in 1:${upper}) {`,
@@ -1220,6 +1221,12 @@ function catPriorVectorOverrides(analysis: DiscreteAnalysis): Map<string, string
     const plain = p1.match(/^([A-Za-z_][A-Za-z0-9_.]*)\s*(?:\[\s*(?::|1\s*:\s*[^\]]+)?\s*\])?$/);
     if (plain) {
       overrides.set(convertBugsName(plain[1] as string), `vector[${l.support.size}]`);
+      continue;
+    }
+    // A numeric slice w[a:b] declares the vector up to its upper bound.
+    const slice = p1.match(/^([A-Za-z_][A-Za-z0-9_.]*)\s*\[\s*\d+\s*:\s*(\d+)\s*\]$/);
+    if (slice) {
+      overrides.set(convertBugsName(slice[1] as string), `vector[${slice[2]}]`);
       continue;
     }
     const rowIndexed = p1.match(

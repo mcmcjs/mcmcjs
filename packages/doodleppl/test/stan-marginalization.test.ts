@@ -247,3 +247,58 @@ describe("marginalized Stan generation: unsupported latents keep the warning", (
     expect(code).not.toContain("log_sum_exp");
   });
 });
+
+describe("marginalized Stan generation: dbin latents and dcat slices", () => {
+  it("marginalizes a dbin latent over its zero-based support", () => {
+    const code = generateStanModel([
+      node({ id: "plate_i", name: "ip", nodeType: "plate", loopVariable: "i", loopRange: "1:N" }),
+      node({ id: "phi", name: "phi", distribution: "dbeta", param1: "2", param2: "2" }),
+      node({
+        id: "z",
+        name: "z",
+        distribution: "dbin",
+        param1: "phi",
+        param2: "3",
+        indices: "i",
+        parent: "plate_i",
+      }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dnorm",
+        param1: "mu[z[i] + 1]",
+        param2: "1",
+        indices: "i",
+        parent: "plate_i",
+      }),
+      edge("phi", "z"),
+      edge("z", "y"),
+    ]);
+    expect(code).toContain("vector[4] z_lp;");
+    expect(code).toContain("int z_val = z_idx - 1;");
+    expect(code).toContain("binomial_lpmf(z_val | 3, phi)");
+    expect(code).toContain("normal_lpdf(y[i] | mu[z_val + 1], 1.0 / sqrt(1))");
+    expect(code).toContain("array[4] real mu;");
+    expect(code).toContain("z[i] = categorical_rng(softmax(z_lp)) - 1;");
+    expect(code).not.toContain("WARNING");
+  });
+
+  it("declares a sliced dcat prior vector up to its upper bound", () => {
+    const code = generateStanModel([
+      node({ id: "Z", name: "Z", distribution: "dcat", param1: "w[2:3]" }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dnorm",
+        param1: "mu[Z]",
+        param2: "1",
+      }),
+      edge("Z", "y"),
+    ]);
+    expect(code).toContain("vector[3] w;");
+    expect(code).toContain("categorical_lpmf(Z_val | w[2:3])");
+    expect(code).toContain("vector[2] Z_lp;");
+  });
+});

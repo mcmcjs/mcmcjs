@@ -88,7 +88,7 @@ export interface AnalyzeOptions {
 }
 
 /** Discrete distributions with enumerable finite support handled by the marginalizer. */
-const MARGINALIZABLE_DISTS = new Set(["dcat", "dbern"]);
+const MARGINALIZABLE_DISTS = new Set(["dcat", "dbern", "dbin"]);
 
 /** Frontier configurations above this count get a cost warning in the generated code. */
 export const FRONTIER_COST_WARN = 10_000;
@@ -193,6 +193,17 @@ function detsEnRoute(node: GraphNode, ctx: Ctx, latentIds: Set<string>): GraphNo
 
 function resolveSupport(node: GraphNode, ctx: Ctx): SupportInfo | null {
   if (node.distribution === "dbern") return { size: "2", lo: 0 };
+  if (node.distribution === "dbin") {
+    // dbin(p, n): support 0 .. n, so n must be a literal or a data scalar.
+    const n = node.param2 ? String(node.param2).trim() : "";
+    if (/^\d+$/.test(n)) return { size: String(Number(n) + 1), lo: 0 };
+    if (/^[A-Za-z_][A-Za-z0-9_.]*$/.test(n)) {
+      const ref = ctx.nameToNode.get(n);
+      if (ref && ref.nodeType !== "constant") return null;
+      return { size: `(${n} + 1)`, lo: 0 };
+    }
+    return null;
+  }
   // dcat: the support size is the length of the probability vector parameter
   const raw = node.param1 ? String(node.param1).trim() : "";
   if (!raw) return null;
@@ -202,8 +213,15 @@ function resolveSupport(node: GraphNode, ctx: Ctx): SupportInfo | null {
     const last = subs[subs.length - 1] ?? "";
     const range = last.match(/^(\S+)\s*:\s*(\S+)$/);
     if (range) {
-      // Only 1-based slices: the support values then equal the vector positions.
-      return range[1] === "1" ? { size: range[2] as string, lo: 1 } : null;
+      const a = range[1] as string;
+      const b = range[2] as string;
+      // dcat values are positions within the slice, so any slice keeps lo = 1;
+      // a non-1 lower bound needs numeric endpoints for a definite size.
+      if (a === "1") return { size: b, lo: 1 };
+      if (/^\d+$/.test(a) && /^\d+$/.test(b) && Number(a) <= Number(b)) {
+        return { size: String(Number(b) - Number(a) + 1), lo: 1 };
+      }
+      return null;
     }
     if (last === "" || last === ":") {
       return resolveSupportFromRef(idxMatch[1] as string, ctx);
@@ -532,6 +550,9 @@ function validateLatent(
   const latent = entry.node;
   if (latent.censorLower || latent.censorUpper || latent.equation?.trim()) {
     return `'${latent.name}' has censoring or a data transform`;
+  }
+  if (!canTranslate(latent.distribution ?? "")) {
+    return `the prior of '${latent.name}' has no translatable distribution`;
   }
   const collision = helperNameCollision(latent.name, ctx);
   if (collision) {

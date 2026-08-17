@@ -44,6 +44,18 @@ elseif spec["model"] == "mixeddag"
         deltaC=fvec(data["deltaC"]), deltaZ=fvec(data["deltaZ"]),
         tauD=Float64(data["tauD"]), D=Float64(data["D"]),
     )
+elseif spec["model"] == "binmix"
+    model_def = @bugs begin
+        phi ~ dbeta(2, 2)
+        for i in 1:N
+            z[i] ~ dbin(phi, 3)
+            y[i] ~ dnorm(mu0 + delta * z[i], 1)
+        end
+    end
+    model_data = (
+        N=Int(data["N"]), y=fvec(data["y"]),
+        mu0=Float64(data["mu0"]), delta=Float64(data["delta"]),
+    )
 elseif spec["model"] == "chaindag"
     model_def = @bugs begin
         X ~ dcat(piX[1:2])
@@ -66,15 +78,17 @@ model = set_evaluation_mode(model, UseAutoMarginalization())
 param_order = model.marginalization_cache.continuous_model_parameters
 ad_model = Base.invokelatest(BUGSModelWithGradient, model, AutoForwardDiff())
 
-# The flat vector holds transformed values; every fixture parameter is scalar,
-# lower-bounded ones (dexp) transform by log.
+# The flat vector holds transformed values; the spec names each parameter's
+# transform ("log" for lower-bounded, "logit" for unit-interval, identity otherwise).
+transforms = get(spec, "transforms", Dict{String,Any}())
 function theta_for(point)
     map(param_order) do vn
         s = string(vn)
         m = match(r"^([A-Za-z_][A-Za-z0-9_]*)(?:\[(\d+)\])?$", s)
         base = m[1]
-        raw = m[2] === nothing ? point[base] : point[base][parse(Int, m[2])]
-        base == "sigma" ? log(Float64(raw)) : Float64(raw)
+        raw = Float64(m[2] === nothing ? point[base] : point[base][parse(Int, m[2])])
+        t = get(transforms, base, "identity")
+        t == "log" ? log(raw) : t == "logit" ? log(raw / (1 - raw)) : raw
     end
 end
 
