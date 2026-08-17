@@ -477,7 +477,7 @@ describe("analyzeDiscreteLatents: review regressions", () => {
     expect(analysis.latents[0]?.reason).toContain("discrete latent Stan cannot sample");
   });
 
-  it("demotes a dcat latent whose probability slice does not start at 1", () => {
+  it("resolves a numeric dcat slice not starting at 1, with position-based values", () => {
     const elements: GraphElement[] = [
       node({ id: "Z", name: "Z", distribution: "dcat", param1: "w[2:3]" }),
       node({
@@ -491,8 +491,78 @@ describe("analyzeDiscreteLatents: review regressions", () => {
       edge("Z", "y"),
     ];
     const analysis = analyze(elements);
+    expect(analysis.latents[0]?.tier).toBe("scalar-dag");
+    expect(analysis.latents[0]?.support).toEqual({ size: "2", lo: 1 });
+  });
+
+  it("demotes a dcat latent whose symbolic slice does not start at 1", () => {
+    const elements: GraphElement[] = [
+      node({ id: "Z", name: "Z", distribution: "dcat", param1: "w[a:b]" }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dnorm",
+        param1: "mu[Z]",
+        param2: "1",
+      }),
+      edge("Z", "y"),
+    ];
+    const analysis = analyze(elements);
     expect(analysis.latents[0]?.tier).toBe("unsupported");
     expect(analysis.latents[0]?.reason).toContain("support size");
+  });
+
+  it("resolves dbin support from a literal and a data-scalar trial count", () => {
+    const make = (n: string): GraphElement[] => [
+      node({ id: "plate_i", name: "ip", nodeType: "plate", loopVariable: "i", loopRange: "1:N" }),
+      node({
+        id: "z",
+        name: "z",
+        distribution: "dbin",
+        param1: "phi",
+        param2: n,
+        indices: "i",
+        parent: "plate_i",
+      }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dnorm",
+        param1: "mu[z[i] + 1]",
+        param2: "1",
+        indices: "i",
+        parent: "plate_i",
+      }),
+      edge("z", "y"),
+    ];
+    const literal = analyze(make("3"));
+    expect(literal.latents[0]?.tier).toBe("iid-plate");
+    expect(literal.latents[0]?.support).toEqual({ size: "4", lo: 0 });
+    const symbolic = analyze(make("n"));
+    expect(symbolic.latents[0]?.support).toEqual({ size: "(n + 1)", lo: 0 });
+  });
+
+  it("demotes a dbin latent whose trial count is a model parameter", () => {
+    const elements: GraphElement[] = [
+      node({ id: "n", name: "n", distribution: "dpois", param1: "5" }),
+      node({ id: "z", name: "z", distribution: "dbin", param1: "0.5", param2: "n" }),
+      node({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        distribution: "dnorm",
+        param1: "mu[z + 1]",
+        param2: "1",
+      }),
+      edge("n", "z"),
+      edge("z", "y"),
+    ];
+    const analysis = analyze(elements);
+    const z = analysis.latents.find((l) => l.node.id === "z");
+    expect(z?.tier).toBe("unsupported");
+    expect(z?.reason).toContain("support size");
   });
 
   it("demotes a latent whose helper names collide with user variables", () => {

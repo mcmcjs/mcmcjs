@@ -1,0 +1,60 @@
+name: Marginalization parity
+
+# Runs the opt-in three-way parity suite for the marginalized Stan generator:
+# generated programs compiled with CmdStan, compared against a brute-force
+# reference and JuliaBUGS auto-marginalization. Too heavy for every PR, so it
+# runs weekly, on demand, and when the suite itself changes.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"
+  pull_request:
+    paths:
+      - ".github/workflows/parity.yml"
+      - "packages/doodleppl/test/stan-parity.test.ts"
+      - "packages/doodleppl/test/helpers/**"
+
+env:
+  CMDSTAN_VERSION: "2.39.0"
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: "1"
+      - uses: julia-actions/cache@v2
+
+      - name: Install the JuliaBUGS reference environment
+        run: |
+          julia --project=$HOME/juliabugs-env -e '
+            using Pkg
+            Pkg.add(["JuliaBUGS", "ForwardDiff", "JSON", "ADTypes", "LogDensityProblems"])
+            Pkg.precompile()'
+
+      - name: Cache CmdStan
+        id: cmdstan-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cmdstan
+          key: cmdstan-${{ env.CMDSTAN_VERSION }}-${{ runner.os }}
+
+      - name: Install CmdStan
+        if: steps.cmdstan-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.cmdstan
+          curl -fsSL "https://github.com/stan-dev/cmdstan/releases/download/v${CMDSTAN_VERSION}/cmdstan-${CMDSTAN_VERSION}.tar.gz" \
+            | tar -xz -C ~/.cmdstan
+          make -C ~/.cmdstan/cmdstan-${CMDSTAN_VERSION} -j"$(nproc)" build
+
+      - name: Run the parity suite
+        run: |
+          CMDSTAN_HOME="$HOME/.cmdstan/cmdstan-${CMDSTAN_VERSION}" \
+          JULIABUGS_PROJECT="$HOME/juliabugs-env" \
+          DOODLEPPL_PARITY=1 \
+          pnpm exec vitest run packages/doodleppl/test/stan-parity.test.ts

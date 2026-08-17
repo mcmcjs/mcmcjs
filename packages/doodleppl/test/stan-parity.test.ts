@@ -12,6 +12,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { generateStanModel } from "../src/codegen/stan";
 import { compileModel, type LogProbResult, logProb, sample } from "./helpers/cmdstan";
 import {
+  binMixData,
+  binMixElements,
+  binMixPoints,
   chainDagData,
   chainDagElements,
   chainDagPoints,
@@ -24,6 +27,8 @@ import {
   mixturePoints,
 } from "./helpers/marginalization-fixtures";
 import {
+  binMixLogDensity,
+  binMixZPosterior,
   chainDagJointPosterior,
   chainDagLogDensity,
   mixedDagJointPosterior,
@@ -45,11 +50,12 @@ function juliaReference(
   model: string,
   data: Record<string, unknown>,
   points: Record<string, unknown>[],
+  transforms: Record<string, string> = {},
 ): JuliaRef[] {
   const dir = mkdtempSync(join(tmpdir(), "doodleppl-julia-"));
   const specFile = join(dir, "spec.json");
   const outFile = join(dir, "out.json");
-  writeFileSync(specFile, JSON.stringify({ model, data, points }));
+  writeFileSync(specFile, JSON.stringify({ model, data, points, transforms }));
   execFileSync(
     "julia",
     [`--project=${JULIA_PROJECT}`, join(HELPERS, "juliabugs_ref.jl"), specFile, outFile],
@@ -67,18 +73,22 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
   let mixtureDetBin: string;
   let dagBin: string;
   let chainBin: string;
+  let binMixBin: string;
   let mixtureLp: LogProbResult[];
   let dagLp: LogProbResult[];
   let chainLp: LogProbResult[];
+  let binMixLp: LogProbResult[];
 
   beforeAll(() => {
     mixtureBin = compileModel("mixture", generateStanModel(mixtureElements()));
     mixtureDetBin = compileModel("mixture_det", generateStanModel(mixtureDetElements()));
     dagBin = compileModel("mixeddag", generateStanModel(mixedDagElements()));
     chainBin = compileModel("chaindag", generateStanModel(chainDagElements()));
+    binMixBin = compileModel("binmix", generateStanModel(binMixElements()));
     mixtureLp = mixturePoints.map((p) => logProb(mixtureBin, mixtureData, p));
     dagLp = mixedDagPoints.map((p) => logProb(dagBin, mixedDagData, p));
     chainLp = chainDagPoints.map((p) => logProb(chainBin, chainDagData, p));
+    binMixLp = binMixPoints.map((p) => logProb(binMixBin, binMixData, p));
   }, 600_000);
 
   it("mixture log density differences match to double precision", () => {
@@ -113,9 +123,17 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
     });
   });
 
+  it("binomial mixture (dbin latent) log density differences match to double precision", () => {
+    const stan = pairwiseDiffs(binMixLp.map((r) => r.lp));
+    const ref = pairwiseDiffs(binMixPoints.map((p) => binMixLogDensity(binMixData, p)));
+    stan.forEach((d, i) => {
+      expect(d).toBeCloseTo(ref[i] as number, 9);
+    });
+  });
+
   describe.runIf(Boolean(JULIA_PROJECT))("and JuliaBUGS auto-marginalization", () => {
     it("mixture values (up to a constant) and gradients agree", () => {
-      const julia = juliaReference("mixture", mixtureData, mixturePoints);
+      const julia = juliaReference("mixture", mixtureData, mixturePoints, { sigma: "log" });
       expect(julia).toHaveLength(mixturePoints.length);
       const stanDiffs = pairwiseDiffs(mixtureLp.map((r) => r.lp));
       const juliaDiffs = pairwiseDiffs(julia.map((r) => r.logdensity));
@@ -144,8 +162,23 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
       });
     }, 120_000);
 
+    it("binomial mixture values (up to a constant) and gradients agree", () => {
+      const julia = juliaReference("binmix", binMixData, binMixPoints, { phi: "logit" });
+      expect(julia).toHaveLength(binMixPoints.length);
+      const stanDiffs = pairwiseDiffs(binMixLp.map((r) => r.lp));
+      const juliaDiffs = pairwiseDiffs(julia.map((r) => r.logdensity));
+      stanDiffs.forEach((d, i) => {
+        expect(d).toBeCloseTo(juliaDiffs[i] as number, 9);
+      });
+      julia.forEach((ref, i) => {
+        for (const [name, g] of Object.entries(ref.gradient)) {
+          expect(binMixLp[i]?.gradient[name]).toBeCloseTo(g, 8);
+        }
+      });
+    }, 120_000);
+
     it("chain DAG values (up to a constant) and gradients agree", () => {
-      const julia = juliaReference("chaindag", chainDagData, chainDagPoints);
+      const julia = juliaReference("chaindag", chainDagData, chainDagPoints, { sigma: "log" });
       expect(julia).toHaveLength(chainDagPoints.length);
       const stanDiffs = pairwiseDiffs(chainLp.map((r) => r.lp));
       const juliaDiffs = pairwiseDiffs(julia.map((r) => r.logdensity));
@@ -208,6 +241,24 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
       for (const [key, sum] of expected) {
         const freq = (observed.get(key) ?? 0) / A.length;
         expect(Math.abs(freq - sum / A.length)).toBeLessThan(0.05);
+      }
+    }, 120_000);
+
+    it("binomial mixture: per-observation z frequencies match the averaged exact posterior", () => {
+      const fit = sample(binMixBin, binMixData, { warmup: 500, draws: 1500, seed: 5 });
+      const phi = fit.columns.get("phi") as number[];
+      for (let i = 0; i < binMixData.N; i++) {
+        const z = fit.columns.get(`z[${i + 1}]`) as number[];
+        expect(z).toBeDefined();
+        for (const k of [0, 1, 2, 3]) {
+          let expected = 0;
+          let observed = 0;
+          for (let t = 0; t < z.length; t++) {
+            expected += binMixZPosterior(binMixData, { phi: phi[t] as number }, i)[k] as number;
+            observed += (z[t] as number) === k ? 1 : 0;
+          }
+          expect(Math.abs(observed / z.length - expected / z.length)).toBeLessThan(0.05);
+        }
       }
     }, 120_000);
 

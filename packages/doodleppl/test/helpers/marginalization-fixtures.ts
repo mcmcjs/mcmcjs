@@ -190,6 +190,50 @@ export const mixedDagPoints = [
   { A: 2.0, B: -0.5 },
 ];
 
+/** Binomial count latent: phi ~ dbeta(2,2); z[i] ~ dbin(phi, 3); y[i] ~ dnorm(mu0 + delta * z[i], 1). */
+export function binMixElements(): GraphElement[] {
+  return [
+    node({
+      id: "plate_i",
+      name: "i plate",
+      nodeType: "plate",
+      loopVariable: "i",
+      loopRange: "1:N",
+    }),
+    node({ id: "phi", name: "phi", distribution: "dbeta", param1: "2", param2: "2" }),
+    node({
+      id: "z",
+      name: "z",
+      distribution: "dbin",
+      param1: "phi",
+      param2: "3",
+      indices: "i",
+      parent: "plate_i",
+    }),
+    node({
+      id: "y",
+      name: "y",
+      nodeType: "observed",
+      distribution: "dnorm",
+      param1: "mu0 + delta * z[i]",
+      param2: "1",
+      indices: "i",
+      parent: "plate_i",
+    }),
+    edge("phi", "z"),
+    edge("z", "y"),
+  ];
+}
+
+export const binMixData = {
+  N: 5,
+  y: [0.2, 2.1, 3.3, 1.2, 0.4],
+  mu0: 0.1,
+  delta: 1.1,
+};
+
+export const binMixPoints = [{ phi: 0.4 }, { phi: 0.7 }, { phi: 0.15 }];
+
 export const chainDagData = {
   piX: [0.4, 0.6],
   theta: [
