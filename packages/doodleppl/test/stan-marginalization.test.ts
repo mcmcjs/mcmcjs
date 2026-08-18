@@ -6,7 +6,13 @@ import {
   generateStanModel,
 } from "../src/codegen/stan";
 import type { GraphNode } from "../src/core/types";
-import { edge, mixedDagElements, mixtureElements, node } from "./helpers/marginalization-fixtures";
+import {
+  edge,
+  mixedDagElements,
+  mixtureElements,
+  nestedMixtureElements,
+  node,
+} from "./helpers/marginalization-fixtures";
 
 describe("marginalized Stan generation: iid plate latent", () => {
   const code = generateStanModel(mixtureElements());
@@ -350,5 +356,23 @@ describe("marginalized Stan generation: partially observed discrete vectors", ()
     expect(json.z_obs).toEqual([2, 1, 1, 1]);
     expect(json.z_is_obs).toEqual([1, 0, 1, 0]);
     expect(json.z).toBeUndefined();
+  });
+});
+
+describe("marginalized Stan generation: nested plates", () => {
+  const code = generateStanModel(nestedMixtureElements());
+
+  it("opens one enumeration loop per plate and substitutes the multi-index reference", () => {
+    expect(code).toContain("for (i in 1:N) {");
+    expect(code).toContain("    for (j in 1:M) {");
+    expect(code).toContain("// marginalize out z[i,j]");
+    expect(code).toContain("normal_lpdf(y[i,j] | mu[z_val], 1.0 / sqrt(1))");
+    expect(code).toContain("target += log_sum_exp(z_lp);");
+    expect(code).not.toContain("WARNING");
+  });
+
+  it("recovers the latent as a matching multi-dimensional array", () => {
+    expect(code).toContain("array[N, M] int z;");
+    expect(code).toContain("z[i,j] = categorical_rng(softmax(z_lp));");
   });
 });

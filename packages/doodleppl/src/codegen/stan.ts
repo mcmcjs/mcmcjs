@@ -871,14 +871,23 @@ function inlineDetRefs(term: string, dets: GraphNode[], depth = 0): string {
 function substLatentRef(
   term: string,
   latentName: string,
-  loopVar: string | null,
+  indexList: string | null,
   valExpr: string,
 ): string {
   const name = escapeRe(latentName);
-  const re = loopVar
-    ? new RegExp(`(?<![A-Za-z0-9_])${name}\\s*\\[\\s*${escapeRe(loopVar)}\\s*\\]`, "g")
+  const subscript = indexList
+    ?.split(",")
+    .map((i) => `\\s*${escapeRe(i.trim())}\\s*`)
+    .join(",");
+  const re = subscript
+    ? new RegExp(`(?<![A-Za-z0-9_])${name}\\s*\\[${subscript}\\]`, "g")
     : new RegExp(`(?<![A-Za-z0-9_])${name}(?![A-Za-z0-9_])`, "g");
   return term.replace(re, valExpr);
+}
+
+/** The latent's index list, e.g. "i,j" for a latent inside plates i then j. */
+function plateIndices(plan: PlatePlan): string {
+  return plan.plates.map((p) => p.loopVariable || "i").join(",");
 }
 
 // dcat loops support values directly; dbern loops 1-based positions with a shifted value.
@@ -906,7 +915,7 @@ function plateTerms(
   nameToNode: Map<string, GraphNode>,
   valOverride?: string,
 ): string[] {
-  const loopVar = plan.plate.loopVariable || "i";
+  const indexList = plateIndices(plan);
   const valExpr = valOverride ?? latentLoopVars(plan.latent, plan.support).valExpr;
   const terms: string[] = [];
   const prior = densityTerm(plan.latent, nameToNode, valExpr);
@@ -915,7 +924,7 @@ function plateTerms(
     const raw = densityTerm(f, nameToNode);
     if (!raw) continue;
     const inlined = inlineDetRefs(raw, plan.inlineDets);
-    terms.push(substLatentRef(inlined, plan.latent.name, loopVar, valExpr));
+    terms.push(substLatentRef(inlined, plan.latent.name, indexList, valExpr));
   }
   return terms;
 }
@@ -959,17 +968,17 @@ function emitPlateMarginalization(
   nameToNode: Map<string, GraphNode>,
 ): string[] {
   const stanName = convertBugsName(plan.latent.name);
-  const loopVar = plan.plate.loopVariable || "i";
+  const idx = plateIndices(plan);
   if (!plan.partial) {
     return [
-      `${indent}// marginalize out ${stanName}[${loopVar}]`,
+      `${indent}// marginalize out ${stanName}[${idx}]`,
       ...marginalizationBlock(plan, indent, nameToNode),
     ];
   }
-  const obsTerms = plateTerms(plan, nameToNode, `${stanName}_obs[${loopVar}]`);
+  const obsTerms = plateTerms(plan, nameToNode, `${stanName}_obs[${idx}]`);
   return [
-    `${indent}// marginalize out ${stanName}[${loopVar}] where it is missing`,
-    `${indent}if (${stanName}_is_obs[${loopVar}] == 1) {`,
+    `${indent}// marginalize out ${stanName}[${idx}] where it is missing`,
+    `${indent}if (${stanName}_is_obs[${idx}] == 1) {`,
     ...sumStatement("target +=", obsTerms, `${indent}  `),
     `${indent}} else {`,
     ...marginalizationBlock(plan, `${indent}  `, nameToNode),
@@ -982,38 +991,45 @@ function emitPlateRecovery(
   nameToNode: Map<string, GraphNode>,
 ): { decl: string; lines: string[] } {
   const stanName = convertBugsName(plan.latent.name);
-  const loopVar = plan.plate.loopVariable || "i";
-  const upper = plateUpper(plan.plate);
+  const idx = plateIndices(plan);
+  const uppers = plan.plates.map(plateUpper);
   const { posVar, valDecl } = latentLoopVars(plan.latent, plan.support);
   const acc = `${stanName}_lp`;
   const terms = plateTerms(plan, nameToNode);
   const delta = plan.support.lo - 1;
   const shift = delta === 0 ? "" : delta > 0 ? ` + ${delta}` : ` - ${-delta}`;
-  const inner = plan.partial ? "      " : "    ";
+
+  // One loop per enclosing plate, then the branch (if partial) and the draw.
+  const base = "  ".repeat(plan.plates.length + 1);
+  const inner = plan.partial ? `${base}  ` : base;
   const draw: string[] = [`${inner}vector[${plan.support.size}] ${acc};`];
   draw.push(`${inner}for (${posVar} in 1:${plan.support.size}) {`);
   if (valDecl) draw.push(`${inner}  ${valDecl}`);
   draw.push(...sumLines(`${acc}[${posVar}]`, terms, `${inner}  `));
   draw.push(`${inner}}`);
-  draw.push(`${inner}${stanName}[${loopVar}] = categorical_rng(softmax(${acc}))${shift};`);
+  draw.push(`${inner}${stanName}[${idx}] = categorical_rng(softmax(${acc}))${shift};`);
 
-  const lines = [
-    `  // recover ${stanName} from its conditional posterior`,
-    `  for (${loopVar} in 1:${upper}) {`,
-  ];
+  const lines = [`  // recover ${stanName} from its conditional posterior`];
+  plan.plates.forEach((plate, depth) => {
+    lines.push(
+      `${"  ".repeat(depth + 1)}for (${plate.loopVariable || "i"} in 1:${uppers[depth]}) {`,
+    );
+  });
   if (plan.partial) {
     lines.push(
-      `    if (${stanName}_is_obs[${loopVar}] == 1) {`,
-      `      ${stanName}[${loopVar}] = ${stanName}_obs[${loopVar}];`,
-      "    } else {",
+      `${base}if (${stanName}_is_obs[${idx}] == 1) {`,
+      `${base}  ${stanName}[${idx}] = ${stanName}_obs[${idx}];`,
+      `${base}} else {`,
       ...draw,
-      "    }",
+      `${base}}`,
     );
   } else {
     lines.push(...draw);
   }
-  lines.push("  }");
-  return { decl: `  array[${upper}] int ${stanName};`, lines };
+  for (let depth = plan.plates.length; depth > 0; depth--) {
+    lines.push(`${"  ".repeat(depth)}}`);
+  }
+  return { decl: `  array[${uppers.join(", ")}] int ${stanName};`, lines };
 }
 
 interface ScalarNaming {
@@ -1437,9 +1453,9 @@ export function generateStanModel(
     const stanName = convertBugsName(node.name);
     const partialPlan = partialPlans.get(node.id);
     if (partialPlan) {
-      const upper = plateUpper(partialPlan.plate);
-      dataDeclarations.push(`  array[${upper}] int ${stanName}_obs;`);
-      dataDeclarations.push(`  array[${upper}] int ${stanName}_is_obs;`);
+      const dims = partialPlan.plates.map(plateUpper).join(", ");
+      dataDeclarations.push(`  array[${dims}] int ${stanName}_obs;`);
+      dataDeclarations.push(`  array[${dims}] int ${stanName}_is_obs;`);
       continue;
     }
     const stanType = inferStanType(node, nodeMap, plates);

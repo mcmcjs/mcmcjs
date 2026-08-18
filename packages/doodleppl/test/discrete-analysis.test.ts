@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeDiscreteLatents, marginalizedLatentNames } from "../src/core/discrete-analysis";
 import { buildTopologicalOrder } from "../src/core/topo-sort";
 import type { GraphEdge, GraphElement, GraphNode } from "../src/core/types";
+import { nestedMixtureElements } from "./helpers/marginalization-fixtures";
 
 const node = (n: Partial<GraphNode> & { id: string; name: string }): GraphElement =>
   ({ type: "node", nodeType: "stochastic", ...n }) as GraphNode;
@@ -712,5 +713,36 @@ describe("marginalizedLatentNames", () => {
     const edges = elements.filter((el): el is GraphEdge => el.type === "edge");
     const names = marginalizedLatentNames(elements, buildTopologicalOrder(nodes, edges));
     expect(names.sort()).toEqual(["C", "X", "Z", "z"]);
+  });
+});
+
+describe("analyzeDiscreteLatents: nested plates", () => {
+  it("plans a latent inside two plates with both loop variables", () => {
+    const analysis = analyze(nestedMixtureElements());
+    const z = analysis.latents.find((l) => l.node.id === "z");
+    expect(z?.tier).toBe("iid-plate");
+    const plan = analysis.platePlans[0];
+    expect(plan?.plates.map((p) => p.loopVariable)).toEqual(["i", "j"]);
+    expect(plan?.factors.map((f) => f.id)).toEqual(["y"]);
+  });
+
+  it("demotes when the indices do not match the plate chain", () => {
+    const elements = nestedMixtureElements().map((el) =>
+      el.type === "node" && el.id === "z" ? ({ ...el, indices: "i" } as GraphNode) : el,
+    );
+    const analysis = analyze(elements);
+    expect(analysis.latents[0]?.tier).toBe("unsupported");
+    expect(analysis.latents[0]?.reason).toContain("plate structure");
+  });
+
+  it("demotes when a factor sits in the outer plate instead of the latent's", () => {
+    const elements = nestedMixtureElements().map((el) =>
+      el.type === "node" && el.id === "y"
+        ? ({ ...el, parent: "plate_i", indices: "i", param1: "mu[z[i,j]]" } as GraphNode)
+        : el,
+    );
+    const analysis = analyze(elements);
+    expect(analysis.latents[0]?.tier).toBe("unsupported");
+    expect(analysis.latents[0]?.reason).toContain("outside its plate");
   });
 });

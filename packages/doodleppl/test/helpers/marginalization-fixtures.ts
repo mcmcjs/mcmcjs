@@ -101,6 +101,78 @@ export function mixedDagElements(): GraphElement[] {
   ];
 }
 
+/** Mixture over a nested plate: z[i,j] ~ dcat(w); y[i,j] ~ dnorm(mu[z[i,j]], 1). */
+export function nestedMixtureElements(): GraphElement[] {
+  return [
+    node({ id: "w", name: "w", nodeType: "constant" }),
+    node({
+      id: "plate_i",
+      name: "i plate",
+      nodeType: "plate",
+      loopVariable: "i",
+      loopRange: "1:N",
+    }),
+    node({
+      id: "plate_j",
+      name: "j plate",
+      nodeType: "plate",
+      loopVariable: "j",
+      loopRange: "1:M",
+      parent: "plate_i",
+    }),
+    node({
+      id: "plate_k",
+      name: "k plate",
+      nodeType: "plate",
+      loopVariable: "k",
+      loopRange: "1:2",
+    }),
+    node({
+      id: "mu",
+      name: "mu",
+      distribution: "dnorm",
+      param1: "0",
+      param2: "0.01",
+      indices: "k",
+      parent: "plate_k",
+    }),
+    node({
+      id: "z",
+      name: "z",
+      distribution: "dcat",
+      param1: "w[1:2]",
+      indices: "i,j",
+      parent: "plate_j",
+    }),
+    node({
+      id: "y",
+      name: "y",
+      nodeType: "observed",
+      distribution: "dnorm",
+      param1: "mu[z[i,j]]",
+      param2: "1",
+      indices: "i,j",
+      parent: "plate_j",
+    }),
+    edge("w", "z"),
+    edge("z", "y"),
+    edge("mu", "y"),
+  ];
+}
+
+export const nestedMixtureData = {
+  N: 3,
+  M: 2,
+  w: [0.35, 0.65],
+  y: [
+    [-1.9, 2.1],
+    [1.7, -2.2],
+    [0.3, 1.4],
+  ],
+};
+
+export const nestedMixturePoints = [{ mu: [-2.0, 2.0] }, { mu: [-1.1, 2.7] }, { mu: [0.4, -0.6] }];
+
 /** The mixture drawn idiomatically: the latent reaches y only through deterministic nodes. */
 export function mixtureDetElements(): GraphElement[] {
   const base = mixtureElements().filter(

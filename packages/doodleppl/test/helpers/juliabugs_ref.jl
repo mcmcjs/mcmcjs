@@ -69,6 +69,20 @@ elseif spec["model"] == "binmix"
         N=Int(data["N"]), y=fvec(data["y"]),
         mu0=Float64(data["mu0"]), delta=Float64(data["delta"]),
     )
+elseif spec["model"] == "nestedmix"
+    model_def = @bugs begin
+        for i in 1:N
+            for j in 1:M
+                z[i, j] ~ dcat(w[1:2])
+                y[i, j] ~ dnorm(mu[z[i, j]], 1)
+            end
+        end
+        for k in 1:2
+            mu[k] ~ dnorm(0, 0.01)
+        end
+    end
+    y = permutedims(reduce(hcat, [fvec(r) for r in data["y"]]))
+    model_data = (N=Int(data["N"]), M=Int(data["M"]), w=fvec(data["w"]), y=y)
 elseif spec["model"] == "chaindag"
     model_def = @bugs begin
         X ~ dcat(piX[1:2])
