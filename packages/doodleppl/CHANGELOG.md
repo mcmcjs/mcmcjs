@@ -1,5 +1,11 @@
 # @mcmcjs/doodleppl
 
+## 0.3.1
+
+### Patch Changes
+
+- cd064f1: Count distribution inputs correctly when a parent is referenced nested inside a parameter expression (for example mu[z[i]]), which previously reported a spurious parameter-count mismatch.
+
 ## 0.3.0
 
 ### Minor Changes
