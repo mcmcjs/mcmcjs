@@ -27,12 +27,108 @@ function ancestorLoopVars(node: GraphNode, nodeMap: Map<string, GraphNode>): Set
   return vars;
 }
 
+/** What an index expression covers: one element, a plate's range, or unknown. */
+type IndexCoverage =
+  | { kind: "literal"; value: number }
+  | { kind: "range"; lo: string; hi: string }
+  | { kind: "unknown" };
+
+function plateRanges(nodes: GraphNode[]): Map<string, { lo: string; hi: string }> {
+  const ranges = new Map<string, { lo: string; hi: string }>();
+  for (const n of nodes) {
+    if (n.nodeType !== "plate") continue;
+    const parts = (n.loopRange || "1:N").split(":").map((s) => s.trim());
+    if (parts.length === 2) {
+      ranges.set(n.loopVariable || "i", { lo: parts[0] as string, hi: parts[1] as string });
+    }
+  }
+  return ranges;
+}
+
+function indexCoverage(
+  index: string,
+  ranges: Map<string, { lo: string; hi: string }>,
+): IndexCoverage {
+  const idx = index.trim();
+  if (/^\d+$/.test(idx)) return { kind: "literal", value: Number(idx) };
+  const range = ranges.get(idx);
+  if (range) return { kind: "range", ...range };
+  const slice = idx.match(/^(\S+)\s*:\s*(\S+)$/);
+  if (slice) return { kind: "range", lo: slice[1] as string, hi: slice[2] as string };
+  return { kind: "unknown" };
+}
+
+/**
+ * Whether two coverages provably share an element. Anything not provable counts
+ * as no overlap, so a symbolic bound never invents a conflict. A range always
+ * contains its own lower bound, which is what catches z[1] beside z[i] over 1:N.
+ */
+function coveragesOverlap(a: IndexCoverage, b: IndexCoverage): boolean {
+  if (a.kind === "unknown" || b.kind === "unknown") return false;
+  if (a.kind === "literal" && b.kind === "literal") return a.value === b.value;
+  if (a.kind === "range" && b.kind === "range") return a.lo === b.lo && a.hi === b.hi;
+  const literal = (a.kind === "literal" ? a : b) as { kind: "literal"; value: number };
+  const range = (a.kind === "range" ? a : b) as { kind: "range"; lo: string; hi: string };
+  if (!/^\d+$/.test(range.lo)) return false;
+  const lo = Number(range.lo);
+  if (literal.value === lo) return true;
+  return /^\d+$/.test(range.hi) && literal.value >= lo && literal.value <= Number(range.hi);
+}
+
+/**
+ * BUGS lets one variable be defined by several statements over disjoint index
+ * ranges (the seeded recursions in Ice and Dogs); what it forbids is two
+ * statements defining the same array location. Mirrors JuliaBUGS, which tracks
+ * assignments per location rather than per name.
+ */
+function indexOverlapIssues(nodes: GraphNode[]): ValidationIssue[] {
+  const ranges = plateRanges(nodes);
+  const assigning = nodes.filter(
+    (n) =>
+      n.nodeType === "stochastic" || n.nodeType === "observed" || n.nodeType === "deterministic",
+  );
+  const byName = new Map<string, GraphNode[]>();
+  for (const n of assigning) {
+    const base = (n.name.split("[")[0] as string).trim();
+    byName.set(base, [...(byName.get(base) ?? []), n]);
+  }
+
+  const issues: ValidationIssue[] = [];
+  for (const [name, group] of byName) {
+    if (group.length < 2) continue;
+    const coverage = group.map((n) =>
+      (n.indices ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s !== "")
+        .map((idx) => indexCoverage(idx, ranges)),
+    );
+    for (let a = 0; a < group.length; a++) {
+      for (let b = a + 1; b < group.length; b++) {
+        const ca = coverage[a] as IndexCoverage[];
+        const cb = coverage[b] as IndexCoverage[];
+        if (ca.length !== cb.length) continue;
+        const scalars = ca.length === 0;
+        if (scalars || ca.every((cov, i) => coveragesOverlap(cov, cb[i] as IndexCoverage))) {
+          issues.push({
+            nodeId: (group[b] as GraphNode).id,
+            field: "name",
+            message: `'${name}' is already defined by another node covering the same indices; BUGS allows several statements per variable only over disjoint ranges.`,
+          });
+        }
+      }
+    }
+  }
+  return issues;
+}
+
 /**
  * Validate a DoodleBUGS graph against the model data, returning one issue per
  * problem. Ported from the editor's graph validator: distribution parameter
  * counts (an input counts when it arrives by edge or as a non-node literal),
  * deterministic equations referencing only parents, data, or loop indices,
- * observed nodes backed by data, and BUGS variable-name validity.
+ * observed nodes backed by data, BUGS variable-name validity, and index-range
+ * overlap between nodes that share a name.
  */
 export function validateGraph(
   elements: GraphElement[],
@@ -43,7 +139,7 @@ export function validateGraph(
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   const dataKeys = new Set(Object.keys(data));
 
-  const issues: ValidationIssue[] = [];
+  const issues: ValidationIssue[] = indexOverlapIssues(nodes);
 
   for (const node of nodes) {
     if (node.nodeType === "stochastic" || node.nodeType === "observed") {
