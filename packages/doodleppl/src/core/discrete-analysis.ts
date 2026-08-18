@@ -39,10 +39,11 @@ export interface DiscreteLatent {
   reason?: string;
 }
 
-/** Marginalization plan for one iid discrete latent inside a plate. */
+/** Marginalization plan for one iid discrete latent inside one or more plates. */
 export interface PlatePlan {
   latent: GraphNode;
-  plate: GraphNode;
+  /** Enclosing plates, outermost first; the latent's indices are their loop variables. */
+  plates: GraphNode[];
   support: SupportInfo;
   /** Partially observed: iterations with data score pointwise, the rest marginalize. */
   partial: boolean;
@@ -257,6 +258,32 @@ function plateOf(node: GraphNode, ctx: Ctx): GraphNode | undefined {
   return parent?.nodeType === "plate" ? parent : undefined;
 }
 
+/** Enclosing plates of a node, outermost first. */
+function platesOf(node: GraphNode, ctx: Ctx): GraphNode[] {
+  const plates: GraphNode[] = [];
+  const seen = new Set<string>([node.id]);
+  let current: GraphNode | undefined = node;
+  while (current) {
+    const plate = plateOf(current, ctx);
+    if (!plate || seen.has(plate.id)) break;
+    seen.add(plate.id);
+    plates.unshift(plate);
+    current = plate;
+  }
+  return plates;
+}
+
+const loopVarOf = (plate: GraphNode): string => plate.loopVariable || "i";
+
+/** The index list a latent inside `plates` must carry, e.g. "i,j". */
+const plateIndexList = (plates: GraphNode[]): string => plates.map(loopVarOf).join(",");
+
+const normalizeIndices = (indices: string | undefined): string =>
+  (indices ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .join(",");
+
 /** Whether any expression of `node` references `name[...loopVar +/- ...]`. */
 function hasOffsetRef(node: GraphNode, name: string, loopVar: string): boolean {
   const re = new RegExp(
@@ -267,12 +294,12 @@ function hasOffsetRef(node: GraphNode, name: string, loopVar: string): boolean {
 
 /**
  * Every reference to the latent in `exprs` must be substitutable: exactly
- * `name[loopVar]` in the plate tier, exactly bare `name` in the scalar tier.
+ * `name[indices]` in the plate tier, exactly bare `name` in the scalar tier.
  */
 function referencesAreSubstitutable(
   exprs: string[],
   latentName: string,
-  loopVar: string | null,
+  indexList: string | null,
 ): boolean {
   const re = new RegExp(
     `(?<![A-Za-z0-9_.])${escapeRe(latentName)}(?![A-Za-z0-9_])(\\s*\\[([^\\]]*)\\])?`,
@@ -283,9 +310,9 @@ function referencesAreSubstitutable(
     let m: RegExpExecArray | null = re.exec(expr);
     while (m !== null) {
       const sub = m[2];
-      if (loopVar === null) {
+      if (indexList === null) {
         if (sub !== undefined) return false;
-      } else if (sub === undefined || sub.trim() !== loopVar) {
+      } else if (sub === undefined || normalizeIndices(sub) !== indexList) {
         return false;
       }
       m = re.exec(expr);
@@ -400,7 +427,8 @@ export function analyzeDiscreteLatents(
       });
       continue;
     }
-    if (plate && hasOffsetRef(latent, latent.name, plate.loopVariable || "i")) {
+    const enclosing = platesOf(latent, ctx);
+    if (enclosing.some((p) => hasOffsetRef(latent, latent.name, loopVarOf(p)))) {
       latents.push({
         node: latent,
         tier: "unsupported",
@@ -463,7 +491,7 @@ export function analyzeDiscreteLatents(
       const factors = factorsOf(entry.node.id);
       platePlans.push({
         latent: entry.node,
-        plate: plateOf(entry.node, ctx) as GraphNode,
+        plates: platesOf(entry.node, ctx),
         support: entry.support as SupportInfo,
         partial: entry.partial,
         factors,
@@ -635,17 +663,15 @@ function validateLatent(
   const scannedExprs = [...factors, ...inlineDets].flatMap(nodeExprs);
 
   if (entry.tier === "iid-plate") {
-    const plate = plateOf(latent, ctx) as GraphNode;
-    const loopVar = plate.loopVariable || "i";
-    const range = (plate.loopRange || "1:N").trim();
-    if (!range.startsWith("1:") || (latent.indices || "").trim() !== loopVar) {
+    const plates = platesOf(latent, ctx);
+    const innermost = plates[plates.length - 1] as GraphNode;
+    const indexList = plateIndexList(plates);
+    const ranges = plates.map((p) => (p.loopRange || "1:N").trim());
+    if (ranges.some((r) => !r.startsWith("1:")) || normalizeIndices(latent.indices) !== indexList) {
       return `'${latent.name}' is in a plate structure the marginalizer does not handle`;
     }
-    if (plateOf(plate, ctx) !== undefined) {
-      return `'${latent.name}' is inside nested plates, which the marginalizer does not handle`;
-    }
     for (const f of factors) {
-      if (plateOf(f, ctx)?.id !== plate.id) {
+      if (plateOf(f, ctx)?.id !== innermost.id) {
         return `factor '${f.name}' reads '${latent.name}' from outside its plate`;
       }
       if (candidateIds.has(f.id)) {
@@ -656,8 +682,8 @@ function validateLatent(
         return `factor '${f.name}' reads '${latent.name}' and another discrete latent`;
       }
     }
-    if (!referencesAreSubstitutable(scannedExprs, latent.name, loopVar)) {
-      return `'${latent.name}' is referenced in a form other than ${latent.name}[${loopVar}]`;
+    if (!referencesAreSubstitutable(scannedExprs, latent.name, indexList)) {
+      return `'${latent.name}' is referenced in a form other than ${latent.name}[${indexList}]`;
     }
     const priorScope = scopes.get(latent.id) ?? new Set();
     if (priorScope.size > 0) {

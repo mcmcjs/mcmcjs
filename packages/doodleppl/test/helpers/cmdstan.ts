@@ -6,6 +6,14 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
+/** Stan CSV flattens subscripts with dots: mu.1 -> mu[1], z.2.3 -> z[2,3]. */
+function unflattenName(header: string): string {
+  const parts = header.split(".");
+  const indices = parts.slice(1);
+  if (indices.length === 0 || !indices.every((i) => /^\d+$/.test(i))) return header;
+  return `${parts[0]}[${indices.join(",")}]`;
+}
+
 export function cmdstanHome(): string {
   if (process.env.CMDSTAN_HOME) return process.env.CMDSTAN_HOME;
   const root = join(homedir(), ".cmdstan");
@@ -76,8 +84,7 @@ export function logProb(
   const gradient: Record<string, number> = {};
   for (const [h, v] of byName) {
     if (!h.startsWith("g_")) continue;
-    // Gradient columns are g_<param> with subscripts flattened by dots: g_mu.1 -> mu[1]
-    gradient[h.slice(2).replace(/\.(\d+)/g, "[$1]")] = v;
+    gradient[unflattenName(h.slice(2))] = v;
   }
   return { lp: byName.get("lp__") as number, gradient };
 }
@@ -118,7 +125,7 @@ export function sample(
   const rows = readFileSync(outFile, "utf8")
     .split("\n")
     .filter((l) => l.length > 0 && !l.startsWith("#"));
-  const header = (rows[0] as string).split(",").map((h) => h.replace(/\.(\d+)/g, "[$1]"));
+  const header = (rows[0] as string).split(",").map(unflattenName);
   const columns = new Map<string, number[]>(header.map((h) => [h, []]));
   for (const row of rows.slice(1)) {
     const vals = row.split(",").map(Number);

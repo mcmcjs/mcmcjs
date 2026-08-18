@@ -31,6 +31,9 @@ import {
   mixturePartialData,
   mixturePartialElements,
   mixturePoints,
+  nestedMixtureData,
+  nestedMixtureElements,
+  nestedMixturePoints,
 } from "./helpers/marginalization-fixtures";
 import {
   binMixLogDensity,
@@ -42,6 +45,8 @@ import {
   mixtureLogDensity,
   mixturePartialLogDensity,
   mixtureZPosterior,
+  nestedMixtureLogDensity,
+  nestedMixtureZPosterior,
 } from "./helpers/reference-math";
 
 const PARITY = process.env.DOODLEPPL_PARITY === "1";
@@ -81,6 +86,7 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
   let dagBin: string;
   let chainBin: string;
   let binMixBin: string;
+  let nestedBin: string;
   let partialBin: string;
   let partialData: Record<string, unknown>;
   let mixtureLp: LogProbResult[];
@@ -88,6 +94,7 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
   let dagLp: LogProbResult[];
   let chainLp: LogProbResult[];
   let binMixLp: LogProbResult[];
+  let nestedLp: LogProbResult[];
 
   beforeAll(() => {
     mixtureBin = compileModel("mixture", generateStanModel(mixtureElements()));
@@ -95,6 +102,7 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
     dagBin = compileModel("mixeddag", generateStanModel(mixedDagElements()));
     chainBin = compileModel("chaindag", generateStanModel(chainDagElements()));
     binMixBin = compileModel("binmix", generateStanModel(binMixElements()));
+    nestedBin = compileModel("nestedmix", generateStanModel(nestedMixtureElements()));
     partialBin = compileModel(
       "mixturepartial",
       generateStanModel(mixturePartialElements(), mixturePartialData),
@@ -110,6 +118,7 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
     dagLp = mixedDagPoints.map((p) => logProb(dagBin, mixedDagData, p));
     chainLp = chainDagPoints.map((p) => logProb(chainBin, chainDagData, p));
     binMixLp = binMixPoints.map((p) => logProb(binMixBin, binMixData, p));
+    nestedLp = nestedMixturePoints.map((p) => logProb(nestedBin, nestedMixtureData, p));
     partialLp = mixturePoints.map((p) => logProb(partialBin, partialData, p));
   }, 600_000);
 
@@ -149,6 +158,16 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
     const stan = pairwiseDiffs(partialLp.map((r) => r.lp));
     const ref = pairwiseDiffs(
       mixturePoints.map((p) => mixturePartialLogDensity(mixturePartialData, p)),
+    );
+    stan.forEach((d, i) => {
+      expect(d).toBeCloseTo(ref[i] as number, 9);
+    });
+  });
+
+  it("nested-plate mixture log density differences match to double precision", () => {
+    const stan = pairwiseDiffs(nestedLp.map((r) => r.lp));
+    const ref = pairwiseDiffs(
+      nestedMixturePoints.map((p) => nestedMixtureLogDensity(nestedMixtureData, p)),
     );
     stan.forEach((d, i) => {
       expect(d).toBeCloseTo(ref[i] as number, 9);
@@ -207,6 +226,21 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
       julia.forEach((ref, i) => {
         for (const [name, g] of Object.entries(ref.gradient)) {
           expect(partialLp[i]?.gradient[name]).toBeCloseTo(g, 8);
+        }
+      });
+    }, 120_000);
+
+    it("nested-plate mixture values (up to a constant) and gradients agree", () => {
+      const julia = juliaReference("nestedmix", nestedMixtureData, nestedMixturePoints);
+      expect(julia).toHaveLength(nestedMixturePoints.length);
+      const stanDiffs = pairwiseDiffs(nestedLp.map((r) => r.lp));
+      const juliaDiffs = pairwiseDiffs(julia.map((r) => r.logdensity));
+      stanDiffs.forEach((d, i) => {
+        expect(d).toBeCloseTo(juliaDiffs[i] as number, 9);
+      });
+      julia.forEach((ref, i) => {
+        for (const [name, g] of Object.entries(ref.gradient)) {
+          expect(nestedLp[i]?.gradient[name]).toBeCloseTo(g, 8);
         }
       });
     }, 120_000);
@@ -318,6 +352,26 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
           freq += (z[t] as number) === 1 ? 1 : 0;
         }
         expect(Math.abs(freq / z.length - expected / z.length)).toBeLessThan(0.05);
+      }
+    }, 120_000);
+
+    it("nested-plate mixture: per-cell z frequencies match the averaged exact posterior", () => {
+      const fit = sample(nestedBin, nestedMixtureData, { warmup: 500, draws: 1500, seed: 17 });
+      const mu1 = fit.columns.get("mu[1]") as number[];
+      const mu2 = fit.columns.get("mu[2]") as number[];
+      for (let i = 0; i < nestedMixtureData.N; i++) {
+        for (let j = 0; j < nestedMixtureData.M; j++) {
+          const z = fit.columns.get(`z[${i + 1},${j + 1}]`) as number[];
+          expect(z).toBeDefined();
+          let expected = 0;
+          let freq = 0;
+          for (let t = 0; t < z.length; t++) {
+            const p = { mu: [mu1[t] as number, mu2[t] as number] };
+            expected += nestedMixtureZPosterior(nestedMixtureData, p, i, j)[0] as number;
+            freq += (z[t] as number) === 1 ? 1 : 0;
+          }
+          expect(Math.abs(freq / z.length - expected / z.length)).toBeLessThan(0.05);
+        }
       }
     }, 120_000);
 

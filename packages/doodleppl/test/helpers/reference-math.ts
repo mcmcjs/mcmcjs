@@ -78,6 +78,45 @@ export function mixturePartialLogDensity(
   return lp;
 }
 
+interface NestedMixtureData {
+  N: number;
+  M: number;
+  w: number[];
+  y: number[][];
+}
+
+/** Full log density of the nested-plate mixture with every z[i,j] summed out. */
+export function nestedMixtureLogDensity(d: NestedMixtureData, p: { mu: number[] }): number {
+  let lp = 0;
+  for (let k = 0; k < 2; k++) lp += normalLpdf(p.mu[k] as number, 0, 10);
+  for (let i = 0; i < d.N; i++) {
+    for (let j = 0; j < d.M; j++) {
+      const terms = [0, 1].map(
+        (k) =>
+          Math.log(d.w[k] as number) +
+          normalLpdf((d.y[i] as number[])[j] as number, p.mu[k] as number, 1),
+      );
+      lp += logSumExp(terms);
+    }
+  }
+  return lp;
+}
+
+/** Exact posterior over z[i,j] given the parameters. */
+export function nestedMixtureZPosterior(
+  d: NestedMixtureData,
+  p: { mu: number[] },
+  i: number,
+  j: number,
+): number[] {
+  const terms = [0, 1].map(
+    (k) =>
+      Math.log(d.w[k] as number) +
+      normalLpdf((d.y[i] as number[])[j] as number, p.mu[k] as number, 1),
+  );
+  return softmax(terms);
+}
+
 /** Exact per-observation posterior over z given the parameters. */
 export function mixtureZPosterior(data: MixtureData, p: MixturePoint, i: number): number[] {
   const terms = [0, 1].map(
