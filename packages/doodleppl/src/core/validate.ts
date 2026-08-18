@@ -42,7 +42,6 @@ export function validateGraph(
   const edges = elements.filter((el): el is GraphEdge => el.type === "edge");
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   const dataKeys = new Set(Object.keys(data));
-  const nodeNames = new Set(nodes.map((n) => n.name));
 
   const issues: ValidationIssue[] = [];
 
@@ -50,13 +49,21 @@ export function validateGraph(
     if (node.nodeType === "stochastic" || node.nodeType === "observed") {
       const dist = getDistribution(node.distribution ?? "");
       if (dist) {
-        const parentEdges = edges.filter((e) => e.target === node.id).length;
-        const literal = paramValues(node);
-        const linked = literal.filter((p) => {
-          const baseName = (p.split("[")[0] as string).trim();
-          return nodeNames.has(baseName);
-        });
-        const provided = parentEdges + (literal.length - linked.length);
+        // Each filled param slot is one input. An incoming edge adds an input only
+        // when no param expression mentions that parent, since an edge and a
+        // reference (including a nested one like mu[z[i]]) are the same dependency.
+        const params = paramValues(node);
+        const referenced = new Set<string>();
+        for (const p of params) {
+          for (const ident of p.match(/[A-Za-z_][A-Za-z0-9_.]*/g) ?? []) referenced.add(ident);
+        }
+        const parentNames = new Set<string>();
+        for (const e of edges) {
+          if (e.target !== node.id) continue;
+          const source = nodeMap.get(e.source);
+          if (source && !referenced.has(source.name)) parentNames.add(source.name);
+        }
+        const provided = params.length + parentNames.size;
         if (provided !== dist.paramCount) {
           issues.push({
             nodeId: node.id,
