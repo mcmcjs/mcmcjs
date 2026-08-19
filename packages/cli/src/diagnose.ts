@@ -14,6 +14,7 @@ import {
   countDivergences,
   DEFAULT_THRESHOLDS,
   diagnoseChains,
+  isConstant,
   isConverged,
   type VariableDiagnostics,
 } from "@mcmcjs/diagnostics";
@@ -70,8 +71,13 @@ export function buildDiagnosticsReport(
   });
   const series = divergenceSeries(samples);
   const divergences = series ? countDivergences(series) : null;
+  // Constant variables have no R-hat or ESS to clear, so they are neutral, unless
+  // every variable is constant: then nothing moved and the run did not sample.
+  const informative = variables.filter((v) => !isConstant(v));
   const converged =
-    variables.every((v) => v.converged) && (divergences === null || divergences <= maxDivergences);
+    informative.length > 0 &&
+    informative.every((v) => v.converged) &&
+    (divergences === null || divergences <= maxDivergences);
   return { variables, converged, thresholds, divergences, maxDivergences };
 }
 
