@@ -62,6 +62,7 @@ interface ParamRules {
   leapfrog_steps?: number;
   lambda?: number;
   particles?: number;
+  slice_width?: number;
 }
 
 /** Per-algorithm parameter rules, shared by the sampler and its Gibbs blocks. */
@@ -93,6 +94,13 @@ function samplerParamIssues(s: ParamRules): { path: string; message: string }[] 
   } else if (s.particles !== undefined) {
     issues.push({ path: "particles", message: "particles applies to PG only" });
   }
+  if (s.algorithm === "Slice") {
+    if (s.slice_width === undefined) {
+      issues.push({ path: "slice_width", message: "Slice requires slice_width" });
+    }
+  } else if (s.slice_width !== undefined) {
+    issues.push({ path: "slice_width", message: "slice_width applies to Slice only" });
+  }
   return issues;
 }
 
@@ -100,12 +108,13 @@ const GibbsBlock = z
   .object({
     /** Model variables this block updates, by base name. */
     variables: z.array(z.string().min(1)).min(1),
-    algorithm: z.enum(["NUTS", "HMC", "HMCDA", "MH", "PG", "ESS"]).default("NUTS"),
+    algorithm: z.enum(["NUTS", "HMC", "HMCDA", "MH", "PG", "ESS", "Slice"]).default("NUTS"),
     adapt_delta: z.number().gt(0).lt(1).default(0.8),
     step_size: z.number().positive().optional(),
     leapfrog_steps: z.number().int().positive().optional(),
     lambda: z.number().positive().optional(),
     particles: z.number().int().positive().optional(),
+    slice_width: z.number().positive().optional(),
   })
   .strict()
   .superRefine((b, ctx) => {
@@ -117,6 +126,13 @@ const GibbsBlock = z
 /** Samplers that take an AD backend: gradient-based, or wrappers that may hold one. */
 const ADTYPE_ALGORITHMS = new Set(["NUTS", "HMC", "HMCDA", "Gibbs", "External"]);
 
+/** What the juliabugs backend can run as its sampler, and as one Gibbs block. */
+const JULIABUGS_ALGORITHMS = new Set(["NUTS", "HMC", "HMCDA", "MH", "Slice", "Gibbs", "Prior"]);
+const JULIABUGS_BLOCK_ALGORITHMS = new Set(["NUTS", "HMC", "HMCDA", "MH", "Slice"]);
+
+/** JuliaBUGS samplers that propose in the evaluation environment, discrete latents included. */
+const ENV_ALGORITHMS = new Set(["MH", "Gibbs"]);
+
 const Sampler = z
   .object({
     /**
@@ -125,7 +141,19 @@ const Sampler = z
      * as MCMC_SAMPLER.
      */
     algorithm: z
-      .enum(["NUTS", "HMC", "HMCDA", "MH", "ESS", "SMC", "PG", "Gibbs", "External", "Prior"])
+      .enum([
+        "NUTS",
+        "HMC",
+        "HMCDA",
+        "MH",
+        "ESS",
+        "SMC",
+        "PG",
+        "Slice",
+        "Gibbs",
+        "External",
+        "Prior",
+      ])
       .default("NUTS"),
     draws: z.number().int().positive(),
     /** NUTS/HMCDA adaptation steps; burn-in discarded for the other samplers (SMC excepted). */
@@ -140,6 +168,8 @@ const Sampler = z
     lambda: z.number().positive().optional(),
     /** Particle count (PG only). */
     particles: z.number().int().positive().optional(),
+    /** Initial slice window width (Slice only). */
+    slice_width: z.number().positive().optional(),
     /** Gibbs blocks, one per [[sampler.blocks]] table (Gibbs only). */
     blocks: z.array(GibbsBlock).min(1).optional(),
     /** Keep every thin-th draw. */
@@ -182,6 +212,12 @@ const ModelFile = z.object({
   /** Path to the model file, resolved relative to the spec file's directory. */
   path: z.string().min(1),
   entry: z.string().min(1).default("build_model"),
+  /**
+   * How a JuliaBUGS model evaluates its log density: "graph" walks the node
+   * graph, "generated" compiles a specialised function, "marginalized" sums the
+   * discrete latents out exactly. Unset leaves the model file's own choice.
+   */
+  evaluation_mode: z.enum(["graph", "generated", "marginalized"]).optional(),
 });
 
 const Output = z
@@ -244,26 +280,68 @@ export const SpecSchema = z
       }
     }
     if (s.backend.id === "juliabugs") {
-      if (algorithm !== "NUTS" && algorithm !== "Prior") {
+      if (!JULIABUGS_ALGORITHMS.has(algorithm)) {
         issue(
           ["sampler", "algorithm"],
-          `the juliabugs backend supports NUTS and Prior only, not ${algorithm}`,
+          `the juliabugs backend supports ${[...JULIABUGS_ALGORITHMS].join(", ")}, not ${algorithm}`,
         );
       }
-      if (s.sampler.adtype !== undefined) {
-        issue(["sampler", "adtype"], "a JuliaBUGS model chooses its adtype in the model file");
-      }
-      if (s.sampler.initial_params !== undefined) {
-        issue(
-          ["sampler", "initial_params"],
-          "initial_params is not supported for the juliabugs backend",
-        );
+      for (const [i, block] of (s.sampler.blocks ?? []).entries()) {
+        if (!JULIABUGS_BLOCK_ALGORITHMS.has(block.algorithm)) {
+          issue(
+            ["sampler", "blocks", String(i), "algorithm"],
+            `a juliabugs Gibbs block supports ${[...JULIABUGS_BLOCK_ALGORITHMS].join(", ")}, not ${block.algorithm}`,
+          );
+        }
       }
       if (s.sampler.parallel === "distributed") {
         issue(
           ["sampler", "parallel"],
           "distributed chains are Turing-only; the juliabugs backend supports serial or threads",
         );
+      }
+      // Prior sampling walks the graph ancestrally, so no log density is evaluated.
+      if (algorithm === "Prior" && s.model.evaluation_mode !== undefined) {
+        issue(
+          ["model", "evaluation_mode"],
+          "prior draws are one ancestral pass; evaluation_mode does not apply",
+        );
+      }
+      // The environment-based samplers move the discrete latents themselves, so
+      // marginalizing them out of the log density would double-count them.
+      if (s.model.evaluation_mode === "marginalized" && ENV_ALGORITHMS.has(algorithm)) {
+        issue(
+          ["model", "evaluation_mode"],
+          `${algorithm} samples the discrete latents itself; marginalized applies to the gradient samplers`,
+        );
+      }
+      // JuliaBUGS's generated log density mutates arrays in place, which only
+      // Mooncake among our AD backends differentiates through; the others make
+      // it warn and fall back to graph evaluation.
+      if (s.model.evaluation_mode === "generated" && s.sampler.adtype !== "mooncake") {
+        issue(
+          ["model", "evaluation_mode"],
+          "generated needs sampler.adtype = mooncake; the other backends cannot differentiate it",
+        );
+      }
+    } else {
+      if (s.model.evaluation_mode !== undefined) {
+        issue(
+          ["model", "evaluation_mode"],
+          `evaluation_mode is a JuliaBUGS concern; the ${s.backend.id} backend has no equivalent`,
+        );
+      }
+      // Whole or per block, SliceSampling is reachable on turing only as an
+      // External sampler the model file exports.
+      if (s.backend.id === "turing") {
+        const reason =
+          "Slice is a juliabugs sampler; on turing reach SliceSampling through External";
+        if (algorithm === "Slice") issue(["sampler", "algorithm"], reason);
+        for (const [i, block] of (s.sampler.blocks ?? []).entries()) {
+          if (block.algorithm === "Slice") {
+            issue(["sampler", "blocks", String(i), "algorithm"], reason);
+          }
+        }
       }
     }
   });

@@ -6,6 +6,7 @@ import {
   essIMSE,
   geweke,
   isConverged,
+  isDegenerate,
   mean,
   pearson,
   quantiles,
@@ -558,7 +559,9 @@ export function forestData(
       iqr: [q.q25, q.q75],
       rhat: d.rhat,
       essBulk: d.essBulk,
-      converged: isConverged(d),
+      // A variable with no variation has no R-hat to fail, so it is not flagged:
+      // a recovered discrete latent would otherwise wear a warning in every row.
+      converged: isDegenerate(d) || isConverged(d),
     };
   });
   return { kind: "forest", hdiProb, rows };

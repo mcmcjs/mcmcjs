@@ -213,18 +213,83 @@ describe("SpecSchema", () => {
     expect(spec.sampler.initial_params).toEqual({ mu: 0.5, theta: [1, 2, 3] });
   });
 
-  it("limits the juliabugs backend to NUTS and Prior without adtype or inits", () => {
+  it("takes Slice with a window width on juliabugs only, and never an adtype", () => {
+    const bugs = { ...VALID, backend: { id: "juliabugs" } };
+    const slice = { draws: 10, algorithm: "Slice", slice_width: 1.5 };
+    expect(SpecSchema.parse({ ...bugs, sampler: slice }).sampler.slice_width).toBe(1.5);
+    expect(() => SpecSchema.parse({ ...bugs, sampler: { draws: 10, algorithm: "Slice" } })).toThrow(
+      /Slice requires slice_width/,
+    );
+    expect(() => SpecSchema.parse({ ...bugs, sampler: { draws: 10, slice_width: 1 } })).toThrow(
+      /applies to Slice only/,
+    );
+    expect(() => SpecSchema.parse({ ...bugs, sampler: { ...slice, adtype: "mooncake" } })).toThrow(
+      /no gradient/,
+    );
+    expect(() => SpecSchema.parse({ ...VALID, sampler: slice })).toThrow(/through External/);
+    // A turing Gibbs block has no slice component either.
+    const gibbsSlice = {
+      draws: 10,
+      algorithm: "Gibbs",
+      blocks: [{ variables: ["mu"], algorithm: "Slice", slice_width: 1 }],
+    };
+    expect(
+      SpecSchema.parse({ ...bugs, sampler: gibbsSlice }).sampler.blocks?.[0]?.slice_width,
+    ).toBe(1);
+    expect(() => SpecSchema.parse({ ...VALID, sampler: gibbsSlice })).toThrow(/through External/);
+  });
+
+  it("accepts the juliabugs samplers, with an adtype and initial values", () => {
     const bugs = { ...VALID, backend: { id: "juliabugs" } };
     expect(SpecSchema.parse({ ...bugs, sampler: { draws: 10 } }).sampler.algorithm).toBe("NUTS");
-    expect(() => SpecSchema.parse({ ...bugs, sampler: { draws: 10, algorithm: "MH" } })).toThrow(
-      /NUTS and Prior only/,
-    );
-    expect(() => SpecSchema.parse({ ...bugs, sampler: { draws: 10, adtype: "mooncake" } })).toThrow(
-      /model file/,
+    for (const algorithm of ["HMCDA", "MH", "Prior"]) {
+      const sampler = { draws: 10, algorithm, ...(algorithm === "HMCDA" ? { lambda: 1 } : {}) };
+      expect(SpecSchema.parse({ ...bugs, sampler }).sampler.algorithm).toBe(algorithm);
+    }
+    expect(
+      SpecSchema.parse({
+        ...bugs,
+        sampler: { draws: 10, adtype: "mooncake", initial_params: { mu: 0 } },
+      }).sampler.adtype,
+    ).toBe("mooncake");
+  });
+
+  it("rejects the juliabugs-unreachable samplers, whole or per Gibbs block", () => {
+    const bugs = { ...VALID, backend: { id: "juliabugs" } };
+    expect(() => SpecSchema.parse({ ...bugs, sampler: { draws: 10, algorithm: "SMC" } })).toThrow(
+      /not SMC/,
     );
     expect(() =>
-      SpecSchema.parse({ ...bugs, sampler: { draws: 10, initial_params: { mu: 0 } } }),
-    ).toThrow(/not supported/);
+      SpecSchema.parse({
+        ...bugs,
+        sampler: {
+          draws: 10,
+          algorithm: "Gibbs",
+          blocks: [{ variables: ["mu"] }, { variables: ["z"], algorithm: "PG", particles: 4 }],
+        },
+      }),
+    ).toThrow(/Gibbs block supports/);
+  });
+
+  it("guards the juliabugs evaluation modes against the sampler and adtype", () => {
+    const bugs = { ...VALID, backend: { id: "juliabugs" } };
+    const withMode = (mode: string, sampler: Record<string, unknown>) =>
+      SpecSchema.parse({ ...bugs, model: { ...VALID.model, evaluation_mode: mode }, sampler });
+    expect(withMode("marginalized", { draws: 10 }).model.evaluation_mode).toBe("marginalized");
+    expect(() => withMode("marginalized", { draws: 10, algorithm: "MH" })).toThrow(
+      /samples the discrete latents itself/,
+    );
+    expect(() => withMode("generated", { draws: 10 })).toThrow(/adtype = mooncake/);
+    expect(withMode("generated", { draws: 10, adtype: "mooncake" }).model.evaluation_mode).toBe(
+      "generated",
+    );
+    expect(() => withMode("graph", { draws: 10, algorithm: "Prior" })).toThrow(/does not apply/);
+  });
+
+  it("rejects an evaluation mode on the backends that have none", () => {
+    expect(() =>
+      SpecSchema.parse({ ...VALID, model: { ...VALID.model, evaluation_mode: "graph" } }),
+    ).toThrow(/JuliaBUGS concern/);
   });
 
   it("limits the stan backend to plain NUTS", () => {

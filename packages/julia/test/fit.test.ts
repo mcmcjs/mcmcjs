@@ -82,6 +82,29 @@ describe("runFit", () => {
     expect(record.packages.Turing).toBe("0.45.0");
   });
 
+  it("passes a spec evaluation mode through to the request", async () => {
+    const outPath = out();
+    let request: Record<string, unknown> = {};
+    const spawn: FitRunner = async (_command, args) => {
+      request = JSON.parse(readFileSync(args.at(-1) as string, "utf8"));
+      writeFileSync(outPath, SAMPLES);
+      return { stdout: PROVENANCE, stderr: "", code: 0 };
+    };
+    const marginalized = spec();
+    marginalized.model = { ...marginalized.model, evaluation_mode: "marginalized" };
+    await runFit(
+      marginalized,
+      { command: "/bin/julia", args: [] },
+      { spawn, projectDir: "/proj", outPath },
+    );
+
+    expect(request.model).toEqual({
+      file: "/x/m.jl",
+      entry: "build_model",
+      evaluation_mode: "marginalized",
+    });
+  });
+
   it("reports the driver stage and message on failure", async () => {
     const outPath = out();
     const spawn: FitRunner = async () => ({

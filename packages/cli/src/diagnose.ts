@@ -14,8 +14,8 @@ import {
   countDivergences,
   DEFAULT_THRESHOLDS,
   diagnoseChains,
-  isConstant,
   isConverged,
+  isDegenerate,
   type VariableDiagnostics,
 } from "@mcmcjs/diagnostics";
 import type { Command } from "commander";
@@ -71,9 +71,9 @@ export function buildDiagnosticsReport(
   });
   const series = divergenceSeries(samples);
   const divergences = series ? countDivergences(series) : null;
-  // Constant variables have no R-hat or ESS to clear, so they are neutral, unless
-  // every variable is constant: then nothing moved and the run did not sample.
-  const informative = variables.filter((v) => !isConstant(v));
+  // A variable that does not vary has no R-hat or ESS to clear, so it is neutral,
+  // unless none of them do: then nothing moved and the run did not sample.
+  const informative = variables.filter((v) => !isDegenerate(v));
   const converged =
     informative.length > 0 &&
     informative.every((v) => v.converged) &&
@@ -139,7 +139,14 @@ export function formatReportHuman(report: DiagnosticsReport): string {
   }
   const verdict = report.converged ? pc.green("converged") : pc.red("not converged");
   const criteria = `R-hat <= ${report.thresholds.rhatMax}, ESS >= ${report.thresholds.essMin}${report.divergences !== null ? `, divergences <= ${report.maxDivergences}` : ""}`;
-  return `${out}${verdict} (${criteria})\n`;
+  out += `${verdict} (${criteria})\n`;
+  // A verdict of "not converged" on a table of n/a reads as a diagnostics problem;
+  // name what actually happened, since no threshold was even testable.
+  if (report.variables.length > 0 && report.variables.every(isDegenerate)) {
+    out +=
+      "no variable varies in every chain, so nothing was testable: this is what a sampler that never moved looks like\n";
+  }
+  return out;
 }
 
 interface DiagnoseCliOptions {

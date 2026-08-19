@@ -21,21 +21,25 @@ import { resolveVersion } from "../src/versions";
  * The seeded end-to-end reference: a real Julia fit that loads a model plus
  * Stan-style JSON data, streams draw batches, reconstructs the final samples
  * from them, and cancels a separate run mid-flight. It drives actual Julia, so
- * it is opt-in (MCMC_E2E=1) and skips unless the pinned env is already
- * provisioned. Run it with: MCMC_E2E=1 pnpm -F @mcmcjs/julia test e2e
+ * it is opt-in: without MCMC_E2E=1 the whole file skips. Run it with:
+ * MCMC_E2E=1 pnpm -F @mcmcjs/julia test e2e
+ *
+ * With MCMC_E2E=1 an unusable environment is an error, not a skip. Changing the
+ * managed package set invalidates the provisioning sentinel, so a suite that
+ * skipped quietly would report green while testing nothing.
  */
 async function probe(): Promise<{ command: string; args: string[]; projectDir: string } | null> {
   if (process.env.MCMC_E2E !== "1") return null;
-  try {
-    const juliaup = await detectJuliaup();
-    if (!juliaup.found || !juliaup.path) return null;
-    const resolved = await resolveVersion(juliaup.path, DEFAULT_JULIA_CHANNEL, createRunner());
-    const projectDir = managedProjectDir(resolved.version);
-    if (!managedProjectReady(projectDir)) return null;
-    return { command: resolved.command, args: resolved.args, projectDir };
-  } catch {
-    return null;
+  const juliaup = await detectJuliaup();
+  if (!juliaup.found || !juliaup.path) throw new Error("MCMC_E2E=1 but juliaup was not found");
+  const resolved = await resolveVersion(juliaup.path, DEFAULT_JULIA_CHANNEL, createRunner());
+  const projectDir = managedProjectDir(resolved.version);
+  if (!managedProjectReady(projectDir)) {
+    throw new Error(
+      `MCMC_E2E=1 but the managed Julia project at ${projectDir} is not provisioned with the current package set; run a fit (or mcmc setup julia) first`,
+    );
   }
+  return { command: resolved.command, args: resolved.args, projectDir };
 }
 
 const ENV = await probe();
@@ -975,4 +979,269 @@ end
     );
     expect(mh.status).toBe("ok");
   }, 600_000);
+});
+
+// A two-component mixture: z indexes mu, so the log density is a function of a
+// discrete latent. Marginalization sums z out; the environment-based samplers
+// propose it instead. The component priors are tight (precision 4, so sd 0.5) and
+// far apart, which makes the label assignment identifiable: the mirrored solution
+// costs ~140 log units of prior, so no chain can settle in it and every sampler
+// here must agree on which component each observation belongs to.
+const MIXTURE_MODEL = `import JuliaBUGS
+
+const model_def = JuliaBUGS.@bugs begin
+    mu[1] ~ dnorm(-3, 4)
+    mu[2] ~ dnorm(3, 4)
+    for i in 1:N
+        z[i] ~ dcat(w[1:2])
+        y[i] ~ dnorm(mu[z[i]], 1)
+    end
+end
+
+build_model(data) = JuliaBUGS.compile(model_def, data)
+`;
+
+const MIXTURE_DATA = {
+  N: 10,
+  w: [0.5, 0.5],
+  y: [-3.2, -2.8, -3.1, -2.9, -3.3, 3.1, 2.9, 3.2, 2.8, 3.3],
+};
+
+/** Pooled mean of one variable across every chain. */
+function pooledMean(samples: Samples, variable: string): number {
+  let sum = 0;
+  let n = 0;
+  for (let c = 0; c < samples.nChains; c++) {
+    for (const v of chainView(samples, variable, c)) {
+      sum += v;
+      n += 1;
+    }
+  }
+  return sum / n;
+}
+
+d("julia e2e: juliabugs discrete latents through every sampler", () => {
+  let mixturePath: string;
+
+  beforeAll(() => {
+    mixturePath = join(dir, "mixture_bugs.jl");
+    writeFileSync(mixturePath, MIXTURE_MODEL);
+  });
+
+  const mixtureSpec = (sampler: ResolvedSpec["sampler"], mode?: "marginalized"): ResolvedSpec => ({
+    ...spec(200, 2),
+    backend: { id: "juliabugs", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
+    model: { kind: "file", path: mixturePath, entry: "build_model", evaluation_mode: mode },
+    modelPath: mixturePath,
+    sampler,
+    data: MIXTURE_DATA,
+  });
+
+  const nuts = (extra: Partial<ResolvedSpec["sampler"]> = {}): ResolvedSpec["sampler"] => ({
+    algorithm: "NUTS",
+    draws: 300,
+    warmup: 500,
+    chains: 2,
+    adapt_delta: 0.8,
+    thin: 1,
+    parallel: "serial",
+    ...extra,
+  });
+
+  const fitMixture = async (
+    name: string,
+    sampler: ResolvedSpec["sampler"],
+    mode?: "marginalized",
+  ) => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const outPath = join(dir, `${name}.samples.json`);
+    const result = await runFit(
+      mixtureSpec(sampler, mode),
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        recordPath: join(dir, `${name}.run.json`),
+      },
+    );
+    return { result, outPath };
+  };
+
+  it("marginalizes the latents out under NUTS and still reports them", async () => {
+    const { result, outPath } = await fitMixture("mix_marginal", nuts(), "marginalized");
+    expect(result.status).toBe("ok");
+
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    // The latents are summed out of the log density, yet recovered from
+    // p(z | mu, y) for the chain, so every state appears as a column.
+    for (const leaf of ["mu[1]", "mu[2]", "z[1]", "z[10]"]) {
+      expect(samples.variables).toContain(leaf);
+    }
+    expect(pooledMean(samples, "mu[1]")).toBeCloseTo(-3.0, 0);
+    expect(pooledMean(samples, "mu[2]")).toBeCloseTo(3.0, 0);
+    // Every draw assigns the first observation to the negative component.
+    expect(pooledMean(samples, "z[1]")).toBe(1);
+    expect(pooledMean(samples, "z[10]")).toBe(2);
+  }, 900_000);
+
+  it("moves the discrete latents itself under MH", async () => {
+    const { result, outPath } = await fitMixture("mix_mh", {
+      ...nuts(),
+      algorithm: "MH",
+      warmup: 500,
+      draws: 500,
+    });
+    expect(result.status).toBe("ok");
+
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect(samples.variables).toContain("z[1]");
+    expect(pooledMean(samples, "mu[1]")).toBeLessThan(0);
+    expect(pooledMean(samples, "mu[2]")).toBeGreaterThan(0);
+    expect(pooledMean(samples, "z[1]")).toBe(1);
+  }, 900_000);
+
+  it("splits the continuous and discrete parameters across Gibbs blocks", async () => {
+    const { result, outPath } = await fitMixture("mix_gibbs", {
+      ...nuts(),
+      algorithm: "Gibbs",
+      adtype: "forwarddiff",
+      blocks: [
+        { variables: ["mu"], algorithm: "NUTS", adapt_delta: 0.8 },
+        { variables: ["z"], algorithm: "MH", adapt_delta: 0.8 },
+      ],
+    });
+    expect(result.status).toBe("ok");
+
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect(pooledMean(samples, "mu[1]")).toBeLessThan(0);
+    expect(pooledMean(samples, "mu[2]")).toBeGreaterThan(0);
+    expect(pooledMean(samples, "z[1]")).toBe(1);
+  }, 900_000);
+
+  it("samples the marginalized model with no gradient at all, through Slice", async () => {
+    const { result, outPath } = await fitMixture(
+      "mix_slice",
+      { ...nuts(), algorithm: "Slice", slice_width: 1.0 },
+      "marginalized",
+    );
+    expect(result.status).toBe("ok");
+
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect(pooledMean(samples, "mu[1]")).toBeCloseTo(-3.0, 0);
+    expect(pooledMean(samples, "mu[2]")).toBeCloseTo(3.0, 0);
+    expect(pooledMean(samples, "z[1]")).toBe(1);
+    // The slice sampler counts proposals per coordinate, so the statistic arrives
+    // as an array and reaches the samples file split into scalar columns.
+    expect([...samples.sampleStats.keys()]).toContain("num_proposals[1]");
+  }, 900_000);
+
+  it("gives the continuous block a gradient-free Slice update inside Gibbs", async () => {
+    const { result, outPath } = await fitMixture("mix_gibbs_slice", {
+      ...nuts(),
+      algorithm: "Gibbs",
+      blocks: [
+        { variables: ["mu"], algorithm: "Slice", slice_width: 1.0, adapt_delta: 0.8 },
+        { variables: ["z"], algorithm: "MH", adapt_delta: 0.8 },
+      ],
+    });
+    expect(result.status).toBe("ok");
+
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect(pooledMean(samples, "mu[1]")).toBeCloseTo(-3.0, 0);
+    expect(pooledMean(samples, "mu[2]")).toBeCloseTo(3.0, 0);
+    // One block over all ten states proposes them jointly, from the prior, so it
+    // accepts a change of assignment rarely; what this checks is that both block
+    // components ran and the states came back as states. Single-site updates are
+    // what `algorithm = "MH"` gives.
+    for (let chain = 0; chain < samples.nChains; chain++) {
+      for (const value of chainView(samples, "z[1]", chain)) {
+        expect([1, 2]).toContain(value);
+      }
+    }
+  }, 900_000);
+
+  it("rejects a Gibbs map that does not cover every parameter", async () => {
+    const { result } = await fitMixture("mix_gibbs_partial", {
+      ...nuts(),
+      algorithm: "Gibbs",
+      blocks: [{ variables: ["mu"], algorithm: "MH", adapt_delta: 0.8 }],
+    });
+    expect(result.status).toBe("error");
+    expect(result.error).toMatch(/z/);
+  }, 900_000);
+
+  it("reaches the same marginalized posterior through each AD backend", async () => {
+    const means: number[] = [];
+    for (const adtype of ["forwarddiff", "reversediff", "mooncake"] as const) {
+      const { result, outPath } = await fitMixture(
+        `mix_${adtype}`,
+        nuts({ adtype }),
+        "marginalized",
+      );
+      expect(result.status).toBe("ok");
+      means.push(pooledMean(parseSamples(readFileSync(outPath, "utf8")), "mu[1]"));
+    }
+    for (const mean of means) expect(mean).toBeCloseTo(means[0] as number, 1);
+  }, 1_800_000);
+
+  it("starts from spec-named initial values, and rejects a name the model lacks", async () => {
+    const started = await fitMixture(
+      "mix_inits",
+      nuts({ initial_params: { mu: [-3, 3] } }),
+      "marginalized",
+    );
+    expect(started.result.status).toBe("ok");
+    expect(pooledMean(parseSamples(readFileSync(started.outPath, "utf8")), "mu[1]")).toBeCloseTo(
+      -3.0,
+      0,
+    );
+
+    const typo = await fitMixture("mix_inits_typo", nuts({ initial_params: { nu: [-3, 3] } }));
+    expect(typo.result.status).toBe("error");
+    expect(typo.result.error).toMatch(/initial_params names nu/);
+  }, 900_000);
+});
+
+d("julia e2e: juliabugs evaluation modes agree", () => {
+  it("reaches the same posterior through graph and generated log densities", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const bugsModelPath = join(dir, "normal_bugs_modes.jl");
+    writeFileSync(bugsModelPath, BUGS_MODEL);
+
+    const fitMode = async (mode: "graph" | "generated") => {
+      const outPath = join(dir, `modes_${mode}.samples.json`);
+      const result = await runFit(
+        {
+          ...spec(300, 2),
+          backend: { id: "juliabugs", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
+          model: {
+            kind: "file",
+            path: bugsModelPath,
+            entry: "build_model",
+            evaluation_mode: mode,
+          },
+          modelPath: bugsModelPath,
+          sampler: { ...spec(300, 2).sampler, adtype: "mooncake" },
+          data: { N: TABLE_DATA.y.length, ...TABLE_DATA },
+        },
+        { command: env.command, args: env.args },
+        {
+          spawn: createFitRunner(),
+          projectDir: env.projectDir,
+          outPath,
+          recordPath: join(dir, `modes_${mode}.run.json`),
+        },
+      );
+      expect(result.status).toBe("ok");
+      return parseSamples(readFileSync(outPath, "utf8"));
+    };
+
+    const graph = await fitMode("graph");
+    const generated = await fitMode("generated");
+    // Same model, same seed, two log-density implementations: the posterior mean
+    // must agree even though the sampler paths are not draw-for-draw identical.
+    expect(pooledMean(generated, "mu")).toBeCloseTo(pooledMean(graph, "mu"), 1);
+    expect(pooledMean(generated, "sigma")).toBeCloseTo(pooledMean(graph, "sigma"), 1);
+  }, 1_200_000);
 });

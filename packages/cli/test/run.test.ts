@@ -171,6 +171,17 @@ describe("buildRunConfig: model file with no spec", () => {
     expect(() => buildRunConfig(model, { algorithm: "Gibbs" })).toThrow();
   });
 
+  it("sets the JuliaBUGS evaluation mode from a flag, and only for that backend", () => {
+    const dir = tmp();
+    const model = writeModel(dir, "model.bugs.jl");
+    const config = buildRunConfig(model, { backend: "juliabugs", evaluationMode: "marginalized" });
+    expect(config.spec.model.evaluation_mode).toBe("marginalized");
+    expect(
+      buildRunConfig(model, { backend: "juliabugs" }).spec.model.evaluation_mode,
+    ).toBeUndefined();
+    expect(() => buildRunConfig(model, { evaluationMode: "graph" })).toThrow(/JuliaBUGS concern/);
+  });
+
   it("auto-detects a sibling data.csv when no --data is given", () => {
     const dir = tmp();
     const model = writeModel(dir);

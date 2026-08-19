@@ -62,12 +62,17 @@ Pinned packages provision into their own managed environment, so different pins 
 | `kind` | `"file"` | required | only file-based models today |
 | `path` | string | required | path to the model file, resolved relative to the spec's directory |
 | `entry` | string | `"build_model"` | the model entry function (Julia backends; ignored for Stan) |
+| `evaluation_mode` | `"graph"`, `"generated"`, `"marginalized"` | the model file's own choice | how a JuliaBUGS model evaluates its log density; juliabugs only |
+
+`evaluation_mode` overrides whatever the model file selected: `"graph"` walks the node graph, `"generated"` compiles a specialised log-density function (which mutates arrays in place, so it needs `adtype = "mooncake"`), and `"marginalized"` sums the discrete latents out of the log density exactly, so a gradient sampler never sees them.
+The marginalized latents still appear in the chain, drawn from their conditional posterior once sampling is done.
+It does not combine with `MH` or `Gibbs`, which propose the discrete latents themselves.
 
 ### `[sampler]`
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `algorithm` | `"NUTS"`, `"HMC"`, `"HMCDA"`, `"MH"`, `"ESS"`, `"SMC"`, `"PG"`, `"Gibbs"`, `"External"`, `"Prior"` | `"NUTS"` | the sampler; stan supports NUTS only, juliabugs NUTS and Prior |
+| `algorithm` | `"NUTS"`, `"HMC"`, `"HMCDA"`, `"MH"`, `"ESS"`, `"SMC"`, `"PG"`, `"Slice"`, `"Gibbs"`, `"External"`, `"Prior"` | `"NUTS"` | the sampler; stan supports NUTS only, juliabugs everything but `ESS`, `SMC`, `PG`, and `External`, and `Slice` is juliabugs-only |
 | `draws` | positive integer | required | posterior draws per chain |
 | `warmup` | non-negative integer | `1000` | NUTS/HMCDA adaptation; burn-in discarded for MH and HMC |
 | `chains` | positive integer | `4` | number of chains |
@@ -76,16 +81,22 @@ Pinned packages provision into their own managed environment, so different pins 
 | `leapfrog_steps` | positive integer | required for HMC | leapfrog steps per proposal |
 | `lambda` | positive number | required for HMCDA | target simulation length |
 | `particles` | positive integer | required for PG | particle count |
+| `slice_width` | positive number | required for Slice | initial slice window width |
 | `blocks` | array of tables | required for Gibbs | one `[[sampler.blocks]]` per component; see below |
 | `thin` | positive integer | `1` | keep every thin-th draw |
 | `parallel` | `"serial"`, `"threads"`, `"distributed"` | `"serial"` | chain execution; threads share one Julia process, distributed starts one worker process per chain (Turing only, adds startup cost) |
-| `adtype` | `"forwarddiff"`, `"reversediff"`, `"mooncake"` | model or backend default | AD backend for gradient samplers (Turing only); a model file may declare its own default via `const MCMC_DEFAULTS = (; adtype = "mooncake")`, which the spec overrides |
-| `initial_params` | table of named values | - | starting values per variable, replicated across chains (Turing only) |
+| `adtype` | `"forwarddiff"`, `"reversediff"`, `"mooncake"` | model or backend default | AD backend for gradient samplers; a model file may declare its own default via `const MCMC_DEFAULTS = (; adtype = "mooncake")`, which the spec overrides. For juliabugs it also overrides the adtype the model file baked into its gradient wrapper |
+| `initial_params` | table of named values | - | starting values per variable, replicated across chains |
 
 #### Gibbs blocks
 
 `algorithm = "Gibbs"` composes per-variable samplers: each `[[sampler.blocks]]` table names the variables it updates and the component that updates them (`NUTS`, `HMC`, `HMCDA`, `MH`, `PG`, or `ESS`), with the same per-algorithm parameters as the top level.
 The classic use is a gradient sampler for continuous parameters and a particle or Metropolis component for the discrete ones.
+On juliabugs the components are `NUTS`, `HMC`, `HMCDA`, `MH`, and `Slice`, and the blocks must cover every parameter exactly once.
+One block is one group: a block naming an array variable updates the whole array together, which for a long vector of discrete states means proposing all of them at once and almost never accepting.
+`algorithm = "MH"` is the single-site alternative, one Metropolis update per parameter.
+`algorithm = "MH"` there is the shorthand for one Metropolis block over every parameter, which is how a model with unbounded discrete latents (a `dpois` count, say) is fitted at all: marginalization can only sum out a finite support.
+Two things to expect from a juliabugs Gibbs: JuliaBUGS disables step-size adaptation inside a gradient block, so a `NUTS` block mixes far more slowly than a plain `NUTS` fit and wants many more draws; and both `MH` and `Gibbs` start from the model's own values, so a model whose defaults are impossible under the data (an unobserved count below its observed successes, say) needs `initial_params`, and says so instead of running.
 
 ```toml
 [sampler]
@@ -100,6 +111,20 @@ algorithm = "NUTS"
 variables = ["k"]
 algorithm = "PG"
 particles = 20
+```
+
+#### Slice sampling
+
+`algorithm = "Slice"` (juliabugs) runs SliceSampling's stepping-out slice sampler over the parameters in a random coordinate order, taking no gradient and so no `adtype`.
+It suits awkward geometry, and it is the closest thing to what classic BUGS reaches for on a continuous node with no conjugate update.
+`slice_width` is the initial window the sampler steps out from; too small costs extra evaluations per draw, too large costs wasted shrinking.
+It also works as a `Gibbs` block component, which is how to give the continuous parameters a gradient-free update while `MH` handles the discrete ones.
+
+```toml
+[sampler]
+algorithm = "Slice"
+draws = 1000
+slice_width = 1.0
 ```
 
 #### External samplers
