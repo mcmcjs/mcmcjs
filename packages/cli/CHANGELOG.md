@@ -1,5 +1,12 @@
 # mcmcjs
 
+## 0.31.3
+
+### Patch Changes
+
+- Updated dependencies [2074154]
+  - @mcmcjs/doodleppl@0.5.0
+
 ## 0.31.2
 
 ### Patch Changes
