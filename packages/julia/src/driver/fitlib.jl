@@ -427,17 +427,37 @@ function setup_distributed(chains, model_file)
     Distributed.remotecall_eval(Main, Distributed.procs(), :(Base.include(Main, $model_file)))
 end
 
+# The internals section: one scalar column per sampler statistic, as
+# (name, (iter, chain) -> value) pairs. An array-valued statistic (a slice
+# sampler reports a proposal count per coordinate) splits into name[i] columns
+# the way array parameters do, so nothing the sampler reported is dropped.
+function extra_columns(chn)
+    cols = Tuple{String,Function}[]
+    for e in FlexiChains.extras(chn)
+        m = chn[e]
+        name = string(Symbol(e))
+        if eltype(m) <: Union{Missing,Real}
+            push!(cols, (name, (i, c) -> m[i, c]))
+        elseif eltype(m) <: AbstractArray && eltype(eltype(m)) <: Union{Missing,Real}
+            for idx in eachindex(m[1, 1])
+                push!(cols, ("$name[$idx]", (i, c) -> m[i, c][idx]))
+            end
+        end
+    end
+    return cols
+end
+
 # FlexiChains-native wire writer. DimArray(chn) splits array-valued parameters
 # into scalar leaves (theta -> theta[1], theta[2]) in the (iter, chain, param)
-# orientation; Real-valued extras become the internals section.
+# orientation; the sampler's statistics become the internals section.
 function vnchain_to_wire(chn)
     da = DimensionalData.DimArray(chn)
     pnames = string.(collect(DimensionalData.lookup(da, :param)))
     arr = parent(da)
     nIter, nChains, nParams = size(arr)
 
-    extras = [e for e in FlexiChains.extras(chn) if eltype(chn[e]) <: Union{Missing,Real}]
-    enames = [string(Symbol(e)) for e in extras]
+    extras = extra_columns(chn)
+    enames = first.(extras)
     total = nParams + length(extras)
 
     flat = Vector{Union{Float64,Nothing}}(undef, nIter * total * nChains)
@@ -447,11 +467,10 @@ function vnchain_to_wire(chn)
     for c in 1:nChains, p in 1:nParams, i in 1:nIter
         flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(arr[i, c, p])
     end
-    for (k, e) in enumerate(extras)
-        m = chn[e]
+    for (k, (_, draw)) in enumerate(extras)
         p = nParams + k
         for c in 1:nChains, i in 1:nIter
-            flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(m[i, c])
+            flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(draw(i, c))
         end
     end
 
