@@ -21,21 +21,25 @@ import { resolveVersion } from "../src/versions";
  * The seeded end-to-end reference: a real Julia fit that loads a model plus
  * Stan-style JSON data, streams draw batches, reconstructs the final samples
  * from them, and cancels a separate run mid-flight. It drives actual Julia, so
- * it is opt-in (MCMC_E2E=1) and skips unless the pinned env is already
- * provisioned. Run it with: MCMC_E2E=1 pnpm -F @mcmcjs/julia test e2e
+ * it is opt-in: without MCMC_E2E=1 the whole file skips. Run it with:
+ * MCMC_E2E=1 pnpm -F @mcmcjs/julia test e2e
+ *
+ * With MCMC_E2E=1 an unusable environment is an error, not a skip. Changing the
+ * managed package set invalidates the provisioning sentinel, so a suite that
+ * skipped quietly would report green while testing nothing.
  */
 async function probe(): Promise<{ command: string; args: string[]; projectDir: string } | null> {
   if (process.env.MCMC_E2E !== "1") return null;
-  try {
-    const juliaup = await detectJuliaup();
-    if (!juliaup.found || !juliaup.path) return null;
-    const resolved = await resolveVersion(juliaup.path, DEFAULT_JULIA_CHANNEL, createRunner());
-    const projectDir = managedProjectDir(resolved.version);
-    if (!managedProjectReady(projectDir)) return null;
-    return { command: resolved.command, args: resolved.args, projectDir };
-  } catch {
-    return null;
+  const juliaup = await detectJuliaup();
+  if (!juliaup.found || !juliaup.path) throw new Error("MCMC_E2E=1 but juliaup was not found");
+  const resolved = await resolveVersion(juliaup.path, DEFAULT_JULIA_CHANNEL, createRunner());
+  const projectDir = managedProjectDir(resolved.version);
+  if (!managedProjectReady(projectDir)) {
+    throw new Error(
+      `MCMC_E2E=1 but the managed Julia project at ${projectDir} is not provisioned with the current package set; run a fit (or mcmc setup julia) first`,
+    );
   }
+  return { command: resolved.command, args: resolved.args, projectDir };
 }
 
 const ENV = await probe();
@@ -979,12 +983,15 @@ end
 
 // A two-component mixture: z indexes mu, so the log density is a function of a
 // discrete latent. Marginalization sums z out; the environment-based samplers
-// propose it instead. The priors are separated so labels cannot swap.
+// propose it instead. The component priors are tight (precision 4, so sd 0.5) and
+// far apart, which makes the label assignment identifiable: the mirrored solution
+// costs ~140 log units of prior, so no chain can settle in it and every sampler
+// here must agree on which component each observation belongs to.
 const MIXTURE_MODEL = `import JuliaBUGS
 
 const model_def = JuliaBUGS.@bugs begin
-    mu[1] ~ dnorm(-3, 1)
-    mu[2] ~ dnorm(3, 1)
+    mu[1] ~ dnorm(-3, 4)
+    mu[2] ~ dnorm(3, 4)
     for i in 1:N
         z[i] ~ dcat(w[1:2])
         y[i] ~ dnorm(mu[z[i]], 1)
@@ -1032,8 +1039,8 @@ d("julia e2e: juliabugs discrete latents through every sampler", () => {
 
   const nuts = (extra: Partial<ResolvedSpec["sampler"]> = {}): ResolvedSpec["sampler"] => ({
     algorithm: "NUTS",
-    draws: 200,
-    warmup: 200,
+    draws: 300,
+    warmup: 500,
     chains: 2,
     adapt_delta: 0.8,
     thin: 1,
