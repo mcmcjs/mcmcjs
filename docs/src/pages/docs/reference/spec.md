@@ -72,7 +72,7 @@ It does not combine with `MH` or `Gibbs`, which propose the discrete latents the
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `algorithm` | `"NUTS"`, `"HMC"`, `"HMCDA"`, `"MH"`, `"ESS"`, `"SMC"`, `"PG"`, `"Gibbs"`, `"External"`, `"Prior"` | `"NUTS"` | the sampler; stan supports NUTS only, juliabugs everything but `ESS`, `SMC`, `PG`, and `External` |
+| `algorithm` | `"NUTS"`, `"HMC"`, `"HMCDA"`, `"MH"`, `"ESS"`, `"SMC"`, `"PG"`, `"Slice"`, `"Gibbs"`, `"External"`, `"Prior"` | `"NUTS"` | the sampler; stan supports NUTS only, juliabugs everything but `ESS`, `SMC`, `PG`, and `External`, and `Slice` is juliabugs-only |
 | `draws` | positive integer | required | posterior draws per chain |
 | `warmup` | non-negative integer | `1000` | NUTS/HMCDA adaptation; burn-in discarded for MH and HMC |
 | `chains` | positive integer | `4` | number of chains |
@@ -81,6 +81,7 @@ It does not combine with `MH` or `Gibbs`, which propose the discrete latents the
 | `leapfrog_steps` | positive integer | required for HMC | leapfrog steps per proposal |
 | `lambda` | positive number | required for HMCDA | target simulation length |
 | `particles` | positive integer | required for PG | particle count |
+| `slice_width` | positive number | required for Slice | initial slice window width |
 | `blocks` | array of tables | required for Gibbs | one `[[sampler.blocks]]` per component; see below |
 | `thin` | positive integer | `1` | keep every thin-th draw |
 | `parallel` | `"serial"`, `"threads"`, `"distributed"` | `"serial"` | chain execution; threads share one Julia process, distributed starts one worker process per chain (Turing only, adds startup cost) |
@@ -108,6 +109,20 @@ algorithm = "NUTS"
 variables = ["k"]
 algorithm = "PG"
 particles = 20
+```
+
+#### Slice sampling
+
+`algorithm = "Slice"` (juliabugs) runs SliceSampling's stepping-out slice sampler over the parameters in a random coordinate order, taking no gradient and so no `adtype`.
+It suits awkward geometry, and it is the closest thing to what classic BUGS reaches for on a continuous node with no conjugate update.
+`slice_width` is the initial window the sampler steps out from; too small costs extra evaluations per draw, too large costs wasted shrinking.
+It also works as a `Gibbs` block component, which is how to give the continuous parameters a gradient-free update while `MH` handles the discrete ones.
+
+```toml
+[sampler]
+algorithm = "Slice"
+draws = 1000
+slice_width = 1.0
 ```
 
 #### External samplers

@@ -213,6 +213,22 @@ describe("SpecSchema", () => {
     expect(spec.sampler.initial_params).toEqual({ mu: 0.5, theta: [1, 2, 3] });
   });
 
+  it("takes Slice with a window width on juliabugs only, and never an adtype", () => {
+    const bugs = { ...VALID, backend: { id: "juliabugs" } };
+    const slice = { draws: 10, algorithm: "Slice", slice_width: 1.5 };
+    expect(SpecSchema.parse({ ...bugs, sampler: slice }).sampler.slice_width).toBe(1.5);
+    expect(() => SpecSchema.parse({ ...bugs, sampler: { draws: 10, algorithm: "Slice" } })).toThrow(
+      /Slice requires slice_width/,
+    );
+    expect(() => SpecSchema.parse({ ...bugs, sampler: { draws: 10, slice_width: 1 } })).toThrow(
+      /applies to Slice only/,
+    );
+    expect(() => SpecSchema.parse({ ...bugs, sampler: { ...slice, adtype: "mooncake" } })).toThrow(
+      /no gradient/,
+    );
+    expect(() => SpecSchema.parse({ ...VALID, sampler: slice })).toThrow(/through External/);
+  });
+
   it("accepts the juliabugs samplers, with an adtype and initial values", () => {
     const bugs = { ...VALID, backend: { id: "juliabugs" } };
     expect(SpecSchema.parse({ ...bugs, sampler: { draws: 10 } }).sampler.algorithm).toBe("NUTS");

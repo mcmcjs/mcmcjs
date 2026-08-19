@@ -81,7 +81,7 @@ export const TOOLS: ToolSpec[] = [
       algorithm: z
         .string()
         .optional()
-        .describe("NUTS | HMC | HMCDA | MH | ESS | SMC | PG | Gibbs | External | Prior"),
+        .describe("NUTS | HMC | HMCDA | MH | ESS | SMC | PG | Slice | Gibbs | External | Prior"),
       prior: z.boolean().optional().describe("draw from the prior instead of fitting"),
       refit: z.boolean().optional().describe("fit again even when nothing changed"),
       store,

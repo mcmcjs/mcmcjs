@@ -62,6 +62,7 @@ interface ParamRules {
   leapfrog_steps?: number;
   lambda?: number;
   particles?: number;
+  slice_width?: number;
 }
 
 /** Per-algorithm parameter rules, shared by the sampler and its Gibbs blocks. */
@@ -93,6 +94,13 @@ function samplerParamIssues(s: ParamRules): { path: string; message: string }[] 
   } else if (s.particles !== undefined) {
     issues.push({ path: "particles", message: "particles applies to PG only" });
   }
+  if (s.algorithm === "Slice") {
+    if (s.slice_width === undefined) {
+      issues.push({ path: "slice_width", message: "Slice requires slice_width" });
+    }
+  } else if (s.slice_width !== undefined) {
+    issues.push({ path: "slice_width", message: "slice_width applies to Slice only" });
+  }
   return issues;
 }
 
@@ -100,12 +108,13 @@ const GibbsBlock = z
   .object({
     /** Model variables this block updates, by base name. */
     variables: z.array(z.string().min(1)).min(1),
-    algorithm: z.enum(["NUTS", "HMC", "HMCDA", "MH", "PG", "ESS"]).default("NUTS"),
+    algorithm: z.enum(["NUTS", "HMC", "HMCDA", "MH", "PG", "ESS", "Slice"]).default("NUTS"),
     adapt_delta: z.number().gt(0).lt(1).default(0.8),
     step_size: z.number().positive().optional(),
     leapfrog_steps: z.number().int().positive().optional(),
     lambda: z.number().positive().optional(),
     particles: z.number().int().positive().optional(),
+    slice_width: z.number().positive().optional(),
   })
   .strict()
   .superRefine((b, ctx) => {
@@ -118,8 +127,8 @@ const GibbsBlock = z
 const ADTYPE_ALGORITHMS = new Set(["NUTS", "HMC", "HMCDA", "Gibbs", "External"]);
 
 /** What the juliabugs backend can run as its sampler, and as one Gibbs block. */
-const JULIABUGS_ALGORITHMS = new Set(["NUTS", "HMC", "HMCDA", "MH", "Gibbs", "Prior"]);
-const JULIABUGS_BLOCK_ALGORITHMS = new Set(["NUTS", "HMC", "HMCDA", "MH"]);
+const JULIABUGS_ALGORITHMS = new Set(["NUTS", "HMC", "HMCDA", "MH", "Slice", "Gibbs", "Prior"]);
+const JULIABUGS_BLOCK_ALGORITHMS = new Set(["NUTS", "HMC", "HMCDA", "MH", "Slice"]);
 
 /** JuliaBUGS samplers that propose in the evaluation environment, discrete latents included. */
 const ENV_ALGORITHMS = new Set(["MH", "Gibbs"]);
@@ -132,7 +141,19 @@ const Sampler = z
      * as MCMC_SAMPLER.
      */
     algorithm: z
-      .enum(["NUTS", "HMC", "HMCDA", "MH", "ESS", "SMC", "PG", "Gibbs", "External", "Prior"])
+      .enum([
+        "NUTS",
+        "HMC",
+        "HMCDA",
+        "MH",
+        "ESS",
+        "SMC",
+        "PG",
+        "Slice",
+        "Gibbs",
+        "External",
+        "Prior",
+      ])
       .default("NUTS"),
     draws: z.number().int().positive(),
     /** NUTS/HMCDA adaptation steps; burn-in discarded for the other samplers (SMC excepted). */
@@ -147,6 +168,8 @@ const Sampler = z
     lambda: z.number().positive().optional(),
     /** Particle count (PG only). */
     particles: z.number().int().positive().optional(),
+    /** Initial slice window width (Slice only). */
+    slice_width: z.number().positive().optional(),
     /** Gibbs blocks, one per [[sampler.blocks]] table (Gibbs only). */
     blocks: z.array(GibbsBlock).min(1).optional(),
     /** Keep every thin-th draw. */
@@ -301,11 +324,19 @@ export const SpecSchema = z
           "generated needs sampler.adtype = mooncake; the other backends cannot differentiate it",
         );
       }
-    } else if (s.model.evaluation_mode !== undefined) {
-      issue(
-        ["model", "evaluation_mode"],
-        `evaluation_mode is a JuliaBUGS concern; the ${s.backend.id} backend has no equivalent`,
-      );
+    } else {
+      if (s.model.evaluation_mode !== undefined) {
+        issue(
+          ["model", "evaluation_mode"],
+          `evaluation_mode is a JuliaBUGS concern; the ${s.backend.id} backend has no equivalent`,
+        );
+      }
+      if (s.backend.id === "turing" && algorithm === "Slice") {
+        issue(
+          ["sampler", "algorithm"],
+          "Slice is a juliabugs sampler; on turing reach SliceSampling through External",
+        );
+      }
     }
   });
 

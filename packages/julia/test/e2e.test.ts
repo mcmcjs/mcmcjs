@@ -1112,6 +1112,39 @@ d("julia e2e: juliabugs discrete latents through every sampler", () => {
     expect(pooledMean(samples, "z[1]")).toBe(1);
   }, 900_000);
 
+  it("samples the marginalized model with no gradient at all, through Slice", async () => {
+    const { result, outPath } = await fitMixture(
+      "mix_slice",
+      { ...nuts(), algorithm: "Slice", slice_width: 1.0 },
+      "marginalized",
+    );
+    expect(result.status).toBe("ok");
+
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect(pooledMean(samples, "mu[1]")).toBeCloseTo(-3.0, 0);
+    expect(pooledMean(samples, "mu[2]")).toBeCloseTo(3.0, 0);
+    expect(pooledMean(samples, "z[1]")).toBe(1);
+    // The slice sampler reports how many proposals each draw cost.
+    expect([...samples.sampleStats.keys()].some((k) => k.startsWith("num_proposals"))).toBe(true);
+  }, 900_000);
+
+  it("gives the continuous block a gradient-free Slice update inside Gibbs", async () => {
+    const { result, outPath } = await fitMixture("mix_gibbs_slice", {
+      ...nuts(),
+      algorithm: "Gibbs",
+      blocks: [
+        { variables: ["mu"], algorithm: "Slice", slice_width: 1.0, adapt_delta: 0.8 },
+        { variables: ["z"], algorithm: "MH", adapt_delta: 0.8 },
+      ],
+    });
+    expect(result.status).toBe("ok");
+
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect(pooledMean(samples, "mu[1]")).toBeCloseTo(-3.0, 0);
+    expect(pooledMean(samples, "mu[2]")).toBeCloseTo(3.0, 0);
+    expect(pooledMean(samples, "z[1]")).toBe(1);
+  }, 900_000);
+
   it("rejects a Gibbs map that does not cover every parameter", async () => {
     const { result } = await fitMixture("mix_gibbs_partial", {
       ...nuts(),
