@@ -1,5 +1,13 @@
 # mcmcjs
 
+## 0.32.1
+
+### Patch Changes
+
+- d8c976f: Depend on a version of `@mcmcjs/doodleppl` that actually exports `discreteLatentNames`: 0.32.0 imported it from the unreleased source, so an installed CLI failed at startup
+- Updated dependencies [d8c976f]
+  - @mcmcjs/doodleppl@0.7.0
+
 ## 0.32.0
 
 ### Minor Changes
