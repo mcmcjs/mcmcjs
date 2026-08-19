@@ -1,5 +1,11 @@
 # @mcmcjs/doodleppl
 
+## 0.7.0
+
+### Minor Changes
+
+- d8c976f: Export `discreteLatentNames` and `DISCRETE_DISTRIBUTIONS` from the package root and from `./core`, so a caller can ask which of a graph's variables are discrete latents without going through the Stan generator
+
 ## 0.6.0
 
 ### Minor Changes
