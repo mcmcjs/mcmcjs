@@ -1,6 +1,6 @@
 import { parseSamples } from "@mcmcjs/core";
 import { describe, expect, it } from "vitest";
-import { buildDiagnosticsReport, formatReportTable } from "../src/diagnose";
+import { buildDiagnosticsReport, formatReportHuman, formatReportTable } from "../src/diagnose";
 
 // A deterministic 4-chain x 64-draw, single-variable ("x") samples object.
 function makeSamples() {
@@ -149,5 +149,13 @@ describe("buildDiagnosticsReport with constant variables", () => {
   it("fails when every variable is constant, since nothing sampled", () => {
     const report = buildDiagnosticsReport(makeSamplesWithConstant(true));
     expect(report.converged).toBe(false);
+  });
+
+  it("says the sampler never moved when nothing but constants came back", () => {
+    const stuck = formatReportHuman(buildDiagnosticsReport(makeSamplesWithConstant(true)));
+    expect(stuck).toContain("never moved from its starting point");
+    // One constant beside a mixing variable is ordinary, not a stuck sampler.
+    const mixed = formatReportHuman(buildDiagnosticsReport(makeSamplesWithConstant()));
+    expect(mixed).not.toContain("never moved");
   });
 });
