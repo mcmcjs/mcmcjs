@@ -8,6 +8,7 @@ import {
 import type { GraphNode } from "../src/core/types";
 import {
   edge,
+  hmmElements,
   mixedDagElements,
   mixtureElements,
   nestedMixtureElements,
@@ -374,5 +375,54 @@ describe("marginalized Stan generation: nested plates", () => {
   it("recovers the latent as a matching multi-dimensional array", () => {
     expect(code).toContain("array[N, M] int z;");
     expect(code).toContain("z[i,j] = categorical_rng(softmax(z_lp));");
+  });
+});
+
+describe("marginalized Stan generation: chain latents", () => {
+  const code = generateStanModel(hmmElements());
+
+  it("declares the chain data and drops the states from parameters", () => {
+    expect(code).toContain("vector[K] pi0;");
+    expect(code).toContain("array[K] vector[K] P;");
+    expect(code).toMatch(/parameters \{\n {2}array\[K\] real mu;\n {2}real<lower=0> tau;\n\}/);
+    expect(code).not.toContain("WARNING");
+  });
+
+  it("emits a forward recursion carrying one table entry per state", () => {
+    expect(code).toContain("// marginalize the chain z by a forward recursion");
+    expect(code).toContain("vector[K] z_lp;");
+    expect(code).toContain("categorical_lpmf(z_val | pi0[1:K])");
+    expect(code).toContain("normal_lpdf(y[1] | mu[z_val], 1.0 / sqrt(tau))");
+    expect(code).toContain("for (t in 2:T) {");
+    expect(code).toContain("categorical_lpmf(z_val | P[z_prev, 1:K])");
+    expect(code).toContain("normal_lpdf(y[t] | mu[z_val], 1.0 / sqrt(tau))");
+    expect(code).toContain("z_lp = z_lp_next;");
+    expect(code).toContain("target += log_sum_exp(z_lp);");
+  });
+
+  it("leaves no empty plate loop behind for the consumed chain nodes", () => {
+    expect(code).not.toMatch(/for \(t in 2:T\) \{\n {2}\}/);
+    expect(code).not.toMatch(/z\[t\] ~ categorical/);
+  });
+
+  it("recovers the path by forward filtering and backward sampling", () => {
+    expect(code).toContain("array[T] int z;");
+    expect(code).toContain("array[T] vector[K] z_fwd;");
+    expect(code).toContain("z[T] = categorical_rng(softmax(z_fwd[T]));");
+    expect(code).toContain("int z_at = T - z_rev;");
+    expect(code).toContain("categorical_lpmf(z[z_at + 1] | P[z_prev, 1:K])");
+    expect(code).toContain("z[z_at] = categorical_rng(softmax(z_acc));");
+  });
+
+  it("falls back with the reason when the chain shape is unsupported", () => {
+    const twoStep = generateStanModel(
+      hmmElements().map((el) =>
+        el.type === "node" && el.id === "zt"
+          ? ({ ...el, param1: "P[z[t - 2], 1:K]" } as GraphNode)
+          : el,
+      ),
+    );
+    expect(twoStep).toContain("looks back 2 steps");
+    expect(twoStep).not.toContain("forward recursion");
   });
 });

@@ -101,6 +101,84 @@ export function mixedDagElements(): GraphElement[] {
   ];
 }
 
+/** Gaussian-emission HMM: z[1] ~ dcat(pi0); z[t] ~ dcat(P[z[t-1], 1:K]); y[s] ~ dnorm(mu[z[s]], tau). */
+export function hmmElements(): GraphElement[] {
+  return [
+    node({ id: "z1", name: "z", indices: "1", distribution: "dcat", param1: "pi0[1:K]" }),
+    node({
+      id: "plate_t",
+      name: "t plate",
+      nodeType: "plate",
+      loopVariable: "t",
+      loopRange: "2:T",
+    }),
+    node({
+      id: "zt",
+      name: "z",
+      parent: "plate_t",
+      indices: "t",
+      distribution: "dcat",
+      param1: "P[z[t - 1], 1:K]",
+    }),
+    node({
+      id: "plate_s",
+      name: "s plate",
+      nodeType: "plate",
+      loopVariable: "s",
+      loopRange: "1:T",
+    }),
+    node({
+      id: "y",
+      name: "y",
+      nodeType: "observed",
+      parent: "plate_s",
+      indices: "s",
+      distribution: "dnorm",
+      param1: "mu[z[s]]",
+      param2: "tau",
+    }),
+    node({
+      id: "plate_k",
+      name: "k plate",
+      nodeType: "plate",
+      loopVariable: "k",
+      loopRange: "1:K",
+    }),
+    node({
+      id: "mu",
+      name: "mu",
+      parent: "plate_k",
+      indices: "k",
+      distribution: "dnorm",
+      param1: "0",
+      param2: "0.01",
+    }),
+    node({ id: "tau", name: "tau", distribution: "dgamma", param1: "1", param2: "1" }),
+    edge("z1", "zt"),
+    edge("z1", "y"),
+    edge("zt", "y"),
+    edge("mu", "y"),
+    edge("tau", "y"),
+  ];
+}
+
+export const hmmData = {
+  T: 6,
+  K: 2,
+  y: [-1.4, 1.6, 1.2, -1.1, 1.9, -1.7],
+  pi0: [0.5, 0.5],
+  P: [
+    [0.9, 0.1],
+    [0.2, 0.8],
+  ],
+};
+
+export const hmmPoints = [
+  { mu: [-1.5, 1.5], tau: 4.0 },
+  { mu: [-0.9, 2.1], tau: 1.3 },
+  { mu: [-2.2, 0.7], tau: 6.5 },
+];
+
 /** Mixture over a nested plate: z[i,j] ~ dcat(w); y[i,j] ~ dnorm(mu[z[i,j]], 1). */
 export function nestedMixtureElements(): GraphElement[] {
   return [

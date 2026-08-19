@@ -22,6 +22,9 @@ import {
   chainDagData,
   chainDagElements,
   chainDagPoints,
+  hmmData,
+  hmmElements,
+  hmmPoints,
   mixedDagData,
   mixedDagElements,
   mixedDagPoints,
@@ -40,6 +43,8 @@ import {
   binMixZPosterior,
   chainDagJointPosterior,
   chainDagLogDensity,
+  hmmLogDensity,
+  hmmStatePosteriors,
   mixedDagJointPosterior,
   mixedDagLogDensity,
   mixtureLogDensity,
@@ -87,6 +92,7 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
   let chainBin: string;
   let binMixBin: string;
   let nestedBin: string;
+  let hmmBin: string;
   let partialBin: string;
   let partialData: Record<string, unknown>;
   let mixtureLp: LogProbResult[];
@@ -95,6 +101,7 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
   let chainLp: LogProbResult[];
   let binMixLp: LogProbResult[];
   let nestedLp: LogProbResult[];
+  let hmmLp: LogProbResult[];
 
   beforeAll(() => {
     mixtureBin = compileModel("mixture", generateStanModel(mixtureElements()));
@@ -103,6 +110,7 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
     chainBin = compileModel("chaindag", generateStanModel(chainDagElements()));
     binMixBin = compileModel("binmix", generateStanModel(binMixElements()));
     nestedBin = compileModel("nestedmix", generateStanModel(nestedMixtureElements()));
+    hmmBin = compileModel("hmm", generateStanModel(hmmElements()));
     partialBin = compileModel(
       "mixturepartial",
       generateStanModel(mixturePartialElements(), mixturePartialData),
@@ -119,6 +127,7 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
     chainLp = chainDagPoints.map((p) => logProb(chainBin, chainDagData, p));
     binMixLp = binMixPoints.map((p) => logProb(binMixBin, binMixData, p));
     nestedLp = nestedMixturePoints.map((p) => logProb(nestedBin, nestedMixtureData, p));
+    hmmLp = hmmPoints.map((p) => logProb(hmmBin, hmmData, p));
     partialLp = mixturePoints.map((p) => logProb(partialBin, partialData, p));
   }, 600_000);
 
@@ -169,6 +178,14 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
     const ref = pairwiseDiffs(
       nestedMixturePoints.map((p) => nestedMixtureLogDensity(nestedMixtureData, p)),
     );
+    stan.forEach((d, i) => {
+      expect(d).toBeCloseTo(ref[i] as number, 9);
+    });
+  });
+
+  it("HMM chain log density differences match the forward algorithm", () => {
+    const stan = pairwiseDiffs(hmmLp.map((r) => r.lp));
+    const ref = pairwiseDiffs(hmmPoints.map((p) => hmmLogDensity(hmmData, p)));
     stan.forEach((d, i) => {
       expect(d).toBeCloseTo(ref[i] as number, 9);
     });
@@ -241,6 +258,21 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
       julia.forEach((ref, i) => {
         for (const [name, g] of Object.entries(ref.gradient)) {
           expect(nestedLp[i]?.gradient[name]).toBeCloseTo(g, 8);
+        }
+      });
+    }, 120_000);
+
+    it("HMM chain values (up to a constant) and gradients agree", () => {
+      const julia = juliaReference("hmm", hmmData, hmmPoints, { tau: "log" });
+      expect(julia).toHaveLength(hmmPoints.length);
+      const stanDiffs = pairwiseDiffs(hmmLp.map((r) => r.lp));
+      const juliaDiffs = pairwiseDiffs(julia.map((r) => r.logdensity));
+      stanDiffs.forEach((d, i) => {
+        expect(d).toBeCloseTo(juliaDiffs[i] as number, 9);
+      });
+      julia.forEach((ref, i) => {
+        for (const [name, g] of Object.entries(ref.gradient)) {
+          expect(hmmLp[i]?.gradient[name]).toBeCloseTo(g, 8);
         }
       });
     }, 120_000);
@@ -374,6 +406,25 @@ describe.runIf(PARITY)("generated Stan matches the brute-force reference", () =>
         }
       }
     }, 120_000);
+
+    it("HMM chain: recovered state frequencies match the averaged smoothing marginals", () => {
+      const fit = sample(hmmBin, hmmData, { warmup: 500, draws: 2000, seed: 23 });
+      const mu1 = fit.columns.get("mu[1]") as number[];
+      const mu2 = fit.columns.get("mu[2]") as number[];
+      const tau = fit.columns.get("tau") as number[];
+      for (let t = 0; t < hmmData.T; t++) {
+        const z = fit.columns.get(`z[${t + 1}]`) as number[];
+        expect(z).toBeDefined();
+        let expected = 0;
+        let freq = 0;
+        for (let i = 0; i < z.length; i++) {
+          const p = { mu: [mu1[i] as number, mu2[i] as number], tau: tau[i] as number };
+          expected += (hmmStatePosteriors(hmmData, p)[t] as number[])[0] as number;
+          freq += (z[i] as number) === 1 ? 1 : 0;
+        }
+        expect(Math.abs(freq / z.length - expected / z.length)).toBeLessThan(0.05);
+      }
+    }, 180_000);
 
     it("binomial mixture: per-observation z frequencies match the averaged exact posterior", () => {
       const fit = sample(binMixBin, binMixData, { warmup: 500, draws: 1500, seed: 5 });
