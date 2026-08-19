@@ -1,5 +1,15 @@
 # mcmcjs-report
 
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies [2ac2ead]
+- Updated dependencies [2ac2ead]
+- Updated dependencies [2ac2ead]
+  - @mcmcjs/plots@0.8.2
+  - @mcmcjs/core@0.12.0
+
 ## 0.0.7
 
 ### Patch Changes

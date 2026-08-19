@@ -1,5 +1,19 @@
 # @mcmcjs/julia
 
+## 0.15.0
+
+### Minor Changes
+
+- 2ac2ead: Run JuliaBUGS models through every sampler JuliaBUGS offers (HMC, HMCDA, single-site MH, and Gibbs with per-block components), honour a spec's AD backend, initial values, and evaluation mode over whatever the model file chose, and resolve the shipped Julia environment against JuliaBUGS 0.16
+- 2ac2ead: Add the derivative-free Slice sampler for JuliaBUGS models, whole or as a Gibbs block component, with `slice_width` as its initial window
+
+### Patch Changes
+
+- 2ac2ead: Record a sampler statistic that is array-valued (a slice sampler's proposal count per coordinate) as `name[i]` columns instead of dropping it from the samples file
+- Updated dependencies [2ac2ead]
+- Updated dependencies [2ac2ead]
+  - @mcmcjs/core@0.12.0
+
 ## 0.14.1
 
 ### Patch Changes
