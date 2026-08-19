@@ -1,5 +1,16 @@
 # doodleppl
 
+## 0.8.0
+
+### Minor Changes
+
+- 22e7013: Bundle a hidden Markov model example whose Stan export marginalizes the state path.
+
+### Patch Changes
+
+- Updated dependencies [22e7013]
+  - @mcmcjs/doodleppl@0.6.0
+
 ## 0.7.3
 
 ### Patch Changes
