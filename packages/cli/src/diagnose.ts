@@ -139,7 +139,13 @@ export function formatReportHuman(report: DiagnosticsReport): string {
   }
   const verdict = report.converged ? pc.green("converged") : pc.red("not converged");
   const criteria = `R-hat <= ${report.thresholds.rhatMax}, ESS >= ${report.thresholds.essMin}${report.divergences !== null ? `, divergences <= ${report.maxDivergences}` : ""}`;
-  return `${out}${verdict} (${criteria})\n`;
+  out += `${verdict} (${criteria})\n`;
+  // A verdict of "not converged" on a table of n/a reads as a diagnostics problem;
+  // name what actually happened, since no threshold was even testable.
+  if (report.variables.length > 0 && report.variables.every(isConstant)) {
+    out += "every variable is constant: the sampler never moved from its starting point\n";
+  }
+  return out;
 }
 
 interface DiagnoseCliOptions {
