@@ -103,10 +103,12 @@ describe("formatReportTable", () => {
   });
 });
 
-// Samples with a well-mixed variable "x" plus a constant integer column "z",
-// the shape a fit produces when a recovered discrete latent is concentrated on
-// one value.
-function makeSamplesWithConstant(constantOnly = false) {
+// Samples with a well-mixed variable "x" plus an integer column "z", the shape a
+// fit produces when a recovered discrete latent concentrates on one value. With
+// `stray`, one draw of z in one chain differs, which is what a real recovered
+// latent usually looks like: the pooled column varies, yet R-hat and ESS stay
+// undefined because some chain never moved.
+function makeSamplesWithConstant(constantOnly = false, stray = false) {
   const nChains = 4;
   const nDraws = 256;
   let s = 987654321 >>> 0;
@@ -117,7 +119,8 @@ function makeSamplesWithConstant(constantOnly = false) {
     for (let p = 0; p < vars.length; p++) {
       for (let i = 0; i < nDraws; i++) {
         s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
-        valueFlat[i + p * nDraws + c * nDraws * vars.length] = vars[p] === "z" ? 2 : s / 4294967296;
+        const z = stray && c === 0 && i === 7 ? 1 : 2;
+        valueFlat[i + p * nDraws + c * nDraws * vars.length] = vars[p] === "z" ? z : s / 4294967296;
       }
     }
   }
@@ -125,6 +128,16 @@ function makeSamplesWithConstant(constantOnly = false) {
     size: [nDraws, vars.length, nChains],
     value_flat: valueFlat,
     parameters: vars,
+    name_map: { internals: [] },
+  });
+}
+
+/** Two chains of one variable whose draws are all null, i.e. NaN once parsed. */
+function makeUnusableSamples() {
+  return parseSamples({
+    size: [4, 1, 2],
+    value_flat: [null, null, null, null, null, null, null, null],
+    parameters: ["x"],
     name_map: { internals: [] },
   });
 }
@@ -146,16 +159,34 @@ describe("buildDiagnosticsReport with constant variables", () => {
     expect(report.converged).toBe(false);
   });
 
+  it("treats a latent that moves once in one chain as neutral too", () => {
+    const report = buildDiagnosticsReport(makeSamplesWithConstant(false, true));
+    const z = report.variables.find((v) => v.variable === "z");
+    // The pooled column varies, so a std-of-zero test would miss it, but R-hat is
+    // undefined all the same because the other chains never moved.
+    expect(z?.std).toBeGreaterThan(0);
+    expect(Number.isFinite(z?.rhat ?? Number.NaN)).toBe(false);
+    expect(report.converged).toBe(true);
+  });
+
+  it("fails on a variable whose draws are unusable, not just undiagnosable", () => {
+    const report = buildDiagnosticsReport(makeUnusableSamples());
+    // NaN draws leave R-hat undefined too, but they poison the mean, which is how
+    // corruption is told apart from a variable that simply does not move.
+    expect(Number.isFinite(report.variables[0]?.mean ?? 0)).toBe(false);
+    expect(report.converged).toBe(false);
+  });
+
   it("fails when every variable is constant, since nothing sampled", () => {
     const report = buildDiagnosticsReport(makeSamplesWithConstant(true));
     expect(report.converged).toBe(false);
   });
 
-  it("says the sampler never moved when nothing but constants came back", () => {
+  it("says nothing was testable when no variable varies in every chain", () => {
     const stuck = formatReportHuman(buildDiagnosticsReport(makeSamplesWithConstant(true)));
-    expect(stuck).toContain("never moved from its starting point");
-    // One constant beside a mixing variable is ordinary, not a stuck sampler.
+    expect(stuck).toContain("nothing was testable");
+    // One such variable beside a mixing one is ordinary, not a stuck sampler.
     const mixed = formatReportHuman(buildDiagnosticsReport(makeSamplesWithConstant()));
-    expect(mixed).not.toContain("never moved");
+    expect(mixed).not.toContain("nothing was testable");
   });
 });

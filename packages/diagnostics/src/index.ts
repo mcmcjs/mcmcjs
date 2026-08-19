@@ -4,8 +4,8 @@ export {
   countDivergences,
   DEFAULT_THRESHOLDS,
   diagnoseChains,
-  isConstant,
   isConverged,
+  isDegenerate,
   type VariableDiagnostics,
 } from "./diagnose";
 export {

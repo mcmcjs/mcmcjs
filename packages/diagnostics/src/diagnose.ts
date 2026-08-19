@@ -41,13 +41,18 @@ export function diagnoseChains(chains: Float64Array[], credMass = 0.94): Variabl
 }
 
 /**
- * Whether a variable took a single value in every draw, which leaves R-hat and
- * ESS undefined: they divide by a within-chain variance of zero. A recovered
- * discrete latent whose posterior is concentrated on one value is the usual
- * case, and it carries no evidence either way about convergence.
+ * Whether a variable's diagnostics are undefined because it does not vary, as
+ * opposed to because its draws are unusable. R-hat and ESS are NaN as soon as
+ * any one chain is effectively constant (`_isFiniteAndVaries`, following Stan),
+ * so a recovered discrete latent that sits on one value in one chain and moves
+ * once in another lands here too, not only an everywhere-constant one. Such a
+ * variable carries no evidence either way about convergence.
+ *
+ * The mean and standard deviation separate the two cases: a non-finite draw
+ * poisons them, while degeneracy leaves them perfectly finite.
  */
-export function isConstant(d: VariableDiagnostics): boolean {
-  return d.std === 0 && !Number.isFinite(d.rhat);
+export function isDegenerate(d: VariableDiagnostics): boolean {
+  return Number.isFinite(d.mean) && Number.isFinite(d.std) && !Number.isFinite(d.rhat);
 }
 
 /** Whether a variable's diagnostics clear the convergence thresholds. */
