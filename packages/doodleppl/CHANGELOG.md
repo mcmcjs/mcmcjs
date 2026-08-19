@@ -1,5 +1,11 @@
 # @mcmcjs/doodleppl
 
+## 0.5.0
+
+### Minor Changes
+
+- 2074154: Validate index-range overlap between nodes that share a variable name, mirroring the BUGS rule that several statements may define one variable only over disjoint ranges; seeded recursions such as a pinned first element beside a plate over 2:N stay valid.
+
 ## 0.4.0
 
 ### Minor Changes
