@@ -106,7 +106,14 @@ export function managedProjectReady(
   return existsSync(join(dir, "Project.toml")) && provisioned(dir, pins);
 }
 
-/** The `Pkg.add` argument: a PackageSpec per managed package, version-pinned where requested. */
+/**
+ * The `Pkg.add` argument: a PackageSpec per managed package, version-pinned where
+ * requested. Unpinned packages resolve to the newest compatible version, which is
+ * what mcmcjs needs: a `version` here is an exact range, not a floor, so pinning
+ * a minimum is not expressible. Features mcmcjs relies on (JuliaBUGS
+ * auto-marginalization, from 0.12) therefore assume an unpinned resolve; an
+ * explicit pin to something older fails loudly in the generated model file.
+ */
 function packageSpecsCode(pins?: PackagePins): string {
   const specs = PACKAGES.map((name) => {
     const version = pins?.[name];

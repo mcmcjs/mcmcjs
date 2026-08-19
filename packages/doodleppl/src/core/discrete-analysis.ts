@@ -1006,6 +1006,21 @@ function dedupe(nodes: GraphNode[]): GraphNode[] {
   });
 }
 
+/**
+ * Names of unobserved stochastic nodes with a discrete distribution, whatever
+ * their structure. This is the target-agnostic question "does this graph need
+ * marginalization or a discrete sampler at all", as opposed to the narrower
+ * question of which latents this package's Stan generator can sum out.
+ */
+export function discreteLatentNames(elements: GraphElement[]): string[] {
+  const names = new Set<string>();
+  for (const el of elements) {
+    if (el.type !== "node" || el.nodeType !== "stochastic") continue;
+    if (el.distribution && DISCRETE_DISTRIBUTIONS.has(el.distribution)) names.add(el.name);
+  }
+  return [...names];
+}
+
 /** Base names of latents that the marginalized Stan program no longer declares as parameters. */
 export function marginalizedLatentNames(
   elements: GraphElement[],
