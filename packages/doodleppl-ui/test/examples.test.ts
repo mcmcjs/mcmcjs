@@ -40,6 +40,17 @@ describe("bundled examples", () => {
     expect(code).not.toContain("WARNING");
   });
 
+  it("HMM example marginalizes its state path with a forward recursion", () => {
+    const model = parseUnifiedModel(readFileSync(join(EXAMPLES, "hmm.json"), "utf8"));
+    const elements = getElements(model);
+    const { data } = parseModelData(model);
+    expect(validateGraph(elements, data)).toEqual([]);
+    const code = generateStanModel(elements);
+    expect(code).toContain("// marginalize the chain z by a forward recursion");
+    expect(code).toContain("z[T] = categorical_rng(softmax(z_fwd[T]));");
+    expect(code).not.toContain("WARNING");
+  });
+
   it("mixed DAG example eliminates all three discrete latents in the Stan output", () => {
     const model = parseUnifiedModel(readFileSync(join(EXAMPLES, "mixed-dag.json"), "utf8"));
     const elements = getElements(model);

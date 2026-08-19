@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeDiscreteLatents, marginalizedLatentNames } from "../src/core/discrete-analysis";
 import { buildTopologicalOrder } from "../src/core/topo-sort";
 import type { GraphEdge, GraphElement, GraphNode } from "../src/core/types";
-import { nestedMixtureElements } from "./helpers/marginalization-fixtures";
+import { hmmElements, nestedMixtureElements } from "./helpers/marginalization-fixtures";
 
 const node = (n: Partial<GraphNode> & { id: string; name: string }): GraphElement =>
   ({ type: "node", nodeType: "stochastic", ...n }) as GraphNode;
@@ -744,5 +744,55 @@ describe("analyzeDiscreteLatents: nested plates", () => {
     const analysis = analyze(elements);
     expect(analysis.latents[0]?.tier).toBe("unsupported");
     expect(analysis.latents[0]?.reason).toContain("outside its plate");
+  });
+});
+
+describe("analyzeDiscreteLatents: chain tier", () => {
+  it("upgrades a seeded recursion to a chain with its emission", () => {
+    const analysis = analyze(hmmElements());
+    const tiers = Object.fromEntries(analysis.latents.map((l) => [l.node.id, l.tier]));
+    expect(tiers).toEqual({ z1: "chain", zt: "chain" });
+    expect(analysis.chainPlans).toHaveLength(1);
+    const plan = analysis.chainPlans[0];
+    expect(plan?.name).toBe("z");
+    expect(plan?.first).toBe(1);
+    expect(plan?.upper).toBe("T");
+    expect(plan?.support).toEqual({ size: "K", lo: 1 });
+    expect(plan?.emissions.map((em) => [em.node.id, em.loopVar, em.from])).toEqual([["y", "s", 1]]);
+    expect([...analysis.consumedFactorIds].sort()).toEqual(["y", "z1", "zt"]);
+  });
+
+  it("resolves the support of a transition indexed by the previous state", () => {
+    const analysis = analyze(hmmElements());
+    expect(analysis.latents.every((l) => l.support?.size === "K")).toBe(true);
+  });
+
+  it("demotes a chain that looks back more than one step", () => {
+    const elements = hmmElements().map((el) =>
+      el.type === "node" && el.id === "zt"
+        ? ({ ...el, param1: "P[z[t - 2], 1:K]" } as GraphNode)
+        : el,
+    );
+    const analysis = analyze(elements);
+    expect(analysis.chainPlans).toHaveLength(0);
+    expect(analysis.latents.some((l) => l.reason?.includes("looks back 2 steps"))).toBe(true);
+  });
+
+  it("demotes a chain whose seed index does not meet the plate", () => {
+    const elements = hmmElements().map((el) =>
+      el.type === "node" && el.id === "plate_t" ? ({ ...el, loopRange: "3:T" } as GraphNode) : el,
+    );
+    const analysis = analyze(elements);
+    expect(analysis.chainPlans).toHaveLength(0);
+    expect(analysis.latents.some((l) => l.reason?.includes("seeded at 1"))).toBe(true);
+  });
+
+  it("demotes a chain whose emission spans a different range", () => {
+    const elements = hmmElements().map((el) =>
+      el.type === "node" && el.id === "plate_s" ? ({ ...el, loopRange: "1:N" } as GraphNode) : el,
+    );
+    const analysis = analyze(elements);
+    expect(analysis.chainPlans).toHaveLength(0);
+    expect(analysis.latents.some((l) => l.reason?.includes("same range"))).toBe(true);
   });
 });

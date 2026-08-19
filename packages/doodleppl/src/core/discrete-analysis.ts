@@ -27,7 +27,7 @@ export interface SupportInfo {
   lo: number;
 }
 
-export type LatentTier = "iid-plate" | "scalar-dag" | "unsupported";
+export type LatentTier = "iid-plate" | "scalar-dag" | "chain" | "unsupported";
 
 export interface DiscreteLatent {
   node: GraphNode;
@@ -65,6 +65,39 @@ export interface ScalarElimStep {
   scopeAfter: GraphNode[];
 }
 
+/** How an emission factor is indexed in time, so it can be rendered at a given step. */
+export interface ChainEmission {
+  node: GraphNode;
+  /** Loop variable to replace with the current time, when the factor sits in a plate. */
+  loopVar: string | null;
+  /** Fixed time this factor covers, when it is indexed by a literal. */
+  literalTime: number | null;
+  /** First time step this factor covers. */
+  from: number;
+}
+
+/**
+ * Marginalization plan for a chain: one variable seeded at `first` and defined
+ * recursively over a plate, whose frontier is the single previous state, so the
+ * enumeration collapses to a forward recursion over a table of `support` entries.
+ */
+export interface ChainPlan {
+  name: string;
+  /** The seeding node, e.g. z[1]. */
+  init: GraphNode;
+  /** The recursive node, e.g. z[t] over 2:T, referencing z[t - 1]. */
+  transition: GraphNode;
+  plate: GraphNode;
+  loopVar: string;
+  /** Upper bound of the chain, e.g. "T". */
+  upper: string;
+  /** Index the chain starts at. */
+  first: number;
+  support: SupportInfo;
+  emissions: ChainEmission[];
+  inlineDets: GraphNode[];
+}
+
 export interface ScalarDagPlan {
   /** Latents in topological order (the recovery sampling order). */
   latents: GraphNode[];
@@ -78,6 +111,7 @@ export interface ScalarDagPlan {
 export interface DiscreteAnalysis {
   latents: DiscreteLatent[];
   platePlans: PlatePlan[];
+  chainPlans: ChainPlan[];
   scalarPlan: ScalarDagPlan | null;
   /** Stochastic node ids whose density statement is emitted by a marginalization block. */
   consumedFactorIds: Set<string>;
@@ -198,6 +232,38 @@ function detsEnRoute(node: GraphNode, ctx: Ctx, latentIds: Set<string>): GraphNo
   return dets;
 }
 
+/** Split on commas outside brackets, so `z[t - 1], 1:K` yields two parts. */
+function splitTopLevelCommas(text: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of text) {
+    if (ch === "[") depth++;
+    if (ch === "]") depth--;
+    if (ch === "," && depth === 0) {
+      parts.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  parts.push(current.trim());
+  return parts;
+}
+
+/** Parse `name[subscripts]`, tolerating nested brackets inside the subscripts. */
+function parseIndexedRef(text: string): { base: string; subs: string[] } | null {
+  const m = text.match(/^([A-Za-z_][A-Za-z0-9_.]*)\s*\[(.*)\]$/s);
+  if (!m) return null;
+  let depth = 0;
+  for (const ch of m[2] as string) {
+    if (ch === "[") depth++;
+    else if (ch === "]") depth--;
+    if (depth < 0) return null;
+  }
+  return depth === 0 ? { base: m[1] as string, subs: splitTopLevelCommas(m[2] as string) } : null;
+}
+
 function resolveSupport(node: GraphNode, ctx: Ctx): SupportInfo | null {
   if (node.distribution === "dbern") return { size: "2", lo: 0 };
   if (node.distribution === "dbin") {
@@ -214,9 +280,9 @@ function resolveSupport(node: GraphNode, ctx: Ctx): SupportInfo | null {
   // dcat: the support size is the length of the probability vector parameter
   const raw = node.param1 ? String(node.param1).trim() : "";
   if (!raw) return null;
-  const idxMatch = raw.match(/^([A-Za-z_][A-Za-z0-9_.]*)\s*\[([^\]]*)\]$/);
+  const idxMatch = parseIndexedRef(raw);
   if (idxMatch) {
-    const subs = (idxMatch[2] as string).split(",").map((s) => s.trim());
+    const subs = idxMatch.subs;
     const last = subs[subs.length - 1] ?? "";
     const range = last.match(/^(\S+)\s*:\s*(\S+)$/);
     if (range) {
@@ -231,7 +297,7 @@ function resolveSupport(node: GraphNode, ctx: Ctx): SupportInfo | null {
       return null;
     }
     if (last === "" || last === ":") {
-      return resolveSupportFromRef(idxMatch[1] as string, ctx);
+      return resolveSupportFromRef(idxMatch.base, ctx);
     }
     return null;
   }
@@ -283,6 +349,17 @@ const normalizeIndices = (indices: string | undefined): string =>
     .split(",")
     .map((s) => s.trim())
     .join(",");
+
+/** A node's index expressions, taken from `indices` or from brackets in its name. */
+function nodeIndexList(node: GraphNode): string[] {
+  const declared = (node.indices ?? "").trim();
+  const inName = node.name.match(/\[([^\]]*)\]/);
+  const raw = declared !== "" ? declared : (inName?.[1] ?? "");
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s !== "");
+}
 
 /** Whether any expression of `node` references `name[...loopVar +/- ...]`. */
 function hasOffsetRef(node: GraphNode, name: string, loopVar: string): boolean {
@@ -375,6 +452,167 @@ function scalarEliminationOrder(
   return order;
 }
 
+/** The offset in a self-reference like `z[t - 1]`, or null when there is none. */
+function selfRefOffset(node: GraphNode, name: string, loopVar: string): number | null {
+  const re = new RegExp(
+    `(?<![A-Za-z0-9_])${escapeRe(name)}\\s*\\[\\s*${escapeRe(loopVar)}\\s*-\\s*(\\d+)\\s*\\]`,
+  );
+  for (const expr of nodeExprs(node)) {
+    const m = expr.match(re);
+    if (m) return Number(m[1]);
+  }
+  return null;
+}
+
+function plateBounds(plate: GraphNode): { lo: string; hi: string } | null {
+  const parts = (plate.loopRange || "1:N").split(":").map((s) => s.trim());
+  return parts.length === 2 ? { lo: parts[0] as string, hi: parts[1] as string } : null;
+}
+
+/**
+ * Detect a chain: one variable seeded at a literal index and defined recursively
+ * one step back over a plate starting at the next index. Returns the plan, or a
+ * reason the pair looks like a chain but cannot be handled.
+ */
+function detectChain(
+  group: DiscreteLatent[],
+  ctx: Ctx,
+  candidateIds: Set<string>,
+  canTranslate: (dist: string) => boolean,
+): { plan: ChainPlan } | { reason: string } | null {
+  if (group.length !== 2) return null;
+  const inPlate = group.filter((l) => plateOf(l.node, ctx) !== undefined);
+  const seeds = group.filter((l) => plateOf(l.node, ctx) === undefined);
+  if (inPlate.length !== 1 || seeds.length !== 1) return null;
+
+  const transition = inPlate[0] as DiscreteLatent;
+  const init = seeds[0] as DiscreteLatent;
+  const plate = plateOf(transition.node, ctx) as GraphNode;
+  const loopVar = loopVarOf(plate);
+  const offset = selfRefOffset(transition.node, transition.node.name, loopVar);
+  if (offset === null) return null;
+
+  const name = transition.node.name;
+  const bounds = plateBounds(plate);
+  const firstIndex = nodeIndexList(init.node);
+  const first = Number(firstIndex[0]);
+  if (
+    !bounds ||
+    firstIndex.length !== 1 ||
+    !Number.isInteger(first) ||
+    normalizeIndices(transition.node.indices) !== loopVar
+  ) {
+    return { reason: `'${name}' is a chain in a shape the marginalizer does not handle` };
+  }
+  if (offset !== 1) {
+    return { reason: `'${name}' looks back ${offset} steps; only one step is handled` };
+  }
+  if (Number(bounds.lo) !== first + 1) {
+    return {
+      reason: `'${name}' is seeded at ${first} but its plate starts at ${bounds.lo}`,
+    };
+  }
+  if (!init.support || !transition.support) {
+    return { reason: `support size of '${name}' could not be resolved from its parameters` };
+  }
+  if (init.support.size !== transition.support.size || init.support.lo !== transition.support.lo) {
+    return { reason: `'${name}' has different support in its seed and its recursion` };
+  }
+  for (const l of group) {
+    const n = l.node;
+    if (n.censorLower || n.censorUpper || n.equation?.trim()) {
+      return { reason: `'${name}' has censoring or a data transform` };
+    }
+    if (!canTranslate(n.distribution ?? "")) {
+      return { reason: `the prior of '${name}' has no translatable distribution` };
+    }
+  }
+  const collision = helperNameCollision(name, ctx);
+  if (collision) {
+    return { reason: `marginalizing '${name}' would collide with the variable '${collision}'` };
+  }
+
+  // Factors reading either chain node become emissions, each renderable at one time step.
+  const chainIds = new Set(group.map((l) => l.node.id));
+  const emissions: ChainEmission[] = [];
+  for (const node of ctx.nodes) {
+    if (chainIds.has(node.id)) continue;
+    if (node.nodeType !== "stochastic" && node.nodeType !== "observed") continue;
+    const readsChain = [...(discreteScope(node, ctx, chainIds) ?? [])].length > 0;
+    if (!readsChain) continue;
+    if (node.censorLower || node.censorUpper || node.equation?.trim()) {
+      return { reason: `factor '${node.name}' of '${name}' has censoring or a data transform` };
+    }
+    const dist = node.distribution ?? "";
+    if (dist === "" || dist === "dflat" || !canTranslate(dist) || dist === "dmulti") {
+      return { reason: `factor '${node.name}' of '${name}' has no translatable distribution` };
+    }
+    if (candidateIds.has(node.id)) {
+      return { reason: `factor '${node.name}' of '${name}' is itself a discrete latent` };
+    }
+    const others = [...discreteScope(node, ctx, candidateIds)].filter((id) => !chainIds.has(id));
+    if (others.length > 0) {
+      return { reason: `factor '${node.name}' reads '${name}' and another discrete latent` };
+    }
+
+    const factorPlate = plateOf(node, ctx);
+    const indices = nodeIndexList(node);
+    if (factorPlate === undefined && indices.length === 1 && /^\d+$/.test(indices[0] as string)) {
+      const time = Number(indices[0]);
+      if (time !== first) {
+        return { reason: `factor '${node.name}' reads '${name}' at index ${time}, not the seed` };
+      }
+      if (!referencesAreSubstitutable(nodeExprs(node), name, String(time))) {
+        return { reason: `factor '${node.name}' reads '${name}' at another index` };
+      }
+      emissions.push({ node, loopVar: null, literalTime: time, from: time });
+      continue;
+    }
+    if (factorPlate === undefined || plateOf(factorPlate, ctx) !== undefined) {
+      return { reason: `factor '${node.name}' of '${name}' is not indexed by the chain` };
+    }
+    const fb = plateBounds(factorPlate);
+    const fLoop = loopVarOf(factorPlate);
+    if (!fb || fb.hi !== bounds.hi || indices.length !== 1 || indices[0] !== fLoop) {
+      return { reason: `factor '${node.name}' is not indexed over the same range as '${name}'` };
+    }
+    if (!referencesAreSubstitutable(nodeExprs(node), name, fLoop)) {
+      return { reason: `factor '${node.name}' reads '${name}' at a shifted index` };
+    }
+    emissions.push({ node, loopVar: fLoop, literalTime: null, from: Number(fb.lo) });
+  }
+
+  if (emissions.length === 0) {
+    return { reason: `'${name}' has no factors reading it; marginalizing it would be a no-op` };
+  }
+  // Deterministic carriers are not substituted inside the recursion yet.
+  const dets = dedupe(
+    [...emissions.map((em) => em.node), ...group.map((l) => l.node)].flatMap((n) =>
+      detsEnRoute(n, ctx, chainIds),
+    ),
+  );
+  if (dets.length > 0) {
+    return {
+      reason: `'${name}' reaches a factor through the deterministic node '${(dets[0] as GraphNode).name}'`,
+    };
+  }
+
+  return {
+    plan: {
+      name,
+      init: init.node,
+      transition: transition.node,
+      plate,
+      loopVar,
+      upper: bounds.hi,
+      first,
+      support: transition.support,
+      emissions,
+      inlineDets: [],
+    },
+  };
+}
+
 /** Analyze discrete latents in a graph and build marginalization plans. */
 export function analyzeDiscreteLatents(
   elements: GraphElement[],
@@ -427,18 +665,19 @@ export function analyzeDiscreteLatents(
       });
       continue;
     }
+    const support = resolveSupport(latent, ctx);
     const enclosing = platesOf(latent, ctx);
+    // Keep the support: the chain pass needs it to upgrade this node.
     if (enclosing.some((p) => hasOffsetRef(latent, latent.name, loopVarOf(p)))) {
       latents.push({
         node: latent,
         tier: "unsupported",
-        support: null,
+        support,
         partial,
         reason: `'${latent.name}' depends on itself across plate iterations (chain structure)`,
       });
       continue;
     }
-    const support = resolveSupport(latent, ctx);
     if (!support) {
       latents.push({
         node: latent,
@@ -452,6 +691,28 @@ export function analyzeDiscreteLatents(
     latents.push({ node: latent, tier: plate ? "iid-plate" : "scalar-dag", support, partial });
   }
 
+  // Chain pass: a variable seeded at one index and recursive over a plate is a
+  // chain, so upgrade both nodes ahead of the per-latent structural checks.
+  const chainPlans: ChainPlan[] = [];
+  const byName = new Map<string, DiscreteLatent[]>();
+  for (const entry of latents) {
+    byName.set(entry.node.name, [...(byName.get(entry.node.name) ?? []), entry]);
+  }
+  for (const group of byName.values()) {
+    const outcome = detectChain(group, ctx, candidateIds, canTranslate);
+    if (outcome === null) continue;
+    for (const entry of group) {
+      if ("plan" in outcome) {
+        entry.tier = "chain";
+        entry.reason = undefined;
+      } else {
+        entry.tier = "unsupported";
+        entry.reason = outcome.reason;
+      }
+    }
+    if ("plan" in outcome) chainPlans.push(outcome.plan);
+  }
+
   // Second pass: validate structural constraints, demoting until stable so that
   // a demoted latent invalidates any latent sharing structure with it.
   const byId = new Map(latents.map((l) => [l.node.id, l]));
@@ -461,7 +722,7 @@ export function analyzeDiscreteLatents(
   while (changed) {
     changed = false;
     for (const entry of latents) {
-      if (entry.tier === "unsupported") continue;
+      if (entry.tier === "unsupported" || entry.tier === "chain") continue;
       const fail = validateLatent(
         entry,
         factorsOf(entry.node.id),
@@ -479,6 +740,11 @@ export function analyzeDiscreteLatents(
       }
     }
   }
+
+  // A chain demoted after detection (its group failed elsewhere) drops its plan.
+  const survivingChains = chainPlans.filter(
+    (plan) => byId.get(plan.transition.id)?.tier === "chain",
+  );
 
   // Build plans from the surviving latents.
   const consumedFactorIds = new Set<string>();
@@ -506,6 +772,12 @@ export function analyzeDiscreteLatents(
     consumedFactorIds.add(plan.latent.id);
     for (const f of plan.factors) consumedFactorIds.add(f.id);
     for (const d of plan.inlineDets) inlinedDetIds.add(d.id);
+  }
+
+  for (const plan of survivingChains) {
+    consumedFactorIds.add(plan.init.id);
+    consumedFactorIds.add(plan.transition.id);
+    for (const em of plan.emissions) consumedFactorIds.add(em.node.id);
   }
 
   // Scalar tier: bucket variable elimination in reverse marginalization order.
@@ -590,7 +862,15 @@ export function analyzeDiscreteLatents(
     }
   }
 
-  return { latents, platePlans, scalarPlan, consumedFactorIds, inlinedDetIds, issues };
+  return {
+    latents,
+    platePlans,
+    chainPlans: survivingChains,
+    scalarPlan,
+    consumedFactorIds,
+    inlinedDetIds,
+    issues,
+  };
 }
 
 /** Returns a demotion reason, or null when the latent's structure is marginalizable. */

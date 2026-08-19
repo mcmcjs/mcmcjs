@@ -7,6 +7,7 @@
 // are emitted as explanatory comments.
 import {
   analyzeDiscreteLatents,
+  type ChainPlan,
   DISCRETE_DISTRIBUTIONS,
   type DiscreteAnalysis,
   FRONTIER_COST_WARN,
@@ -1032,6 +1033,239 @@ function emitPlateRecovery(
   return { decl: `  array[${uppers.join(", ")}] int ${stanName};`, lines };
 }
 
+/** Replace `name[loopVar - offset]` with an expression for the previous state. */
+function substOffsetRef(
+  term: string,
+  name: string,
+  loopVar: string,
+  offset: number,
+  replacement: string,
+): string {
+  const re = new RegExp(
+    `(?<![A-Za-z0-9_])${escapeRe(name)}\\s*\\[\\s*${escapeRe(loopVar)}\\s*-\\s*${offset}\\s*\\]`,
+    "g",
+  );
+  return term.replace(re, replacement);
+}
+
+/** Replace a plate's loop variable with the time expression the recursion is at. */
+function substLoopVar(term: string, loopVar: string, timeExpr: string): string {
+  return term.replace(
+    new RegExp(`(?<![A-Za-z0-9_])${escapeRe(loopVar)}(?![A-Za-z0-9_])`, "g"),
+    timeExpr,
+  );
+}
+
+interface ChainNames {
+  state: string;
+  prev: string;
+  table: string;
+  next: string;
+  acc: string;
+}
+
+function chainNames(plan: ChainPlan): ChainNames {
+  const base = convertBugsName(plan.name);
+  return {
+    state: `${base}_val`,
+    prev: `${base}_prev`,
+    table: `${base}_lp`,
+    next: `${base}_lp_next`,
+    acc: `${base}_acc`,
+  };
+}
+
+/** Value expression for a state loop position, shifting when the support is zero-based. */
+function chainStateValue(plan: ChainPlan, names: ChainNames): string {
+  const delta = plan.support.lo - 1;
+  if (delta === 0) return names.state;
+  return delta > 0 ? `(${names.state} + ${delta})` : `(${names.state} - ${-delta})`;
+}
+
+/** Emission density terms at one time step, with the latent replaced by a state value. */
+function chainEmissionTerms(
+  plan: ChainPlan,
+  nameToNode: Map<string, GraphNode>,
+  timeExpr: string,
+  stateExpr: string,
+  step: "init" | "loop",
+): string[] {
+  const terms: string[] = [];
+  for (const em of plan.emissions) {
+    if (step === "init" ? em.from > plan.first : em.literalTime !== null) continue;
+    const raw = densityTerm(em.node, nameToNode);
+    if (!raw) continue;
+    // The latent reference goes first: substituting time would hide it.
+    const withState = substLatentRef(
+      raw,
+      plan.name,
+      em.literalTime !== null ? String(em.literalTime) : (em.loopVar as string),
+      stateExpr,
+    );
+    terms.push(em.loopVar ? substLoopVar(withState, em.loopVar, timeExpr) : withState);
+  }
+  return terms;
+}
+
+/** The transition density from `prevExpr` at `timeExpr`, scored at `targetExpr`. */
+function chainTransitionTerm(
+  plan: ChainPlan,
+  nameToNode: Map<string, GraphNode>,
+  timeExpr: string,
+  prevExpr: string,
+  targetExpr: string,
+): string | null {
+  const raw = densityTerm(plan.transition, nameToNode, targetExpr);
+  if (!raw) return null;
+  const withPrev = substOffsetRef(raw, plan.name, plan.loopVar, 1, prevExpr);
+  return substLoopVar(withPrev, plan.loopVar, timeExpr);
+}
+
+/**
+ * Forward recursion over the chain: the frontier is the single previous state, so
+ * one table of support-many entries carries the whole marginalization.
+ */
+function emitChainMarginalization(plan: ChainPlan, nameToNode: Map<string, GraphNode>): string[] {
+  const nm = chainNames(plan);
+  const size = plan.support.size;
+  const state = chainStateValue(plan, nm);
+  const initPrior = densityTerm(plan.init, nameToNode, state);
+  const lines = [
+    `  // marginalize the chain ${convertBugsName(plan.name)} by a forward recursion`,
+    "  {",
+    `    vector[${size}] ${nm.table};`,
+    `    vector[${size}] ${nm.next};`,
+    `    vector[${size}] ${nm.acc};`,
+    `    for (${nm.state} in 1:${size}) {`,
+    ...sumLines(
+      `${nm.table}[${nm.state}]`,
+      [
+        ...(initPrior ? [initPrior] : []),
+        ...chainEmissionTerms(plan, nameToNode, String(plan.first), state, "init"),
+      ],
+      "      ",
+    ),
+    "    }",
+    `    for (${plan.loopVar} in ${plan.first + 1}:${plan.upper}) {`,
+    `      for (${nm.state} in 1:${size}) {`,
+    `        for (${nm.prev} in 1:${size}) {`,
+  ];
+  const prevValue = chainStateValue(plan, { ...nm, state: nm.prev });
+  const transition = chainTransitionTerm(plan, nameToNode, plan.loopVar, prevValue, state);
+  lines.push(
+    ...sumLines(
+      `${nm.acc}[${nm.prev}]`,
+      [`${nm.table}[${nm.prev}]`, ...(transition ? [transition] : [])],
+      "          ",
+    ),
+    "        }",
+    ...sumLines(
+      `${nm.next}[${nm.state}]`,
+      [
+        `log_sum_exp(${nm.acc})`,
+        ...chainEmissionTerms(plan, nameToNode, plan.loopVar, state, "loop"),
+      ],
+      "        ",
+    ),
+    "      }",
+    `      ${nm.table} = ${nm.next};`,
+    "    }",
+    `    target += log_sum_exp(${nm.table});`,
+    "  }",
+  );
+  return lines;
+}
+
+/**
+ * Recover the chain by forward filtering then backward sampling: the stored
+ * forward tables are combined with the transition into each already-sampled
+ * successor, which is a draw from the exact joint conditional posterior.
+ */
+function emitChainRecovery(
+  plan: ChainPlan,
+  nameToNode: Map<string, GraphNode>,
+): { decls: string[]; lines: string[] } {
+  const nm = chainNames(plan);
+  const base = convertBugsName(plan.name);
+  const size = plan.support.size;
+  const state = chainStateValue(plan, nm);
+  const prevValue = chainStateValue(plan, { ...nm, state: nm.prev });
+  const initPrior = densityTerm(plan.init, nameToNode, state);
+  const delta = plan.support.lo - 1;
+  const shift = delta === 0 ? "" : delta > 0 ? ` + ${delta}` : ` - ${-delta}`;
+  const fwd = `${base}_fwd`;
+  const back = `${base}_rev`;
+  const at = `${base}_at`;
+
+  const lines = [
+    `  // recover ${base} by forward filtering and backward sampling`,
+    "  {",
+    `    array[${plan.upper}] vector[${size}] ${fwd};`,
+    `    vector[${size}] ${nm.acc};`,
+    `    for (${nm.state} in 1:${size}) {`,
+    ...sumLines(
+      `${fwd}[${plan.first}][${nm.state}]`,
+      [
+        ...(initPrior ? [initPrior] : []),
+        ...chainEmissionTerms(plan, nameToNode, String(plan.first), state, "init"),
+      ],
+      "      ",
+    ),
+    "    }",
+    `    for (${plan.loopVar} in ${plan.first + 1}:${plan.upper}) {`,
+    `      for (${nm.state} in 1:${size}) {`,
+    `        for (${nm.prev} in 1:${size}) {`,
+    ...sumLines(
+      `${nm.acc}[${nm.prev}]`,
+      [
+        `${fwd}[${plan.loopVar} - 1][${nm.prev}]`,
+        ...(chainTransitionTerm(plan, nameToNode, plan.loopVar, prevValue, state)
+          ? [chainTransitionTerm(plan, nameToNode, plan.loopVar, prevValue, state) as string]
+          : []),
+      ],
+      "          ",
+    ),
+    "        }",
+    ...sumLines(
+      `${fwd}[${plan.loopVar}][${nm.state}]`,
+      [
+        `log_sum_exp(${nm.acc})`,
+        ...chainEmissionTerms(plan, nameToNode, plan.loopVar, state, "loop"),
+      ],
+      "        ",
+    ),
+    "      }",
+    "    }",
+    `    ${base}[${plan.upper}] = categorical_rng(softmax(${fwd}[${plan.upper}]))${shift};`,
+    `    for (${back} in 1:(${plan.upper} - ${plan.first})) {`,
+    `      int ${at} = ${plan.upper} - ${back};`,
+    `      for (${nm.prev} in 1:${size}) {`,
+    ...sumLines(
+      `${nm.acc}[${nm.prev}]`,
+      [
+        `${fwd}[${at}][${nm.prev}]`,
+        ...(chainTransitionTerm(plan, nameToNode, `(${at} + 1)`, prevValue, `${base}[${at} + 1]`)
+          ? [
+              chainTransitionTerm(
+                plan,
+                nameToNode,
+                `(${at} + 1)`,
+                prevValue,
+                `${base}[${at} + 1]`,
+              ) as string,
+            ]
+          : []),
+      ],
+      "        ",
+    ),
+    "      }",
+    `      ${base}[${at}] = categorical_rng(softmax(${nm.acc}))${shift};`,
+    "    }",
+    "  }",
+  ];
+  return { decls: [`  array[${plan.upper}] int ${base};`], lines };
+}
+
 interface ScalarNaming {
   vars: Map<string, ReturnType<typeof latentLoopVars>>;
   supports: Map<string, SupportInfo>;
@@ -1315,6 +1549,20 @@ function catPriorVectorOverrides(analysis: DiscreteAnalysis): Map<string, string
       }
     }
   }
+
+  // A chain's transition matrix is indexed by the previous state, e.g. P[z[t - 1], 1:K].
+  for (const plan of analysis.chainPlans) {
+    if (plan.transition.distribution !== "dcat") continue;
+    const p1 = String(plan.transition.param1 ?? "").trim();
+    const m = p1.match(
+      new RegExp(
+        `^([A-Za-z_][A-Za-z0-9_.]*)\\s*\\[\\s*${escapeRe(plan.name)}\\s*\\[[^\\]]*\\]\\s*,\\s*1\\s*:\\s*([^\\]]+?)\\s*\\]$`,
+      ),
+    );
+    if (m) {
+      overrides.set(convertBugsName(m[1] as string), `array[${plan.support.size}] vector[${m[2]}]`);
+    }
+  }
   return overrides;
 }
 
@@ -1352,6 +1600,10 @@ export function generateStanModel(
   const consumedFactorIds = new Set(
     [...marg.consumedFactorIds].filter((id) => !margLatentIds.has(id)),
   );
+  // A node a marginalization block already accounts for, so the normal walk skips
+  // it; a plate-tier latent still renders in place, as its own enumeration block.
+  const handledByMarginalization = (id: string): boolean =>
+    !platePlanByLatent.has(id) && (consumedFactorIds.has(id) || margLatentIds.has(id));
   const plateUppers = new Map<string, string>();
   for (const n of nodes) {
     if (n.nodeType !== "plate") continue;
@@ -1714,7 +1966,7 @@ export function generateStanModel(
           lines.push(...emitPlateMarginalization(platePlan, indent, nameToNode));
           continue;
         }
-        if (consumedFactorIds.has(node.id) || margLatentIds.has(node.id)) continue;
+        if (handledByMarginalization(node.id)) continue;
       }
       if (node.nodeType === "plate") {
         const plateVar = node.loopVariable || "i";
@@ -1731,7 +1983,7 @@ export function generateStanModel(
             .filter(
               (c) =>
                 (c.nodeType === "stochastic" || c.nodeType === "observed") &&
-                !consumedFactorIds.has(c.id),
+                !handledByMarginalization(c.id),
             )
             .sort(sortByTopo);
 
@@ -1897,6 +2149,9 @@ export function generateStanModel(
     "  ",
     "model",
   );
+  for (const plan of marg.chainPlans) {
+    modelStatements.push(...emitChainMarginalization(plan, nameToNode));
+  }
   if (marg.scalarPlan) {
     modelStatements.push(...emitScalarElimination(marg.scalarPlan, nameToNode));
   }
@@ -1916,6 +2171,11 @@ export function generateStanModel(
   for (const plan of marg.platePlans) {
     const { decl, lines } = emitPlateRecovery(plan, nameToNode);
     recoveryDecls.push(decl);
+    recoveryLines.push(...lines);
+  }
+  for (const plan of marg.chainPlans) {
+    const { decls, lines } = emitChainRecovery(plan, nameToNode);
+    recoveryDecls.push(...decls);
     recoveryLines.push(...lines);
   }
   if (marg.scalarPlan) {

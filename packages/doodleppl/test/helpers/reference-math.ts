@@ -78,6 +78,84 @@ export function mixturePartialLogDensity(
   return lp;
 }
 
+interface HmmData {
+  T: number;
+  K: number;
+  y: number[];
+  pi0: number[];
+  P: number[][];
+}
+
+/**
+ * Full log density of the HMM fixture with the state path summed out by the
+ * forward algorithm, in unconstrained space (tau is log-transformed).
+ */
+export function hmmLogDensity(d: HmmData, p: { mu: number[]; tau: number }): number {
+  const sd = 1 / Math.sqrt(p.tau);
+  let lp = 0;
+  for (let k = 0; k < d.K; k++) lp += normalLpdf(p.mu[k] as number, 0, 10);
+  // dgamma(1, 1) plus the log-Jacobian of the lower-bound transform
+  lp += -p.tau + Math.log(p.tau);
+
+  let alpha = Array.from(
+    { length: d.K },
+    (_, k) => Math.log(d.pi0[k] as number) + normalLpdf(d.y[0] as number, p.mu[k] as number, sd),
+  );
+  for (let t = 1; t < d.T; t++) {
+    const next = Array.from({ length: d.K }, (_, k) => {
+      const acc = Array.from(
+        { length: d.K },
+        (_, j) => (alpha[j] as number) + Math.log((d.P[j] as number[])[k] as number),
+      );
+      return logSumExp(acc) + normalLpdf(d.y[t] as number, p.mu[k] as number, sd);
+    });
+    alpha = next;
+  }
+  return lp + logSumExp(alpha);
+}
+
+/** Exact smoothing marginals p(z[t] = k | y, theta) by forward-backward. */
+export function hmmStatePosteriors(d: HmmData, p: { mu: number[]; tau: number }): number[][] {
+  const sd = 1 / Math.sqrt(p.tau);
+  const emit = (t: number, k: number) => normalLpdf(d.y[t] as number, p.mu[k] as number, sd);
+  const fwd: number[][] = [
+    Array.from({ length: d.K }, (_, k) => Math.log(d.pi0[k] as number) + emit(0, k)),
+  ];
+  for (let t = 1; t < d.T; t++) {
+    fwd.push(
+      Array.from({ length: d.K }, (_, k) => {
+        const acc = Array.from(
+          { length: d.K },
+          (_, j) =>
+            ((fwd[t - 1] as number[])[j] as number) + Math.log((d.P[j] as number[])[k] as number),
+        );
+        return logSumExp(acc) + emit(t, k);
+      }),
+    );
+  }
+  const bwd: number[][] = Array.from({ length: d.T }, () => Array.from({ length: d.K }, () => 0));
+  for (let t = d.T - 2; t >= 0; t--) {
+    for (let j = 0; j < d.K; j++) {
+      const acc = Array.from(
+        { length: d.K },
+        (_, k) =>
+          Math.log((d.P[j] as number[])[k] as number) +
+          emit(t + 1, k) +
+          ((bwd[t + 1] as number[])[k] as number),
+      );
+      (bwd[t] as number[])[j] = logSumExp(acc);
+    }
+  }
+  return Array.from({ length: d.T }, (_, t) =>
+    softmax(
+      Array.from(
+        { length: d.K },
+        (_, k) => ((fwd[t] as number[])[k] as number) + ((bwd[t] as number[])[k] as number),
+      ),
+    ),
+  );
+}
+
 interface NestedMixtureData {
   N: number;
   M: number;
