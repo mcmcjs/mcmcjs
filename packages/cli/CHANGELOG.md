@@ -1,5 +1,30 @@
 # mcmcjs
 
+## 0.32.0
+
+### Minor Changes
+
+- 2ac2ead: Add `--evaluation-mode` to select how a JuliaBUGS model evaluates its log density (graph, generated, or marginalized), overriding the model file's own choice
+- c7139a3: mcmc convert now emits a JuliaBUGS model that enables auto-marginalization when the graph has discrete latents, so such a model fits with NUTS instead of failing on an integer gradient, and the latents come back in the chain.
+
+### Patch Changes
+
+- c7139a3: Treat a variable that is constant across every draw as neutral for the convergence verdict rather than as a failure, since R-hat and ESS are undefined for it; a run whose every variable is constant still counts as not converged.
+- 2ac2ead: Treat a variable as undiagnosable, and so neutral in the convergence verdict, whenever R-hat and ESS are undefined for want of variation rather than for unusable draws: a recovered discrete latent that sits on one value in one chain and moves once in another has a non-zero standard deviation but still no R-hat
+- 2ac2ead: Say plainly when a run's every variable is constant, so a table of n/a diagnostics reads as a sampler that never moved rather than a diagnostics failure
+- Updated dependencies [2ac2ead]
+- Updated dependencies [c7139a3]
+- Updated dependencies [2ac2ead]
+- Updated dependencies [2ac2ead]
+- Updated dependencies [2ac2ead]
+- Updated dependencies [2ac2ead]
+- Updated dependencies [2ac2ead]
+  - @mcmcjs/julia@0.15.0
+  - @mcmcjs/diagnostics@0.8.0
+  - @mcmcjs/plots@0.8.2
+  - @mcmcjs/core@0.12.0
+  - @mcmcjs/stan@0.1.6
+
 ## 0.31.4
 
 ### Patch Changes

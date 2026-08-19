@@ -1,5 +1,17 @@
 # @mcmcjs/plots
 
+## 0.8.2
+
+### Patch Changes
+
+- 2ac2ead: Stop flagging a variable with no variation in the forest plot's R-hat column: a recovered discrete latent has no R-hat to fail, so it now reads `n/a` rather than wearing a warning
+- Updated dependencies [c7139a3]
+- Updated dependencies [2ac2ead]
+- Updated dependencies [2ac2ead]
+- Updated dependencies [2ac2ead]
+  - @mcmcjs/diagnostics@0.8.0
+  - @mcmcjs/core@0.12.0
+
 ## 0.8.1
 
 ### Patch Changes

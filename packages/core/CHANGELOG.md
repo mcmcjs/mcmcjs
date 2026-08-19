@@ -1,5 +1,12 @@
 # @mcmcjs/core
 
+## 0.12.0
+
+### Minor Changes
+
+- 2ac2ead: Accept the full JuliaBUGS sampler surface in a spec: HMC, HMCDA, MH, and Gibbs alongside NUTS and Prior, plus `sampler.adtype`, `sampler.initial_params`, and a new `model.evaluation_mode` (graph, generated, marginalized)
+- 2ac2ead: Add the derivative-free Slice sampler for JuliaBUGS models, whole or as a Gibbs block component, with `slice_width` as its initial window
+
 ## 0.11.0
 
 ### Minor Changes

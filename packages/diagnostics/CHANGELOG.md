@@ -1,5 +1,12 @@
 # @mcmcjs/diagnostics
 
+## 0.8.0
+
+### Minor Changes
+
+- c7139a3: Treat a variable that is constant across every draw as neutral for the convergence verdict rather than as a failure, since R-hat and ESS are undefined for it; a run whose every variable is constant still counts as not converged.
+- 2ac2ead: Treat a variable as undiagnosable, and so neutral in the convergence verdict, whenever R-hat and ESS are undefined for want of variation rather than for unusable draws: a recovered discrete latent that sits on one value in one chain and moves once in another has a non-zero standard deviation but still no R-hat
+
 ## 0.7.0
 
 ### Minor Changes
