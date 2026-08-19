@@ -20,3 +20,18 @@ jobs:
       - run: pnpm check
       - run: pnpm typecheck
       - run: pnpm test
+
+  # `changeset status` is satisfied by a changeset for any one package, so it
+  # misses the case that matters: a package whose sources changed with no
+  # changeset of its own is never republished, and a sibling goes on depending on
+  # its last released version. The release PR is exempt, since versioning is
+  # exactly what it changes and it carries no changesets by then.
+  changesets:
+    if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: node scripts/check-changesets.mjs origin/${{ github.base_ref }}
