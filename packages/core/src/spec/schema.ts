@@ -331,11 +331,17 @@ export const SpecSchema = z
           `evaluation_mode is a JuliaBUGS concern; the ${s.backend.id} backend has no equivalent`,
         );
       }
-      if (s.backend.id === "turing" && algorithm === "Slice") {
-        issue(
-          ["sampler", "algorithm"],
-          "Slice is a juliabugs sampler; on turing reach SliceSampling through External",
-        );
+      // Whole or per block, SliceSampling is reachable on turing only as an
+      // External sampler the model file exports.
+      if (s.backend.id === "turing") {
+        const reason =
+          "Slice is a juliabugs sampler; on turing reach SliceSampling through External";
+        if (algorithm === "Slice") issue(["sampler", "algorithm"], reason);
+        for (const [i, block] of (s.sampler.blocks ?? []).entries()) {
+          if (block.algorithm === "Slice") {
+            issue(["sampler", "blocks", String(i), "algorithm"], reason);
+          }
+        }
       }
     }
   });
