@@ -129,6 +129,7 @@ export interface RunCliOptions {
   parallel?: string;
   backend?: string;
   entry?: string;
+  evaluationMode?: string;
   refit?: boolean;
   report?: boolean;
   store?: string;
@@ -193,7 +194,11 @@ function applyOverrides(spec: Spec, opts: RunCliOptions): Spec {
       ...(opts.backend ? { id: opts.backend } : {}),
       ...(crossesRuntime ? { runtime: undefined, version: undefined } : {}),
     },
-    model: { ...spec.model, ...(opts.entry ? { entry: opts.entry } : {}) },
+    model: {
+      ...spec.model,
+      ...(opts.entry ? { entry: opts.entry } : {}),
+      ...(opts.evaluationMode ? { evaluation_mode: opts.evaluationMode } : {}),
+    },
     sampler: {
       ...spec.sampler,
       ...(opts.algorithm ? { algorithm: opts.algorithm } : {}),
@@ -331,6 +336,7 @@ export function buildRunConfig(inputPath: string, opts: RunCliOptions): RunConfi
       kind: "file",
       path: `./${basename(modelPath)}`,
       ...(opts.entry ? { entry: opts.entry } : {}),
+      ...(opts.evaluationMode ? { evaluation_mode: opts.evaluationMode } : {}),
     },
     sampler: {
       algorithm: opts.prior ? "Prior" : (opts.algorithm ?? "NUTS"),
@@ -509,6 +515,10 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .option("--seed <n>", "random seed (default: drawn fresh and recorded)", parseIntOption)
     .option("--backend <id>", "backend (default: detected from the model)")
     .option("--entry <name>", "model entry function for Julia backends (default build_model)")
+    .option(
+      "--evaluation-mode <mode>",
+      "JuliaBUGS log-density evaluation: graph | generated | marginalized (default: the model file's own choice)",
+    )
     .option("--refit", "fit even when nothing changed since the last run")
     .option("--report", "open the finished run in the report web app (or set MCMC_REPORT_OPEN=1)")
     .option(

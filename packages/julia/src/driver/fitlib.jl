@@ -116,17 +116,13 @@ function build_adtype(name)
     error("unsupported adtype: $name")
 end
 
-function build_sampler(sampler, backend, modelmod = nothing)
+function build_sampler(sampler, modelmod = nothing)
     algorithm = get(sampler, "algorithm", "NUTS")
     # Prior draws are iid: no warmup, no adaptation. The JuliaBUGS path samples
     # ancestrally (sample_bugs_prior) instead of going through a sampler object.
     algorithm == "Prior" && return Turing.Prior(), 0
     warmup = Int(get(sampler, "warmup", 1000))
     adapt_delta = Float64(get(sampler, "adapt_delta", 0.8))
-    if backend == "juliabugs"
-        algorithm == "NUTS" || error("the juliabugs backend supports NUTS and Prior only")
-        return AdvancedHMC.NUTS(adapt_delta), warmup
-    end
     algorithm == "MH" && return Turing.MH(), warmup
     algorithm == "ESS" && return Turing.ESS(), warmup
     algorithm == "SMC" && return Turing.SMC(), warmup
@@ -465,6 +461,138 @@ function vnchain_to_wire(chn)
     )
 end
 
+# A BUGSModel carries its own `base_model` field (the unconditioned model, or
+# nothing), so unwrapping has to test the wrapper's type, not for the field.
+base_bugs(model) = model isa JuliaBUGS.BUGSModelWithGradient ? model.base_model : model
+
+# JuliaBUGS samplers that propose in the evaluation environment, so they move the
+# discrete latents themselves rather than needing them summed out.
+const ENV_BASED_BUGS_SAMPLERS = ("MH", "Gibbs")
+
+# Switches a model to the evaluation mode the spec names. The generated and
+# marginalized modes read parameters in unconstrained space, so both need a
+# transformed model first. invokelatest is needed because JuliaBUGS `Core.eval`s
+# the model's node functions while compiling, putting them in a newer world than
+# this frame; the generated mode `Core.eval`s a log-density function here too.
+function set_bugs_mode(model, name)
+    name == "graph" &&
+        return Base.invokelatest(JuliaBUGS.set_evaluation_mode, model, JuliaBUGS.UseGraph())
+    mode = name == "generated" ? JuliaBUGS.UseGeneratedLogDensityFunction() :
+        name == "marginalized" ? JuliaBUGS.UseAutoMarginalization() :
+        error("unsupported evaluation mode: $name")
+    return Base.invokelatest(
+        JuliaBUGS.set_evaluation_mode, JuliaBUGS.settrans(model, true), mode,
+    )
+end
+
+# Named starting values, in constrained space, as the spec records them.
+# `initialize!` ignores a name it does not recognise, so an unknown one is an
+# error here rather than a silent no-op.
+function initialize_bugs_model(model, sampler)
+    haskey(sampler, "initial_params") || return model
+    known = Set(
+        String(JuliaBUGS.AbstractPPL.getsym(vn)) for vn in JuliaBUGS.model_parameters(model)
+    )
+    for name in keys(sampler["initial_params"])
+        name in known ||
+            error("initial_params names $name, which is not a parameter of this model")
+    end
+    return Base.invokelatest(
+        JuliaBUGS.initialize!, model, bugs_namedtuple(sampler["initial_params"]),
+    )
+end
+
+# An environment-based sampler starts from the model's evaluation environment and
+# accepts on `logp_proposed - logp_current`, which is NaN when both are -Inf: from
+# an impossible starting point the chain can never move. Say so, with the fix,
+# rather than return draws that never left the start.
+function check_bugs_start(model, sampler)
+    logp = try
+        last(Base.invokelatest(JuliaBUGS.AbstractPPL.evaluate!!, model))
+    catch
+        -Inf
+    end
+    isfinite(logp) && return model
+    detail = haskey(sampler, "initial_params") ?
+        "the given initial_params have zero probability under the model" :
+        "the model's default starting values have zero probability under the data; " *
+        "set [sampler.initial_params] to a state the data allows"
+    return error("$(get(sampler, "algorithm", "MH")) cannot start: $detail")
+end
+
+# Applies the request's options to a compiled model: the spec's evaluation mode
+# over whatever the model file chose, the initial values, and the AD backend. The
+# gradient wrapper holds a prepared gradient over one base model, so it is rebuilt
+# whenever the base changes.
+function prepare_bugs_model(model, sampler, mode_name)
+    base = base_bugs(model)
+    if get(sampler, "algorithm", "NUTS") in ENV_BASED_BUGS_SAMPLERS
+        # Marginalizing would sum out the very latents these samplers propose, so
+        # they always run against the plain model under graph evaluation.
+        base = initialize_bugs_model(set_bugs_mode(base, "graph"), sampler)
+        return check_bugs_start(base, sampler)
+    end
+    mode_name === nothing || (base = set_bugs_mode(base, mode_name))
+    base = initialize_bugs_model(base, sampler)
+    adtype = haskey(sampler, "adtype") ? build_adtype(sampler["adtype"]) :
+        model isa JuliaBUGS.BUGSModelWithGradient ? model.adtype :
+        Turing.ADTypes.AutoForwardDiff()
+    return Base.invokelatest(JuliaBUGS.BUGSModelWithGradient, base, adtype)
+end
+
+# AdvancedHMC starts from a fresh draw unless handed a starting vector, so an
+# initialized model's values reach a gradient sampler through this. The
+# environment-based samplers start from the model's own environment, which
+# `initialize!` has already set.
+function bugs_initial_params(model, sampler)
+    haskey(sampler, "initial_params") || return nothing
+    get(sampler, "algorithm", "NUTS") in ENV_BASED_BUGS_SAMPLERS && return nothing
+    return Base.invokelatest(JuliaBUGS.getparams, base_bugs(model))
+end
+
+# The AdvancedHMC sampler for a NUTS/HMC/HMCDA configuration, whole or per Gibbs
+# block; nothing for any other algorithm. Adaptation runs off `sample`'s n_adapts,
+# so no constructor here takes a step count.
+function bugs_hmc_sampler(conf)
+    algorithm = get(conf, "algorithm", "NUTS")
+    adapt_delta = Float64(get(conf, "adapt_delta", 0.8))
+    algorithm == "NUTS" && return AdvancedHMC.NUTS(adapt_delta)
+    algorithm == "HMC" &&
+        return AdvancedHMC.HMC(Float64(conf["step_size"]), Int(conf["leapfrog_steps"]))
+    algorithm == "HMCDA" && return AdvancedHMC.HMCDA(adapt_delta, Float64(conf["lambda"]))
+    return nothing
+end
+
+bugs_varname(name) = eval(:(Turing.@varname($(Meta.parse(name)))))
+
+# One spec block becomes one entry of JuliaBUGS's sampler map, keyed by the
+# block's variables together; gradient blocks must carry their AD backend as a
+# tuple. JuliaBUGS checks that the map covers every parameter exactly once.
+function build_bugs_gibbs(sampler, model)
+    adtype = build_adtype(get(sampler, "adtype", "forwarddiff"))
+    pairs = map(sampler["blocks"]) do block
+        vars = [bugs_varname(v) for v in block["variables"]]
+        key = length(vars) == 1 ? vars[1] : vars
+        component = get(block, "algorithm", "NUTS") == "MH" ? JuliaBUGS.IndependentMH() :
+            (bugs_hmc_sampler(block), adtype)
+        key => component
+    end
+    return JuliaBUGS.Gibbs(model, JuliaBUGS.OrderedDict(pairs))
+end
+
+# Unlike the Turing path this needs the model: JuliaBUGS's Gibbs validates its
+# sampler map against the model's parameters as it is constructed.
+function build_bugs_sampler(sampler, model)
+    hmc = bugs_hmc_sampler(sampler)
+    hmc === nothing || return hmc
+    algorithm = get(sampler, "algorithm", "NUTS")
+    # Single-site Metropolis over every parameter: the WinBUGS-shaped sampler, and
+    # the route to discrete latents that marginalization declines.
+    algorithm == "MH" && return JuliaBUGS.Gibbs(model, JuliaBUGS.IndependentMH())
+    algorithm == "Gibbs" && return build_bugs_gibbs(sampler, model)
+    return error("the juliabugs backend does not support the $algorithm sampler")
+end
+
 # JuliaBUGS compiles the model at runtime, so building and sampling must run in
 # separate latest-world frames; merging them reintroduces a world-age error.
 # Returns a FlexiChain like the Turing path; gen_chains recovers generated
@@ -472,10 +600,14 @@ end
 # With a callback, draws stream (see bugs_draw_streamer).
 function sample_bugs(
     model, sampler, warmup, draws, chains, rng;
-    callback = nothing, thin = 1, threads = false,
+    callback = nothing, thin = 1, threads = false, initial_params = nothing,
 )
     kw = callback === nothing ? (;) : (; callback)
     thin > 1 && (kw = merge(kw, (; thinning = thin)))
+    # Ensemble sampling wants one starting point per chain; every chain starts from
+    # the values the spec named, and diverges from there through its own stream.
+    initial_params === nothing ||
+        (kw = merge(kw, (; initial_params = fill(initial_params, chains))))
     ensemble = threads ? JuliaBUGS.AbstractMCMC.MCMCThreads() : JuliaBUGS.AbstractMCMC.MCMCSerial()
     return Logging.with_logger(JSONProgressLogger()) do
         JuliaBUGS.AbstractMCMC.sample(
@@ -492,7 +624,7 @@ end
 # model parameters plus generated quantities, the same columns a posterior fit
 # produces through gen_chains.
 function sample_bugs_prior(model, draws, chains, rng)
-    model isa JuliaBUGS.BUGSModelWithGradient && (model = model.base_model)
+    model = base_bugs(model)
     APPL = JuliaBUGS.AbstractPPL
     vars = vcat(JuliaBUGS.model_parameters(model), JuliaBUGS.generated_quantities(model))
     isempty(vars) && error("the model has no parameters or generated quantities to sample")
@@ -511,31 +643,27 @@ function sample_bugs_prior(model, draws, chains, rng)
     return FlexiChains.FlexiChain{VarName}(draws, chains, dict)
 end
 
-# The JuliaBUGS counterpart to draw_streamer. A JuliaBUGS transition is a raw
-# AdvancedHMC.Transition whose params are an unconstrained vector, so (unlike the
-# Turing path) draws cannot be read off it directly. Per batch we rebuild a small
-# FlexiChain through the same gen_chains + vnchain_to_wire path the final file
-# uses, so the streamed leaf names (parameters, generated quantities, and sampler
-# stats) match the file exactly. Reconstruction runs on a copy of the model so it
-# never perturbs the sampler's state. AbstractMCMC passes the 1-based chain index
-# as chain_number; each chain's batches carry a per-chain monotonic seq.
-# TODO: once the pinned JuliaBUGS carries TuringLang/JuliaBUGS.jl#517 (with
-# AbstractMCMC#212 and AbstractPPL#178), a transition exposes named constrained
-# params (a VarNamedTuple) plus generated quantities, so this collapses to a
-# per-draw flatten like draw_streamer, dropping the deepcopy and reconstruction.
-function bugs_draw_streamer(model, draws_per_chain::Int, batch_size::Int)
+# The JuliaBUGS counterpart to draw_streamer. A JuliaBUGS transition carries an
+# unconstrained parameter vector (or, for the environment-based samplers, an
+# evaluation environment), so (unlike the Turing path) draws cannot be read off it
+# directly: the generated quantities and any marginalized discrete latents are
+# reconstructed only when the draws are laid out. Per batch we therefore build a
+# small FlexiChain through the same bundle_transitions + vnchain_to_wire path the
+# final file uses, so the streamed leaf names match the file exactly, on a copy of
+# the model so reconstruction never perturbs the sampler's state. AbstractMCMC
+# passes the 1-based chain index as chain_number; each chain's batches carry a
+# per-chain monotonic seq.
+function bugs_draw_streamer(model, sampler, draws_per_chain::Int, batch_size::Int)
     recon = deepcopy(model)
     side_rng = StableRNG(0)
     chain = Ref(-1)
     seq = Ref(0)
-    θs = Vector{Vector{Float64}}()
-    lps = Float64[]
-    stats = Any[]
+    transitions = Any[]
     function emit(iteration)
-        isempty(θs) && return
-        stats_names = collect(keys(merge((; lp = lps[1]), stats[1])))
-        stats_values = [vcat(lps[i], collect(values(stats[i]))) for i in eachindex(θs)]
-        chn = JuliaBUGS.gen_chains(FlexiChains.VNChain, recon, θs, stats_names, stats_values; rng = side_rng)
+        isempty(transitions) && return
+        chn = JuliaBUGS.bundle_transitions(
+            FlexiChains.VNChain, recon, transitions, sampler; rng = side_rng,
+        )
         wire = vnchain_to_wire(chn)
         nIter, total, _ = wire["size"]
         flat = wire["value_flat"]
@@ -555,23 +683,17 @@ function bugs_draw_streamer(model, draws_per_chain::Int, batch_size::Int)
         )
         flush(PROGRESS_IO[])
         seq[] += 1
-        empty!(θs)
-        empty!(lps)
-        empty!(stats)
+        empty!(transitions)
     end
     return function (_rng, _model, _sampler, transition, _state, iteration; chain_number = 1, _kwargs...)
         c = Int(chain_number) - 1
         if c != chain[]
             chain[] = c
             seq[] = 0
-            empty!(θs)
-            empty!(lps)
-            empty!(stats)
+            empty!(transitions)
         end
-        push!(θs, copy(transition.z.θ))
-        push!(lps, transition.z.ℓπ.value)
-        push!(stats, AdvancedHMC.stat(transition))
-        if length(θs) >= batch_size || iteration >= draws_per_chain
+        push!(transitions, deepcopy(transition))
+        if length(transitions) >= batch_size || iteration >= draws_per_chain
             emit(iteration)
         end
     end
@@ -583,7 +705,7 @@ end
 # must be covered by the posterior columns, or log p(y | theta) would not be a
 # function of the draw.
 function loglik_bugs(model, posterior)
-    model isa JuliaBUGS.BUGSModelWithGradient && (model = model.base_model)
+    model = base_bugs(model)
     APPL = JuliaBUGS.AbstractPPL
     gd = model.graph_evaluation_data
 
@@ -644,7 +766,7 @@ end
 # posterior parameter columns, then evaluate!! ancestral-samples the remaining
 # latents once per posterior draw. No sampler or gradient runs.
 function predict_bugs(model, posterior, targets, rng)
-    model isa JuliaBUGS.BUGSModelWithGradient && (model = model.base_model)
+    model = base_bugs(model)
     APPL = JuliaBUGS.AbstractPPL
     target_syms = Set(Symbol.(targets))
     is_target(vn) = APPL.getsym(vn) in target_syms
@@ -820,28 +942,38 @@ function handle_request(request)
                 modelmod = Main
                 entry = resolve_entry(Main, get(request["model"], "entry", nothing))
             end
-            sampler_conf = backend == "juliabugs" ? request["sampler"] :
-                apply_model_defaults(request["sampler"], modelmod)
-            sampler, warmup = build_sampler(sampler_conf, backend, modelmod)
+            sampler_conf = apply_model_defaults(request["sampler"], modelmod)
             draws = Int(request["sampler"]["draws"])
             stage = "sample"
             if backend == "juliabugs"
                 model = Base.invokelatest(entry, data)
-                chn = if get(request["sampler"], "algorithm", "NUTS") == "Prior"
+                chn = if get(sampler_conf, "algorithm", "NUTS") == "Prior"
                     Base.invokelatest(sample_bugs_prior, model, draws, chains, rng)
                 else
-                    # Reconstruction reads the plain BUGSModel; entry may return a gradient wrapper.
-                    base = hasproperty(model, :base_model) ? model.base_model : model
-                    threads = get(request["sampler"], "parallel", "serial") == "threads"
+                    model = Base.invokelatest(
+                        prepare_bugs_model, model, sampler_conf,
+                        get(request["model"], "evaluation_mode", nothing),
+                    )
+                    sampler = Base.invokelatest(build_bugs_sampler, sampler_conf, model)
+                    warmup = Int(get(sampler_conf, "warmup", 1000))
+                    threads = parallel == "threads"
+                    # Reconstruction reads the plain BUGSModel; a gradient sampler runs wrapped.
                     cb = get(request, "stream_draws", false) && !threads ?
-                        bugs_draw_streamer(base, draws, Int(get(request, "draw_batch_size", 25))) : nothing
+                        bugs_draw_streamer(
+                            base_bugs(model), sampler, draws,
+                            Int(get(request, "draw_batch_size", 25)),
+                        ) : nothing
                     Base.invokelatest(
                         sample_bugs, model, sampler, warmup, draws, chains, rng;
                         callback = cb, thin = Int(get(request["sampler"], "thin", 1)), threads,
+                        initial_params = Base.invokelatest(
+                            bugs_initial_params, model, sampler_conf,
+                        ),
                     )
                 end
                 vnchain_to_wire(chn)
             else
+                sampler, warmup = build_sampler(sampler_conf, modelmod)
                 # The draw streamer assumes chains arrive one at a time; with
                 # concurrent chains the caller must not request streaming.
                 cb = get(request, "stream_draws", false) && parallel == "serial" ?

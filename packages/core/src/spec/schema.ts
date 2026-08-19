@@ -117,6 +117,13 @@ const GibbsBlock = z
 /** Samplers that take an AD backend: gradient-based, or wrappers that may hold one. */
 const ADTYPE_ALGORITHMS = new Set(["NUTS", "HMC", "HMCDA", "Gibbs", "External"]);
 
+/** What the juliabugs backend can run as its sampler, and as one Gibbs block. */
+const JULIABUGS_ALGORITHMS = new Set(["NUTS", "HMC", "HMCDA", "MH", "Gibbs", "Prior"]);
+const JULIABUGS_BLOCK_ALGORITHMS = new Set(["NUTS", "HMC", "HMCDA", "MH"]);
+
+/** JuliaBUGS samplers that propose in the evaluation environment, discrete latents included. */
+const ENV_ALGORITHMS = new Set(["MH", "Gibbs"]);
+
 const Sampler = z
   .object({
     /**
@@ -182,6 +189,12 @@ const ModelFile = z.object({
   /** Path to the model file, resolved relative to the spec file's directory. */
   path: z.string().min(1),
   entry: z.string().min(1).default("build_model"),
+  /**
+   * How a JuliaBUGS model evaluates its log density: "graph" walks the node
+   * graph, "generated" compiles a specialised function, "marginalized" sums the
+   * discrete latents out exactly. Unset leaves the model file's own choice.
+   */
+  evaluation_mode: z.enum(["graph", "generated", "marginalized"]).optional(),
 });
 
 const Output = z
@@ -244,20 +257,19 @@ export const SpecSchema = z
       }
     }
     if (s.backend.id === "juliabugs") {
-      if (algorithm !== "NUTS" && algorithm !== "Prior") {
+      if (!JULIABUGS_ALGORITHMS.has(algorithm)) {
         issue(
           ["sampler", "algorithm"],
-          `the juliabugs backend supports NUTS and Prior only, not ${algorithm}`,
+          `the juliabugs backend supports ${[...JULIABUGS_ALGORITHMS].join(", ")}, not ${algorithm}`,
         );
       }
-      if (s.sampler.adtype !== undefined) {
-        issue(["sampler", "adtype"], "a JuliaBUGS model chooses its adtype in the model file");
-      }
-      if (s.sampler.initial_params !== undefined) {
-        issue(
-          ["sampler", "initial_params"],
-          "initial_params is not supported for the juliabugs backend",
-        );
+      for (const [i, block] of (s.sampler.blocks ?? []).entries()) {
+        if (!JULIABUGS_BLOCK_ALGORITHMS.has(block.algorithm)) {
+          issue(
+            ["sampler", "blocks", String(i), "algorithm"],
+            `a juliabugs Gibbs block supports ${[...JULIABUGS_BLOCK_ALGORITHMS].join(", ")}, not ${block.algorithm}`,
+          );
+        }
       }
       if (s.sampler.parallel === "distributed") {
         issue(
@@ -265,6 +277,35 @@ export const SpecSchema = z
           "distributed chains are Turing-only; the juliabugs backend supports serial or threads",
         );
       }
+      // Prior sampling walks the graph ancestrally, so no log density is evaluated.
+      if (algorithm === "Prior" && s.model.evaluation_mode !== undefined) {
+        issue(
+          ["model", "evaluation_mode"],
+          "prior draws are one ancestral pass; evaluation_mode does not apply",
+        );
+      }
+      // The environment-based samplers move the discrete latents themselves, so
+      // marginalizing them out of the log density would double-count them.
+      if (s.model.evaluation_mode === "marginalized" && ENV_ALGORITHMS.has(algorithm)) {
+        issue(
+          ["model", "evaluation_mode"],
+          `${algorithm} samples the discrete latents itself; marginalized applies to the gradient samplers`,
+        );
+      }
+      // JuliaBUGS's generated log density mutates arrays in place, which only
+      // Mooncake among our AD backends differentiates through; the others make
+      // it warn and fall back to graph evaluation.
+      if (s.model.evaluation_mode === "generated" && s.sampler.adtype !== "mooncake") {
+        issue(
+          ["model", "evaluation_mode"],
+          "generated needs sampler.adtype = mooncake; the other backends cannot differentiate it",
+        );
+      }
+    } else if (s.model.evaluation_mode !== undefined) {
+      issue(
+        ["model", "evaluation_mode"],
+        `evaluation_mode is a JuliaBUGS concern; the ${s.backend.id} backend has no equivalent`,
+      );
     }
   });
 

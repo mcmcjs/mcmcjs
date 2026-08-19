@@ -53,7 +53,11 @@ export function fitRequest(
   return {
     schema_version: spec.schema_version,
     backend: { id: spec.backend.id },
-    model: { file: spec.modelPath, entry: spec.model.entry },
+    model: {
+      file: spec.modelPath,
+      entry: spec.model.entry,
+      ...(spec.model.evaluation_mode ? { evaluation_mode: spec.model.evaluation_mode } : {}),
+    },
     data: spec.data,
     sampler: spec.sampler,
     seed: spec.seed,
