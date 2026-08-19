@@ -40,6 +40,16 @@ export function diagnoseChains(chains: Float64Array[], credMass = 0.94): Variabl
   };
 }
 
+/**
+ * Whether a variable took a single value in every draw, which leaves R-hat and
+ * ESS undefined: they divide by a within-chain variance of zero. A recovered
+ * discrete latent whose posterior is concentrated on one value is the usual
+ * case, and it carries no evidence either way about convergence.
+ */
+export function isConstant(d: VariableDiagnostics): boolean {
+  return d.std === 0 && !Number.isFinite(d.rhat);
+}
+
 /** Whether a variable's diagnostics clear the convergence thresholds. */
 export function isConverged(
   d: VariableDiagnostics,

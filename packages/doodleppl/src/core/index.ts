@@ -5,6 +5,7 @@
  * validate, or reason about a DoodlePPL graph.
  */
 export { BUGS_FUNCTIONS, DISTRIBUTIONS, type Distribution, getDistribution } from "./catalog";
+export { DISCRETE_DISTRIBUTIONS, discreteLatentNames } from "./discrete-analysis";
 export { getElements, parseModelData, parseUnifiedModel } from "./model";
 export {
   GraphEdgeSchema,

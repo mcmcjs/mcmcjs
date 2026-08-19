@@ -135,3 +135,85 @@ describe("convertGraph with the stan target", () => {
     expect(parsed.sampler.algorithm).toBe("NUTS");
   });
 });
+
+describe("juliaBugsModelFile marginalization", () => {
+  it("keeps the plain compile when there are no discrete latents", () => {
+    const file = juliaBugsModelFile("model {\n  mu ~ dnorm(0, 1)\n}");
+    expect(file).toContain(
+      "build_model(data) = JuliaBUGS.compile(model_def, data; adtype = JuliaBUGS.ADTypes.AutoForwardDiff())",
+    );
+    expect(file).not.toContain("UseAutoMarginalization");
+  });
+
+  it("enables auto-marginalization behind invokelatest when asked", () => {
+    const file = juliaBugsModelFile("model {\n  z ~ dcat(w[1:2])\n}", true);
+    expect(file).toContain("JuliaBUGS.settrans(model, true)");
+    expect(file).toContain(
+      "JuliaBUGS.set_evaluation_mode, model, JuliaBUGS.UseAutoMarginalization()",
+    );
+    expect(file).toContain("Base.invokelatest(JuliaBUGS.BUGSModelWithGradient, model");
+    // The mode switch and the wrapper both call node functions defined during compile.
+    expect(file.match(/Base\.invokelatest/g)).toHaveLength(2);
+    expect(file).not.toContain("compile(model_def, data; adtype");
+  });
+});
+
+describe("convertGraph juliabugs target", () => {
+  const graphWithLatent = JSON.stringify({
+    name: "Mix",
+    elements: [
+      { id: "w", name: "w", type: "node", nodeType: "constant" },
+      {
+        id: "plate_i",
+        name: "Plate i",
+        type: "node",
+        nodeType: "plate",
+        loopVariable: "i",
+        loopRange: "1:N",
+      },
+      {
+        id: "z",
+        name: "z",
+        type: "node",
+        nodeType: "stochastic",
+        parent: "plate_i",
+        indices: "i",
+        distribution: "dcat",
+        param1: "w[1:2]",
+      },
+      {
+        id: "y",
+        name: "y",
+        type: "node",
+        nodeType: "observed",
+        parent: "plate_i",
+        indices: "i",
+        distribution: "dnorm",
+        param1: "mu[z[i]]",
+        param2: "1",
+        observed: true,
+      },
+      { id: "e", type: "edge", source: "z", target: "y" },
+    ],
+    dataContent: JSON.stringify({ data: { N: 2, y: [1, 2], w: [0.5, 0.5] }, inits: {} }),
+    version: 1,
+  });
+
+  it("marginalizes a graph that has a discrete latent", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mcmcjs-convert-jb-"));
+    const graphPath = join(dir, "mix.json");
+    writeFileSync(graphPath, graphWithLatent);
+    const result = convertGraph(graphPath, undefined, 1);
+    const model = readFileSync(result.modelPath, "utf8");
+    expect(model).toContain("UseAutoMarginalization");
+    expect(parseSpec(result.specPath).backend.id).toBe("juliabugs");
+  });
+
+  it("leaves a continuous-only graph on the plain compile path", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mcmcjs-convert-jb-"));
+    const graphPath = join(dir, "demo.json");
+    writeFileSync(graphPath, GRAPH);
+    const result = convertGraph(graphPath, undefined, 1);
+    expect(readFileSync(result.modelPath, "utf8")).not.toContain("UseAutoMarginalization");
+  });
+});

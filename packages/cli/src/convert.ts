@@ -3,6 +3,7 @@ import { basename, dirname, resolve } from "node:path";
 import { serializeSpecToml } from "@mcmcjs/core";
 import {
   buildTopologicalOrder,
+  discreteLatentNames,
   type GraphEdge,
   type GraphNode,
   generateBugsModel,
@@ -19,8 +20,29 @@ import type { Command } from "commander";
 
 const DEFAULT_SEED = 1;
 
-/** Wrap generated BUGS model code as an idiomatic JuliaBUGS model file (the mcmc build_model contract). */
-export function juliaBugsModelFile(modelCode: string): string {
+/**
+ * Wrap generated BUGS model code as an idiomatic JuliaBUGS model file (the mcmc
+ * build_model contract). With `marginalize`, the model switches to
+ * UseAutoMarginalization so NUTS never sees the discrete latents; without it,
+ * gradient-based sampling of an integer state fails. `Base.invokelatest` is
+ * required because JuliaBUGS evaluates node functions it defined during
+ * `compile`, which this frame cannot call directly.
+ */
+export function juliaBugsModelFile(modelCode: string, marginalize = false): string {
+  const adtype = "JuliaBUGS.ADTypes.AutoForwardDiff()";
+  const build = marginalize
+    ? [
+        "function build_model(data)",
+        "    model = JuliaBUGS.compile(model_def, data)",
+        "    model = JuliaBUGS.settrans(model, true)",
+        "    model = Base.invokelatest(",
+        "        JuliaBUGS.set_evaluation_mode, model, JuliaBUGS.UseAutoMarginalization(),",
+        "    )",
+        `    return Base.invokelatest(JuliaBUGS.BUGSModelWithGradient, model, ${adtype})`,
+        "end",
+      ]
+    : [`build_model(data) = JuliaBUGS.compile(model_def, data; adtype = ${adtype})`];
+
   return [
     "import JuliaBUGS",
     "",
@@ -29,7 +51,13 @@ export function juliaBugsModelFile(modelCode: string): string {
     modelCode,
     '""", true, false)',
     "",
-    "build_model(data) = JuliaBUGS.compile(model_def, data; adtype = JuliaBUGS.ADTypes.AutoForwardDiff())",
+    ...(marginalize
+      ? [
+          "# Discrete latents are summed out exactly, so NUTS samples only the continuous",
+          "# parameters; the latents come back in the chain, drawn from p(z | theta, y).",
+        ]
+      : []),
+    ...build,
     "",
   ].join("\n");
 }
@@ -118,7 +146,8 @@ export function convertGraph(
     ) as Record<string, unknown>;
     spec = buildStanSpec(modelFileName, stanData, seed, sampler);
   } else {
-    modelFile = juliaBugsModelFile(generateBugsModel(elements));
+    const marginalize = discreteLatentNames(elements).length > 0;
+    modelFile = juliaBugsModelFile(generateBugsModel(elements), marginalize);
     spec = buildSpec(modelFileName, data, seed, sampler);
   }
 

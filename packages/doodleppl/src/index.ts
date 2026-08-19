@@ -14,8 +14,10 @@ export {
 export {
   BUGS_FUNCTIONS,
   buildTopologicalOrder,
+  DISCRETE_DISTRIBUTIONS,
   DISTRIBUTIONS,
   type Distribution,
+  discreteLatentNames,
   type GraphEdge,
   GraphEdgeSchema,
   type GraphElement,

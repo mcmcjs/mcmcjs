@@ -102,3 +102,52 @@ describe("formatReportTable", () => {
     expect(table).toContain("x");
   });
 });
+
+// Samples with a well-mixed variable "x" plus a constant integer column "z",
+// the shape a fit produces when a recovered discrete latent is concentrated on
+// one value.
+function makeSamplesWithConstant(constantOnly = false) {
+  const nChains = 4;
+  const nDraws = 256;
+  let s = 987654321 >>> 0;
+  const vars = constantOnly ? ["z"] : ["x", "z"];
+  // value_flat is indexed draw + param * nDraws + chain * nDraws * nParams.
+  const valueFlat: number[] = new Array(nDraws * vars.length * nChains);
+  for (let c = 0; c < nChains; c++) {
+    for (let p = 0; p < vars.length; p++) {
+      for (let i = 0; i < nDraws; i++) {
+        s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+        valueFlat[i + p * nDraws + c * nDraws * vars.length] = vars[p] === "z" ? 2 : s / 4294967296;
+      }
+    }
+  }
+  return parseSamples({
+    size: [nDraws, vars.length, nChains],
+    value_flat: valueFlat,
+    parameters: vars,
+    name_map: { internals: [] },
+  });
+}
+
+describe("buildDiagnosticsReport with constant variables", () => {
+  it("treats a constant variable as neutral rather than as a failure", () => {
+    const report = buildDiagnosticsReport(makeSamplesWithConstant());
+    const z = report.variables.find((v) => v.variable === "z");
+    const x = report.variables.find((v) => v.variable === "x");
+    expect(Number.isFinite(z?.rhat ?? Number.NaN)).toBe(false);
+    expect(x?.converged).toBe(true);
+    expect(report.converged).toBe(true);
+  });
+
+  it("still fails when an informative variable does not converge", () => {
+    const report = buildDiagnosticsReport(makeSamplesWithConstant(), {
+      thresholds: { rhatMax: 1, essMin: 1e9 },
+    });
+    expect(report.converged).toBe(false);
+  });
+
+  it("fails when every variable is constant, since nothing sampled", () => {
+    const report = buildDiagnosticsReport(makeSamplesWithConstant(true));
+    expect(report.converged).toBe(false);
+  });
+});
