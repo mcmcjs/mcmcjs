@@ -277,3 +277,195 @@ describe("validateGraph", () => {
     expect(issues).toEqual([]);
   });
 });
+
+describe("validateGraph: index-range overlap between same-name nodes", () => {
+  const plate = (id: string, v: string, range: string, parent?: string): GraphElement =>
+    node({ id, name: `Plate ${v}`, nodeType: "plate", loopVariable: v, loopRange: range, parent });
+
+  it("accepts a seeded recursion over disjoint ranges (the chain idiom)", () => {
+    const issues = validateGraph(
+      [
+        node({
+          id: "z1",
+          name: "z",
+          nodeType: "stochastic",
+          indices: "1",
+          distribution: "dcat",
+          param1: "pi0[1:2]",
+        }),
+        plate("plate_t", "t", "2:T"),
+        node({
+          id: "zt",
+          name: "z",
+          nodeType: "stochastic",
+          parent: "plate_t",
+          indices: "t",
+          distribution: "dcat",
+          param1: "P[z[t - 1], 1:2]",
+        }),
+      ],
+      {},
+    );
+    expect(issues.filter((i) => i.message.includes("already defined"))).toEqual([]);
+  });
+
+  it("accepts the Ice idiom: a pinned first element plus a stochastic tail", () => {
+    const issues = validateGraph(
+      [
+        node({ id: "a1", name: "alpha", nodeType: "deterministic", indices: "1", equation: "0.0" }),
+        plate("plate_j", "j", "2:Nage"),
+        node({
+          id: "aj",
+          name: "alpha",
+          nodeType: "stochastic",
+          parent: "plate_j",
+          indices: "j",
+          distribution: "dnorm",
+          param1: "0",
+          param2: "1.0E-6",
+        }),
+      ],
+      {},
+    );
+    expect(issues.filter((i) => i.message.includes("already defined"))).toEqual([]);
+  });
+
+  it("flags a first element that the plate range already covers", () => {
+    const issues = validateGraph(
+      [
+        node({
+          id: "z1",
+          name: "z",
+          nodeType: "stochastic",
+          indices: "1",
+          distribution: "dcat",
+          param1: "pi0[1:2]",
+        }),
+        plate("plate_i", "i", "1:N"),
+        node({
+          id: "zi",
+          name: "z",
+          nodeType: "stochastic",
+          parent: "plate_i",
+          indices: "i",
+          distribution: "dcat",
+          param1: "pi0[1:2]",
+        }),
+      ],
+      {},
+    );
+    expect(issues.some((i) => i.message.includes("already defined"))).toBe(true);
+  });
+
+  it("flags two nodes in the same plate defining one variable", () => {
+    const issues = validateGraph(
+      [
+        plate("plate_i", "i", "1:N"),
+        node({
+          id: "a",
+          name: "x",
+          nodeType: "stochastic",
+          parent: "plate_i",
+          indices: "i",
+          distribution: "dnorm",
+          param1: "0",
+          param2: "1",
+        }),
+        node({
+          id: "b",
+          name: "x",
+          nodeType: "deterministic",
+          parent: "plate_i",
+          indices: "i",
+          equation: "2",
+        }),
+      ],
+      {},
+    );
+    expect(issues.some((i) => i.message.includes("already defined"))).toBe(true);
+  });
+
+  it("flags two scalar nodes sharing a name", () => {
+    const issues = validateGraph(
+      [
+        node({
+          id: "m1",
+          name: "mu",
+          nodeType: "stochastic",
+          distribution: "dnorm",
+          param1: "0",
+          param2: "1",
+        }),
+        node({ id: "m2", name: "mu", nodeType: "deterministic", equation: "3" }),
+      ],
+      {},
+    );
+    expect(issues.some((i) => i.message.includes("already defined"))).toBe(true);
+  });
+
+  it("treats an index embedded in the node name as that node's coverage", () => {
+    const issues = validateGraph(
+      [
+        node({
+          id: "m1",
+          name: "mu[1]",
+          nodeType: "stochastic",
+          distribution: "dnorm",
+          param1: "0",
+          param2: "1",
+        }),
+        node({
+          id: "m2",
+          name: "mu[2]",
+          nodeType: "stochastic",
+          distribution: "dnorm",
+          param1: "0",
+          param2: "1",
+        }),
+      ],
+      {},
+    );
+    expect(issues.filter((i) => i.message.includes("already defined"))).toEqual([]);
+  });
+
+  it("flags the same index embedded in two node names", () => {
+    const issues = validateGraph(
+      [
+        node({
+          id: "m1",
+          name: "mu[1]",
+          nodeType: "stochastic",
+          distribution: "dnorm",
+          param1: "0",
+          param2: "1",
+        }),
+        node({ id: "m2", name: "mu[1]", nodeType: "deterministic", equation: "3" }),
+      ],
+      {},
+    );
+    expect(issues.some((i) => i.message.includes("already defined"))).toBe(true);
+  });
+
+  it("does not invent a conflict from unknown index expressions", () => {
+    const issues = validateGraph(
+      [
+        node({
+          id: "a",
+          name: "x",
+          nodeType: "deterministic",
+          indices: "idx[k]",
+          equation: "1",
+        }),
+        node({
+          id: "b",
+          name: "x",
+          nodeType: "deterministic",
+          indices: "other[k]",
+          equation: "2",
+        }),
+      ],
+      {},
+    );
+    expect(issues.filter((i) => i.message.includes("already defined"))).toEqual([]);
+  });
+});
