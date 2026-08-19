@@ -79,8 +79,10 @@ function sentinelPath(dir: string): string {
 
 // Bumped when the provisioning changes shape so existing envs re-provision; e.g.
 // generation 1 introduced instantiating the committed Manifest for the default,
-// which a pre-existing fresh-resolved env must pick up.
-const PROVISION_GENERATION = 1;
+// which a pre-existing fresh-resolved env must pick up. The Manifest itself is
+// not part of the sentinel, so resolving it anew is a bump too: generation 2 is
+// the JuliaBUGS 0.16 resolve.
+const PROVISION_GENERATION = 2;
 
 function expectedSentinel(pins?: PackagePins): string {
   return canonicalJson({
