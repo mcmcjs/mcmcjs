@@ -75,6 +75,17 @@ function coveragesOverlap(a: IndexCoverage, b: IndexCoverage): boolean {
   return /^\d+$/.test(range.hi) && literal.value >= lo && literal.value <= Number(range.hi);
 }
 
+/** A node's index expressions, taken from `indices` or from brackets in its name. */
+function nodeIndexList(node: GraphNode): string[] {
+  const declared = (node.indices ?? "").trim();
+  const inName = node.name.match(/\[([^\]]*)\]/);
+  const raw = declared !== "" ? declared : (inName?.[1] ?? "");
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s !== "");
+}
+
 /**
  * BUGS lets one variable be defined by several statements over disjoint index
  * ranges (the seeded recursions in Ice and Dogs); what it forbids is two
@@ -96,13 +107,7 @@ function indexOverlapIssues(nodes: GraphNode[]): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   for (const [name, group] of byName) {
     if (group.length < 2) continue;
-    const coverage = group.map((n) =>
-      (n.indices ?? "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s !== "")
-        .map((idx) => indexCoverage(idx, ranges)),
-    );
+    const coverage = group.map((n) => nodeIndexList(n).map((idx) => indexCoverage(idx, ranges)));
     for (let a = 0; a < group.length; a++) {
       for (let b = a + 1; b < group.length; b++) {
         const ca = coverage[a] as IndexCoverage[];

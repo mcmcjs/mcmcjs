@@ -403,6 +403,49 @@ describe("validateGraph: index-range overlap between same-name nodes", () => {
     expect(issues.some((i) => i.message.includes("already defined"))).toBe(true);
   });
 
+  it("treats an index embedded in the node name as that node's coverage", () => {
+    const issues = validateGraph(
+      [
+        node({
+          id: "m1",
+          name: "mu[1]",
+          nodeType: "stochastic",
+          distribution: "dnorm",
+          param1: "0",
+          param2: "1",
+        }),
+        node({
+          id: "m2",
+          name: "mu[2]",
+          nodeType: "stochastic",
+          distribution: "dnorm",
+          param1: "0",
+          param2: "1",
+        }),
+      ],
+      {},
+    );
+    expect(issues.filter((i) => i.message.includes("already defined"))).toEqual([]);
+  });
+
+  it("flags the same index embedded in two node names", () => {
+    const issues = validateGraph(
+      [
+        node({
+          id: "m1",
+          name: "mu[1]",
+          nodeType: "stochastic",
+          distribution: "dnorm",
+          param1: "0",
+          param2: "1",
+        }),
+        node({ id: "m2", name: "mu[1]", nodeType: "deterministic", equation: "3" }),
+      ],
+      {},
+    );
+    expect(issues.some((i) => i.message.includes("already defined"))).toBe(true);
+  });
+
   it("does not invent a conflict from unknown index expressions", () => {
     const issues = validateGraph(
       [
