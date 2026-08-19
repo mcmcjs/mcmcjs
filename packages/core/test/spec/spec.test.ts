@@ -227,6 +227,16 @@ describe("SpecSchema", () => {
       /no gradient/,
     );
     expect(() => SpecSchema.parse({ ...VALID, sampler: slice })).toThrow(/through External/);
+    // A turing Gibbs block has no slice component either.
+    const gibbsSlice = {
+      draws: 10,
+      algorithm: "Gibbs",
+      blocks: [{ variables: ["mu"], algorithm: "Slice", slice_width: 1 }],
+    };
+    expect(
+      SpecSchema.parse({ ...bugs, sampler: gibbsSlice }).sampler.blocks?.[0]?.slice_width,
+    ).toBe(1);
+    expect(() => SpecSchema.parse({ ...VALID, sampler: gibbsSlice })).toThrow(/through External/);
   });
 
   it("accepts the juliabugs samplers, with an adtype and initial values", () => {
