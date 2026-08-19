@@ -1,5 +1,11 @@
 # @mcmcjs/doodleppl
 
+## 0.6.0
+
+### Minor Changes
+
+- 22e7013: Marginalize chain-structured discrete latents: a variable seeded at one index and defined one step back over a plate is summed out by a forward recursion over the previous state, and recovered in generated quantities by forward filtering and backward sampling.
+
 ## 0.5.0
 
 ### Minor Changes
