@@ -92,7 +92,9 @@ It does not combine with `MH` or `Gibbs`, which propose the discrete latents the
 
 `algorithm = "Gibbs"` composes per-variable samplers: each `[[sampler.blocks]]` table names the variables it updates and the component that updates them (`NUTS`, `HMC`, `HMCDA`, `MH`, `PG`, or `ESS`), with the same per-algorithm parameters as the top level.
 The classic use is a gradient sampler for continuous parameters and a particle or Metropolis component for the discrete ones.
-On juliabugs the components are `NUTS`, `HMC`, `HMCDA`, and `MH`, the blocks must cover every parameter exactly once, and a `MH` block updates each of its variables in turn.
+On juliabugs the components are `NUTS`, `HMC`, `HMCDA`, `MH`, and `Slice`, and the blocks must cover every parameter exactly once.
+One block is one group: a block naming an array variable updates the whole array together, which for a long vector of discrete states means proposing all of them at once and almost never accepting.
+`algorithm = "MH"` is the single-site alternative, one Metropolis update per parameter.
 `algorithm = "MH"` there is the shorthand for one Metropolis block over every parameter, which is how a model with unbounded discrete latents (a `dpois` count, say) is fitted at all: marginalization can only sum out a finite support.
 Two things to expect from a juliabugs Gibbs: JuliaBUGS disables step-size adaptation inside a gradient block, so a `NUTS` block mixes far more slowly than a plain `NUTS` fit and wants many more draws; and both `MH` and `Gibbs` start from the model's own values, so a model whose defaults are impossible under the data (an unobserved count below its observed successes, say) needs `initial_params`, and says so instead of running.
 
