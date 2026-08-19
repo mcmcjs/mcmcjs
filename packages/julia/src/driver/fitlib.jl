@@ -16,6 +16,8 @@ using Pkg
 # with Turing's exports, which would break Turing model files on include.
 import JuliaBUGS
 import AdvancedHMC
+# Loading SliceSampling activates JuliaBUGS's extension for its derivative-free samplers.
+import SliceSampling
 import ForwardDiff
 # Loading Mooncake activates AbstractPPL's native extension for AutoMooncake.
 import Mooncake
@@ -534,6 +536,9 @@ function prepare_bugs_model(model, sampler, mode_name)
     end
     mode_name === nothing || (base = set_bugs_mode(base, mode_name))
     base = initialize_bugs_model(base, sampler)
+    # A derivative-free sampler wants the plain model: preparing a gradient it
+    # never calls costs a compile, which for Mooncake runs into minutes.
+    get(sampler, "algorithm", "NUTS") == "Slice" && return base
     adtype = haskey(sampler, "adtype") ? build_adtype(sampler["adtype"]) :
         model isa JuliaBUGS.BUGSModelWithGradient ? model.adtype :
         Turing.ADTypes.AutoForwardDiff()
@@ -563,6 +568,15 @@ function bugs_hmc_sampler(conf)
     return nothing
 end
 
+# SliceSampling's univariate samplers move one coordinate at a time, so a
+# multi-parameter target needs a multivariate strategy around them. RandPermGibbs
+# cycles the coordinates in a random order, and reduces to the plain univariate
+# update when a Gibbs block leaves only one.
+function bugs_slice_sampler(conf)
+    width = Float64(conf["slice_width"])
+    return SliceSampling.RandPermGibbs(SliceSampling.SliceSteppingOut(width))
+end
+
 bugs_varname(name) = eval(:(Turing.@varname($(Meta.parse(name)))))
 
 # One spec block becomes one entry of JuliaBUGS's sampler map, keyed by the
@@ -573,7 +587,9 @@ function build_bugs_gibbs(sampler, model)
     pairs = map(sampler["blocks"]) do block
         vars = [bugs_varname(v) for v in block["variables"]]
         key = length(vars) == 1 ? vars[1] : vars
-        component = get(block, "algorithm", "NUTS") == "MH" ? JuliaBUGS.IndependentMH() :
+        algorithm = get(block, "algorithm", "NUTS")
+        component = algorithm == "MH" ? JuliaBUGS.IndependentMH() :
+            algorithm == "Slice" ? bugs_slice_sampler(block) :
             (bugs_hmc_sampler(block), adtype)
         key => component
     end
@@ -586,6 +602,7 @@ function build_bugs_sampler(sampler, model)
     hmc = bugs_hmc_sampler(sampler)
     hmc === nothing || return hmc
     algorithm = get(sampler, "algorithm", "NUTS")
+    algorithm == "Slice" && return bugs_slice_sampler(sampler)
     # Single-site Metropolis over every parameter: the WinBUGS-shaped sampler, and
     # the route to discrete latents that marginalization declines.
     algorithm == "MH" && return JuliaBUGS.Gibbs(model, JuliaBUGS.IndependentMH())
@@ -844,7 +861,7 @@ function provenance()
     packages = Dict{String,String}()
     for (_, info) in Pkg.dependencies()
         if info.name in
-           ("Turing", "FlexiChains", "DynamicPPL", "AbstractMCMC", "JuliaBUGS", "AdvancedHMC", "ForwardDiff", "Mooncake", "ADTypes") &&
+           ("Turing", "FlexiChains", "DynamicPPL", "AbstractMCMC", "JuliaBUGS", "AdvancedHMC", "SliceSampling", "ForwardDiff", "Mooncake", "ADTypes") &&
            info.version !== nothing
             packages[info.name] = string(info.version)
         end

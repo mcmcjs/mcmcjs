@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "107dec61506731779d20c005b15eedf7e04a2df6"
+project_hash = "ea3a76551fb06c81495151e9f5037ca1e9513b81"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "5970c86505ae9c07bf5bc521ef2bbbb3849e8b7b"
@@ -1593,6 +1593,12 @@ deps = ["InteractiveUtils", "MacroTools"]
 git-tree-sha1 = "7ddb0b49c109481b046972c0e4ab02b2127d6a75"
 uuid = "699a6c99-e7fa-54fc-8d76-47d257e15c1d"
 version = "0.9.6"
+
+[[deps.SliceSampling]]
+deps = ["AbstractMCMC", "Accessors", "Distributions", "LinearAlgebra", "LogDensityProblems", "Random"]
+git-tree-sha1 = "680f498b0e24c5b6b319e60b7e760750e0ab37b5"
+uuid = "43f4d3e8-9711-4a8c-bd1b-03ac73a255cf"
+version = "0.7.12"
 
 [[deps.Sockets]]
 uuid = "6462fe0b-24de-5631-8697-dd941f90decc"

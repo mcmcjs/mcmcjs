@@ -501,7 +501,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .option("--prior", "draw from the prior instead of running MCMC (no warmup)")
     .option(
       "--algorithm <name>",
-      "sampler: NUTS | HMC | HMCDA | MH | ESS | SMC | PG | Gibbs | External | Prior (default NUTS)",
+      "sampler: NUTS | HMC | HMCDA | MH | ESS | SMC | PG | Slice | Gibbs | External | Prior (default NUTS)",
     )
     .option("--thin <n>", "keep every thin-th draw", parseIntOption)
     .option(

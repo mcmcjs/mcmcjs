@@ -12,6 +12,7 @@ const PACKAGES = [
   "MCMCChains",
   "JuliaBUGS",
   "AdvancedHMC",
+  "SliceSampling",
   "ForwardDiff",
   "Mooncake",
   "ReverseDiff",
