@@ -1,5 +1,15 @@
 # mcmcjs
 
+## 0.32.2
+
+### Patch Changes
+
+- d802b67: `mcmc diagnose` no longer tells a healthy single-chain run that its sampler never moved. R-hat and ESS need two chains to compare, so a one-chain run now says exactly that and points at `--chains 2`, while a genuinely stuck sampler keeps its own note. The report also carries the chain count it diagnosed.
+- Updated dependencies [d802b67]
+- Updated dependencies [d802b67]
+  - @mcmcjs/diagnostics@0.9.0
+  - @mcmcjs/plots@0.8.3
+
 ## 0.32.1
 
 ### Patch Changes
