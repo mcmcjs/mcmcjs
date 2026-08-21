@@ -1,6 +1,6 @@
 import { computeEssBulk, computeEssTail } from "./ess";
 import { computeMCSEMultiChain } from "./mcse";
-import { computeRhat } from "./rhat";
+import { _isFiniteAndVaries, _splitChains, computeRhat } from "./rhat";
 import { computeHDI, computeMean, computeStdev } from "./summary";
 
 /** The standard convergence diagnostics for a single variable. */
@@ -15,6 +15,12 @@ export interface VariableDiagnostics {
   mcseMean: number;
   /** Highest-density interval `[lower, upper]`. */
   hdi: [number, number];
+  /**
+   * Whether the draws themselves support an R-hat: every (split) chain holds
+   * more than one distinct finite value. False means the variable sat still,
+   * which is why R-hat and ESS came back undefined.
+   */
+  varies: boolean;
 }
 
 export interface ConvergenceThresholds {
@@ -37,6 +43,9 @@ export function diagnoseChains(chains: Float64Array[], credMass = 0.94): Variabl
     essTail: computeEssTail(chains),
     mcseMean: computeMCSEMultiChain(chains),
     hdi: computeHDI(pooled, credMass),
+    // The same precondition computeRhat applies, so `varies` says whether the
+    // draws could support an R-hat, independently of how many chains there are.
+    varies: _isFiniteAndVaries(_splitChains(chains)),
   };
 }
 
@@ -48,11 +57,13 @@ export function diagnoseChains(chains: Float64Array[], credMass = 0.94): Variabl
  * once in another lands here too, not only an everywhere-constant one. Such a
  * variable carries no evidence either way about convergence.
  *
- * The mean and standard deviation separate the two cases: a non-finite draw
- * poisons them, while degeneracy leaves them perfectly finite.
+ * This asks the draws, not the R-hat: R-hat is also undefined for a single
+ * chain, and a lone well-mixed chain has not stood still. The mean and standard
+ * deviation separate the remaining case, a non-finite draw, which poisons them
+ * while degeneracy leaves them perfectly finite.
  */
 export function isDegenerate(d: VariableDiagnostics): boolean {
-  return Number.isFinite(d.mean) && Number.isFinite(d.std) && !Number.isFinite(d.rhat);
+  return Number.isFinite(d.mean) && Number.isFinite(d.std) && !d.varies;
 }
 
 /** Whether a variable's diagnostics clear the convergence thresholds. */

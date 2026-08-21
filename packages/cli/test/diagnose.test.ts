@@ -190,3 +190,61 @@ describe("buildDiagnosticsReport with constant variables", () => {
     expect(mixed).not.toContain("nothing was testable");
   });
 });
+
+/** One well-mixed chain: R-hat needs two, so the table is all n/a. */
+function makeSingleChainSamples(nDraws = 256) {
+  let s = 24681357 >>> 0;
+  const valueFlat = Array.from({ length: nDraws }, () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  });
+  return parseSamples({
+    size: [nDraws, 1, 1],
+    value_flat: valueFlat,
+    parameters: ["x"],
+    name_map: { internals: [] },
+  });
+}
+
+// A lone chain leaves R-hat and ESS undefined for a reason that has nothing to
+// do with the sampler: it moved fine, there is just nothing to compare it to.
+describe("buildDiagnosticsReport with a single chain", () => {
+  it("does not call a well-mixed lone chain degenerate", () => {
+    const report = buildDiagnosticsReport(makeSingleChainSamples());
+    const x = report.variables[0];
+    expect(x?.varies).toBe(true);
+    expect(Number.isFinite(x?.rhat ?? Number.NaN)).toBe(false);
+    expect(x?.converged).toBe(false);
+    expect(report.converged).toBe(false);
+  });
+
+  it("records the chain count it diagnosed", () => {
+    expect(buildDiagnosticsReport(makeSingleChainSamples()).chains).toBe(1);
+    expect(buildDiagnosticsReport(makeSamplesWithConstant()).chains).toBe(4);
+  });
+
+  it("blames the chain count, not the sampler", () => {
+    const out = formatReportHuman(buildDiagnosticsReport(makeSingleChainSamples()));
+    expect(out).toContain("--chains 2 or more");
+    // The stuck-sampler note would be a lie here: the chain moved.
+    expect(out).not.toContain("nothing was testable");
+  });
+
+  it("still names a stuck sampler when the lone chain never moved", () => {
+    const stuck = parseSamples({
+      size: [8, 1, 1],
+      value_flat: [5, 5, 5, 5, 5, 5, 5, 5],
+      parameters: ["z"],
+      name_map: { internals: [] },
+    });
+    const out = formatReportHuman(buildDiagnosticsReport(stuck));
+    expect(out).toContain("nothing was testable");
+    expect(out).not.toContain("--chains 2 or more");
+  });
+
+  it("leaves a healthy multi-chain run with neither note", () => {
+    const out = formatReportHuman(buildDiagnosticsReport(makeSamplesWithConstant()));
+    expect(out).not.toContain("nothing was testable");
+    expect(out).not.toContain("--chains 2 or more");
+  });
+});

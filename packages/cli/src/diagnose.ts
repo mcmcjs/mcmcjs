@@ -38,6 +38,8 @@ export interface DiagnosticsReport {
   /** Divergent draws across all chains, or null when the samples carry no divergence stat. */
   divergences: number | null;
   maxDivergences: number;
+  /** Chains the diagnostics were computed from; R-hat needs at least two. */
+  chains: number;
 }
 
 export interface DiagnoseOptions {
@@ -78,7 +80,7 @@ export function buildDiagnosticsReport(
     informative.length > 0 &&
     informative.every((v) => v.converged) &&
     (divergences === null || divergences <= maxDivergences);
-  return { variables, converged, thresholds, divergences, maxDivergences };
+  return { variables, converged, thresholds, divergences, maxDivergences, chains: samples.nChains };
 }
 
 function num(value: number, digits = 3): string {
@@ -145,6 +147,9 @@ export function formatReportHuman(report: DiagnosticsReport): string {
   if (report.variables.length > 0 && report.variables.every(isDegenerate)) {
     out +=
       "no variable varies in every chain, so nothing was testable: this is what a sampler that never moved looks like\n";
+  } else if (report.chains < 2) {
+    out +=
+      "R-hat and ESS compare chains against each other, so one chain leaves them undefined: refit with --chains 2 or more to test convergence\n";
   }
   return out;
 }

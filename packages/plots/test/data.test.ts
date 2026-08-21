@@ -202,4 +202,26 @@ describe("forestData", () => {
     expect(fd.rows).toHaveLength(1);
     expect(fd.rows[0]?.variable).toBe("theta");
   });
+
+  // A row with no R-hat is only excused when the variable stood still. One
+  // chain leaves R-hat undefined too, and calling that converged paints an
+  // untested run green.
+  it("does not call a single-chain row converged", () => {
+    const lone = makeSamples({ mu: [[1, 5, 2, 8, 3, 7, 4, 6]] });
+    const row = forestData(lone).rows[0];
+    expect(Number.isFinite(row?.rhat ?? Number.NaN)).toBe(false);
+    expect(row?.converged).toBe(false);
+  });
+
+  it("still excuses a variable that never moves", () => {
+    const constant = makeSamples({
+      z: [
+        [2, 2, 2, 2],
+        [2, 2, 2, 2],
+      ],
+    });
+    const row = forestData(constant).rows[0];
+    expect(Number.isFinite(row?.rhat ?? Number.NaN)).toBe(false);
+    expect(row?.converged).toBe(true);
+  });
 });

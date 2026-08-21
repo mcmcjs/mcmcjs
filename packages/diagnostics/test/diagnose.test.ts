@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { countDivergences, DEFAULT_THRESHOLDS, diagnoseChains, isConverged } from "../src/diagnose";
+import {
+  countDivergences,
+  DEFAULT_THRESHOLDS,
+  diagnoseChains,
+  isConverged,
+  isDegenerate,
+} from "../src/diagnose";
 import { uniformChain } from "./test-helpers";
 
 describe("countDivergences", () => {
@@ -34,5 +40,36 @@ describe("diagnoseChains", () => {
     ]);
     expect(d.rhat).toBeGreaterThan(1.01);
     expect(isConverged(d)).toBe(false);
+  });
+});
+
+describe("isDegenerate", () => {
+  const constant = (n: number, value = 1) => Float64Array.from({ length: n }, () => value);
+
+  it("is false for a lone chain that mixes, whose R-hat is undefined for want of a second", () => {
+    const d = diagnoseChains([uniformChain(256, 1)]);
+    expect(Number.isFinite(d.rhat)).toBe(false);
+    expect(d.varies).toBe(true);
+    expect(isDegenerate(d)).toBe(false);
+  });
+
+  it("is true when a chain never moves, however many chains there are", () => {
+    expect(isDegenerate(diagnoseChains([constant(64)]))).toBe(true);
+    expect(isDegenerate(diagnoseChains([constant(64), constant(64)]))).toBe(true);
+  });
+
+  it("is true when only one of several chains stood still", () => {
+    // The pooled draws vary, so a std test would miss this; R-hat is undefined
+    // all the same, and the variable carries no evidence either way.
+    const d = diagnoseChains([constant(64, 2), uniformChain(64, 3)]);
+    expect(d.std).toBeGreaterThan(0);
+    expect(isDegenerate(d)).toBe(true);
+  });
+
+  it("is false for unusable draws, which are corrupt rather than still", () => {
+    const nan = Float64Array.from({ length: 8 }, () => Number.NaN);
+    const d = diagnoseChains([nan, nan]);
+    expect(d.varies).toBe(false);
+    expect(isDegenerate(d)).toBe(false);
   });
 });
