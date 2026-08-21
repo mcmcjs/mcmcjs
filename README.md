@@ -2,8 +2,8 @@
 
 Command-line tools for Bayesian modelling, MCMC inference, and post-inference diagnostics across probabilistic programming languages.
 
-MCMC.js is a thin TypeScript orchestrator over the Julia PPL ecosystem (Turing.jl and JuliaBUGS) and Stan via a local CmdStan.
-It bootstraps the toolchain for you, runs inference as a subprocess, and turns the result into convergence diagnostics and plots, behind one consistent command-line surface designed for both humans and AI agents: structured `--json` output and clear exit codes everywhere.
+MCMC.js runs your model, checks whether the sampler converged, and shows you the result.
+It works with Turing.jl, JuliaBUGS, and Stan, and it can install the toolchain for you.
 
 > Early alpha: under active development. APIs and the CLI surface are not yet stable.
 
@@ -11,7 +11,7 @@ It bootstraps the toolchain for you, runs inference as a subprocess, and turns t
 
 ```bash
 curl -fsSL https://mcmcjs.github.io/install.sh | sh   # single binary, no Node.js needed
-npm i -g mcmcjs                                      # or from npm
+npm i -g mcmcjs                                       # or from npm
 ```
 
 Either way you get the `mcmc` command.
@@ -20,43 +20,16 @@ The libraries are published under the `@mcmcjs/*` scope on npm.
 ## Quickstart
 
 ```bash
-mcmc setup                            # install the Julia toolchain via juliaup
+mcmc setup                            # install the Julia toolchain
 mcmc init demo                        # seed a directory with an example model
 mcmc run demo/model.jl                # fit + diagnose, with live progress
 mcmc plot --kind trace                # plot the latest run in the terminal
 ```
 
-## Usage
+`mcmc run` records every run in a project-local `.mcmc/` store, so you can list, compare, and re-open runs later.
+Every command supports `--json` and uses exit codes `0` (ok), `1` (error), and `2` (ran, but a domain check failed, such as non-convergence).
 
-```bash
-# Run inference
-mcmc run model.jl --data data.csv     # fit + diagnose; artifacts go to .mcmc/
-mcmc run model.stan                   # same workflow for a Stan model
-mcmc fit model.toml -o out.json       # plumbing: spec in, samples file out
-mcmc predict model.toml samples.json  # posterior-predictive draws
-
-# Inspect runs
-mcmc runs                             # list recorded runs and their verdicts
-mcmc show                             # one run's settings and artifacts
-mcmc diagnose                         # R-hat / ESS / MCSE / HDI + a verdict
-mcmc summary                          # a posterior summary table
-mcmc plot --kind trace --format svg   # 19 plot kinds; terminal, svg, or html
-mcmc samples --to mcmcchains-json     # export raw draws in a portable format
-
-# Start a project
-mcmc init                             # scaffold an example model
-mcmc sandbox                          # try mcmcjs in a throwaway shell
-mcmc convert graph.json               # DoodleBUGS graph -> model file + spec
-
-# Toolchain
-mcmc doctor                           # check the environment
-mcmc setup --engine stan              # download and build CmdStan
-mcmc julia version list               # manage installed Julia versions
-```
-
-`mcmc run` keeps the working directory clean: settings come from flags (or an optional spec file you author), every run is recorded in a project-local `.mcmc/` store, and re-running an unchanged model+data+settings reuses the previous result (`--refit` to force).
-
-Every command supports `--json` (except the interactive `sandbox`) and uses exit codes `0` (ok), `1` (error), and `2` (ran, but a domain check failed, such as non-convergence).
+Run `mcmc --help` to see the full command list, or read the [documentation](https://mcmcjs.github.io/).
 
 ## Packages
 
@@ -64,16 +37,16 @@ Every command supports `--json` (except the interactive `sandbox`) and uses exit
 | --- | --- |
 | [`mcmcjs`](./packages/cli) | The command-line interface (`mcmc`). |
 | [`@mcmcjs/core`](./packages/core) | Samples data model, spec format, samples-file parsers, and the run store/record. |
-| [`@mcmcjs/diagnostics`](./packages/diagnostics) | Convergence diagnostics: split-R-hat, ESS, MCSE, HDI, Geweke, correlation. |
+| [`@mcmcjs/diagnostics`](./packages/diagnostics) | Convergence diagnostics: split-R-hat, ESS, MCSE, HDI, Geweke, PSIS-LOO, WAIC. |
 | [`@mcmcjs/engine`](./packages/engine) | Backend-neutral runtime/PPL contract and shared subprocess runners. |
 | [`@mcmcjs/julia`](./packages/julia) | The Julia engine: toolchain provisioning, version management, and the fit/predict driver. |
 | [`@mcmcjs/charts`](./packages/charts) | Dependency-free plotting engine: terminal (braille/ASCII) and SVG, plus a live uPlot DOM layer. |
-| [`@mcmcjs/plots`](./packages/plots) | MCMC diagnostic plots (trace, forest, rank, ...) over `@mcmcjs/charts`; terminal, SVG, and self-contained HTML. |
+| [`@mcmcjs/plots`](./packages/plots) | MCMC diagnostic plots over `@mcmcjs/charts`; terminal, SVG, and self-contained HTML. |
 | [`@mcmcjs/plots-gl`](./packages/plots-gl) | Interactive WebGL renderers (3D scatter, SPLOM, parallel coordinates); `regl` optional peer. |
-| [`@mcmcjs/stan`](./packages/stan) | The native Stan engine via a local CmdStan: provisioning, version management, and the fit/predict driver. |
+| [`@mcmcjs/stan`](./packages/stan) | The native Stan engine via a local CmdStan. |
 | [`@mcmcjs/stan-wasm`](./packages/stan-wasm) | The browser Stan runtime: WASM sampler plus a compile-server client. |
 | [`@mcmcjs/doodleppl`](./packages/doodleppl) | Turn a DoodlePPL graph into BUGS / JuliaBUGS and Stan model code. |
-| [`doodleppl`](./packages/doodleppl-ui) | Embed the DoodlePPL graphical model editor anywhere; typed mount class over the editor widget. |
+| [`doodleppl`](./packages/doodleppl-ui) | Embed the DoodlePPL graphical model editor anywhere. |
 
 ## Development
 
