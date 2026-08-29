@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-// Rounds published run bundles to 6 decimals and writes an index over them.
-// Full double precision is far more than a trace plot or an R-hat needs and
-// roughly doubles the file.
+// Rounding to 6 decimals halves a bundle and costs nothing a plot or an R-hat needs.
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 

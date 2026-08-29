@@ -77,8 +77,7 @@ jobs:
           cp -r report/dist/. site/report/
           ls site
 
-      # `clean` prunes what the site no longer builds, but bugs-examples/ is
-      # published by bugs-bundles.yml on its own schedule and must survive.
+      # bugs-examples/ belongs to bugs-bundles.yml.
       - name: Publish to mcmcjs.github.io
         if: steps.key.outputs.present == 'true'
         uses: JamesIves/github-pages-deploy-action@v4
