@@ -1,6 +1,6 @@
 import type { LedgerEntry } from "@mcmcjs/core";
 import { parseRunBundle } from "@mcmcjs/core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Ambient, startAmbient } from "../lib/ambient";
 import {
   type Endpoint,
@@ -13,13 +13,9 @@ import {
   toPairing,
 } from "../lib/cli-server";
 import { addRoot, getPairing, listRoots, putPairing, putRun } from "../lib/db";
+import type { DeepLink } from "../lib/deeplink";
+import { type BundleSource, classifyBundleUrl, fetchBundle } from "../lib/remote";
 import { locateStore, readLedgerEntries, readStoreRun, timeAgo } from "../lib/runs";
-
-export interface DeepLink {
-  runId: string;
-  storePath?: string;
-  connect?: string;
-}
 
 function VerdictDot({ entry }: { entry: LedgerEntry }) {
   if (entry.status !== "ok") return <span className="dot bad" title={entry.status} />;
@@ -53,6 +49,7 @@ export function Landing({
   const [handoff, setHandoff] = useState<"idle" | "pending" | "failed">(
     deepLink?.connect ? "pending" : "idle",
   );
+  const [remote, setRemote] = useState<"idle" | "loading" | "failed">("idle");
   const [error, setError] = useState<string | null>(null);
   const [over, setOver] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -70,6 +67,38 @@ export function Landing({
     },
     [onOpen],
   );
+
+  const bundleSource = useMemo(
+    () => (deepLink?.bundle ? classifyBundleUrl(deepLink.bundle, window.location.href) : null),
+    [deepLink],
+  );
+
+  const openRemoteBundle = useCallback(
+    async (source: BundleSource, signal?: AbortSignal) => {
+      setError(null);
+      setRemote("loading");
+      try {
+        const bundle = await fetchBundle(source, signal);
+        await putRun(bundle, source.origin);
+        onOpen(bundle.entry.id);
+      } catch (err) {
+        if (signal?.aborted) return;
+        setRemote("failed");
+        setError((err as Error).message);
+      }
+    },
+    [onOpen],
+  );
+
+  // A bundle published by a site we know opens on its own. One from anywhere
+  // else waits for the reader, who is the only one who can say whether that
+  // site is worth showing under mcmcjs chrome.
+  useEffect(() => {
+    if (!bundleSource?.trusted) return;
+    const controller = new AbortController();
+    void openRemoteBundle(bundleSource, controller.signal);
+    return () => controller.abort();
+  }, [bundleSource, openRemoteBundle]);
 
   // A CLI link carries the store server's port and token. Saving them is what
   // lets a later visit reconnect on its own, with no link and no file access.
@@ -257,15 +286,15 @@ export function Landing({
 
   // A deep link resolves silently when a granted folder already reaches it.
   useEffect(() => {
-    if (!deepLink?.storePath) return;
+    if (!deepLink?.storePath || !deepLink.runId) return;
     listRoots().then(async (roots) => {
       const store = await locateStore(roots, deepLink.storePath as string, false);
-      if (store) await openRunFromStore(store, deepLink.runId).catch(() => {});
+      if (store) await openRunFromStore(store, deepLink.runId as string).catch(() => {});
     });
   }, [deepLink, openRunFromStore]);
 
   const connectStore = useCallback(async () => {
-    if (!deepLink) return;
+    if (!deepLink?.runId) return;
     setError(null);
     try {
       if (deepLink.storePath) {
@@ -334,7 +363,42 @@ export function Landing({
         </button>
       </p>
 
-      {deepLink && (
+      {deepLink?.bundle && !bundleSource && (
+        <div className="banner" role="alert">
+          <div>
+            <div>That report link cannot be opened</div>
+            <div className="hint">
+              A linked bundle has to be an https URL. <code>{deepLink.bundle}</code> is not one.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bundleSource && (
+        <div className="banner">
+          <div>
+            <div>
+              {bundleSource.trusted || remote !== "idle" ? "A run from " : "Open a run from "}
+              <code>{bundleSource.origin}</code>
+            </div>
+            {bundleSource.trusted ? (
+              remote === "loading" && <div className="hint">fetching the bundle</div>
+            ) : (
+              <div className="hint">
+                That site is not mcmcjs. Its model code, data and variable names will be shown here
+                as they are; nothing about them has been checked.
+              </div>
+            )}
+          </div>
+          {(remote === "failed" || (!bundleSource.trusted && remote === "idle")) && (
+            <button type="button" className="btn" onClick={() => openRemoteBundle(bundleSource)}>
+              {remote === "failed" ? "Retry" : "Open the run"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {deepLink?.runId && (
         <div className="banner">
           <div>
             <div>

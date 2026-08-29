@@ -219,6 +219,7 @@ export function RunView({
                 chains · {entry.sampler.warmup} warmup
               </span>
               <span className="chip">seed {entry.seed}</span>
+              {run.source && <span className="chip">from {run.source}</span>}
               <span className="chip">{(entry.elapsed_ms / 1000).toFixed(1)} s</span>
               {verdict?.rhat_max != null && (
                 <span className="chip">R-hat max {verdict.rhat_max.toFixed(3)}</span>

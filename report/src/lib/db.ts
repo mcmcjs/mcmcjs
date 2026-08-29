@@ -4,6 +4,8 @@ export interface StoredRun {
   id: string;
   savedAt: number;
   bundle: RunBundle;
+  /** Where the run came from, when it came from off this machine. */
+  source?: string;
 }
 
 const DB_NAME = "mcmcjs-report";
@@ -59,8 +61,8 @@ export function getRun(id: string): Promise<StoredRun | undefined> {
   );
 }
 
-export function putRun(bundle: RunBundle): Promise<StoredRun> {
-  const stored: StoredRun = { id: bundle.entry.id, savedAt: Date.now(), bundle };
+export function putRun(bundle: RunBundle, source?: string): Promise<StoredRun> {
+  const stored: StoredRun = { id: bundle.entry.id, savedAt: Date.now(), bundle, source };
   return tx(RUNS, "readwrite", (s) => s.put(stored)).then(() => stored);
 }
 
