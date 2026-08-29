@@ -44,10 +44,25 @@ jobs:
             echo "SITE_TOKEN is not set; skipping the publish." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Resolve the JuliaBUGS ref
+        id: ref
+        env:
+          REF: ${{ inputs.juliabugs_ref }}
+        run: |
+          ref=$(printf '%s' "$REF" | tr -d '[:space:]' | sed 's/[.,]*$//')
+          repo=https://github.com/TuringLang/JuliaBUGS.jl.git
+          sha=$(git ls-remote "$repo" "refs/heads/$ref" "refs/tags/$ref" | cut -f1 | head -1)
+          if [ -z "$sha" ]; then
+            echo "::error::TuringLang/JuliaBUGS.jl has no branch or tag '$ref'"
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "$ref is $sha" >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/checkout@v6
         with:
           repository: TuringLang/JuliaBUGS.jl
-          ref: ${{ inputs.juliabugs_ref }}
+          ref: ${{ steps.ref.outputs.sha }}
           path: juliabugs
 
       - uses: julia-actions/setup-julia@v2
@@ -62,7 +77,7 @@ jobs:
         run: |
           script=juliabugs/JuliaBUGS/docs/gen_bundles.jl
           if [ ! -f "$script" ]; then
-            echo "::error::$script is missing on ${{ inputs.juliabugs_ref }}"
+            echo "::error::gen_bundles.jl is missing at ${{ steps.ref.outputs.sha }}"
             exit 1
           fi
           julia --project=juliabugs/JuliaBUGS -e 'using Pkg; Pkg.instantiate()'
@@ -98,8 +113,8 @@ jobs:
 
       - name: Summary
         if: always()
-        working-directory: emitted/bundles
         run: |
+          cd emitted/bundles 2>/dev/null || exit 0
           {
             echo "| bundle | size |"
             echo "|---|---|"
