@@ -1,24 +1,7 @@
 name: BUGS example bundles
 
-# Fits the classic BUGS examples that ship with JuliaBUGS and publishes one
-# self-contained run bundle each to
-# https://mcmcjs.github.io/bugs-examples/<key>.json, which the report app can
-# open directly: https://mcmcjs.github.io/report/#bundle=<url>.
-#
-# Same origin as the report app, so no CORS and no confirmation prompt.
-#
-# Manual only. A full sweep takes hours, and the results change only when
-# JuliaBUGS changes, so there is nothing to gain from running it on a push.
-#
-# Note which JuliaBUGS does what. `juliabugs_ref` only decides which checkout the
-# example models and data are read out of. The fitting is done by the managed
-# Julia project that `mcmc setup` provisions, which pins its own JuliaBUGS, so
-# pointing this at a branch does not test that branch's sampler.
-#
-# Needs SITE_TOKEN, a token with contents:write on mcmcjs/mcmcjs.github.io.
-# The deploy is scoped to the bugs-examples directory: `clean` prunes stale
-# bundles inside it and leaves the rest of the site alone. site-publish.yml
-# excludes the same directory, so the two workflows never overwrite each other.
+# Publishes to mcmcjs.github.io/bugs-examples/, which site-publish.yml keeps
+# through clean-exclude. Needs SITE_TOKEN with contents:write on that repo.
 on:
   workflow_dispatch:
     inputs:
@@ -32,9 +15,10 @@ on:
         type: string
         default: ""
       juliabugs_ref:
-        description: "JuliaBUGS.jl ref to take the EXAMPLES from (not the sampler)"
+        # gen_bundles.jl lands on main with TuringLang/JuliaBUGS.jl#453.
+        description: "JuliaBUGS.jl ref holding the examples"
         type: string
-        default: main
+        default: Redesign-BUGSExamples
 
 permissions:
   contents: read
@@ -44,7 +28,6 @@ concurrency: bugs-bundles
 jobs:
   fit:
     runs-on: ubuntu-latest
-    # A volume can take a couple of hours; the default 360 is the ceiling.
     timeout-minutes: 350
     steps:
       - uses: actions/checkout@v6
@@ -64,8 +47,7 @@ jobs:
             echo "SITE_TOKEN is not set; skipping the publish." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Check out JuliaBUGS
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           repository: TuringLang/JuliaBUGS.jl
           ref: ${{ inputs.juliabugs_ref }}
@@ -75,84 +57,38 @@ jobs:
         with:
           version: "1"
 
-      - name: Build the CLI
-        run: pnpm build
+      - run: pnpm build
 
       - name: Emit the examples
-        run: |
-          julia --project=juliabugs/JuliaBUGS -e 'using Pkg; Pkg.instantiate()'
-          julia --project=juliabugs/JuliaBUGS juliabugs/JuliaBUGS/docs/gen_bundles.jl \
-            "$GITHUB_WORKSPACE/emitted" "$SELECT"
         env:
-          # A single example key wins over the volume choice.
           SELECT: ${{ inputs.example != '' && inputs.example || inputs.volumes }}
+        run: |
+          script=juliabugs/JuliaBUGS/docs/gen_bundles.jl
+          if [ ! -f "$script" ]; then
+            echo "::error::$script is missing on ${{ inputs.juliabugs_ref }}"
+            exit 1
+          fi
+          julia --project=juliabugs/JuliaBUGS -e 'using Pkg; Pkg.instantiate()'
+          julia --project=juliabugs/JuliaBUGS "$script" "$GITHUB_WORKSPACE/emitted" "$SELECT"
 
       - name: Fit and export
-        env:
-          # gen_bundles.jl writes run.sh against the `mcmc` on PATH.
-          MCMC: ${{ github.workspace }}/packages/cli/dist/index.js
+        working-directory: emitted
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/emitted/bundles"
-          cd "$GITHUB_WORKSPACE/emitted"
-          # The generated run.sh calls `mcmc`; point that at the built CLI.
-          printf '#!/bin/sh\nexec node "%s" "$@"\n' "$MCMC" > mcmc
+          printf '#!/bin/sh\nexec node "%s" "$@"\n' \
+            "$GITHUB_WORKSPACE/packages/cli/dist/index.js" > mcmc
           chmod +x mcmc
           export PATH="$PWD:$PATH"
           mcmc setup --engine julia
-          # run.sh exits with the number of failures; an incomplete sweep still
-          # publishes what did fit.
+          # run.sh exits with the number of failures; publish whatever did fit.
           sh run.sh || echo "$? example(s) failed to fit" >> "$GITHUB_STEP_SUMMARY"
-          ls -la bundles
 
-      - name: Shrink the bundles
+      - name: Trim and index
+        working-directory: emitted/bundles
         run: |
-          cd "$GITHUB_WORKSPACE/emitted/bundles"
-          # An empty sweep would leave the glob unexpanded and feed node a
-          # filename that does not exist.
-          ls *.json >/dev/null 2>&1 || { echo "no bundles to shrink"; exit 0; }
-          for f in *.json; do
-            node -e '
-              const fs = require("node:fs");
-              const p = process.argv[1];
-              const b = JSON.parse(fs.readFileSync(p, "utf8"));
-              // Draws are stored at full double precision, which is far more than
-              // any trace plot or diagnostic needs and roughly doubles the file.
-              const v = b.samples?.value_flat;
-              if (Array.isArray(v)) {
-                for (let i = 0; i < v.length; i++) {
-                  if (typeof v[i] === "number") v[i] = Number(v[i].toFixed(6));
-                }
-              }
-              fs.writeFileSync(p, JSON.stringify(b));
-            ' "$f"
-          done
-          du -ch *.json | tail -1
+          ls ./*.json >/dev/null 2>&1 || { echo "nothing to publish"; exit 1; }
+          node "$GITHUB_WORKSPACE/scripts/trim-bundles.mjs" .
 
-      - name: Write the index
-        run: |
-          cd "$GITHUB_WORKSPACE/emitted/bundles"
-          ls *.json >/dev/null 2>&1 || { echo "no bundles to index"; exit 0; }
-          node -e '
-            const fs = require("node:fs");
-            const files = fs.readdirSync(".").filter((f) => f.endsWith(".json") && f !== "index.json");
-            const runs = files.map((f) => {
-              const b = JSON.parse(fs.readFileSync(f, "utf8"));
-              const e = b.entry ?? {};
-              return {
-                key: f.replace(/\.json$/, ""),
-                file: f,
-                model: e.model?.path ?? null,
-                sampler: e.sampler ?? null,
-                verdict: e.diagnostics?.converged ?? null,
-                fitted_at: e.started_at ?? null,
-                bytes: fs.statSync(f).size,
-              };
-            });
-            fs.writeFileSync("index.json", JSON.stringify({ runs }, null, 2));
-          '
-          cat index.json | head -20
-
-      - name: Publish to mcmcjs.github.io/bugs-examples
+      - name: Publish
         if: steps.key.outputs.present == 'true'
         uses: JamesIves/github-pages-deploy-action@v4
         with:
@@ -161,24 +97,18 @@ jobs:
           branch: deploy
           folder: emitted/bundles
           target-folder: bugs-examples
-          # Scoped to target-folder: rsync deletes only inside bugs-examples.
           clean: true
           commit-message: "publish BUGS example bundles from ${{ github.sha }}"
 
       - name: Summary
         if: always()
+        working-directory: emitted/bundles
         run: |
           {
-            echo "### BUGS example bundles"
-            echo
-            if [ -d "$GITHUB_WORKSPACE/emitted/bundles" ]; then
-              echo "| bundle | size |"
-              echo "|---|---|"
-              for f in "$GITHUB_WORKSPACE"/emitted/bundles/*.json; do
-                [ -e "$f" ] || continue
-                echo "| $(basename "$f") | $(du -h "$f" | cut -f1) |"
-              done
-            else
-              echo "No bundles were produced."
-            fi
+            echo "| bundle | size |"
+            echo "|---|---|"
+            for f in ./*.json; do
+              [ -e "$f" ] || continue
+              echo "| $(basename "$f") | $(du -h "$f" | cut -f1) |"
+            done
           } >> "$GITHUB_STEP_SUMMARY"
