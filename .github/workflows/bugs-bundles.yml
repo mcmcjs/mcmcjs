@@ -1,7 +1,5 @@
 name: BUGS example bundles
 
-# Publishes to mcmcjs.github.io/bugs-examples/, which site-publish.yml keeps
-# through clean-exclude. Needs SITE_TOKEN with contents:write on that repo.
 on:
   workflow_dispatch:
     inputs:
@@ -15,10 +13,9 @@ on:
         type: string
         default: ""
       juliabugs_ref:
-        # gen_bundles.jl lands on main with TuringLang/JuliaBUGS.jl#453.
         description: "JuliaBUGS.jl ref holding the examples"
         type: string
-        default: Redesign-BUGSExamples
+        default: main
 
 permissions:
   contents: read
@@ -79,7 +76,6 @@ jobs:
           chmod +x mcmc
           export PATH="$PWD:$PATH"
           mcmc setup --engine julia
-          # run.sh exits with the number of failures; publish whatever did fit.
           sh run.sh || echo "$? example(s) failed to fit" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Trim and index
