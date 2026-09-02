@@ -1,5 +1,11 @@
 # doodleppl
 
+## 0.9.0
+
+### Minor Changes
+
+- 45c454e: Add theme-from, so a widget follows the host page's own dark-mode class
+
 ## 0.8.2
 
 ### Patch Changes
