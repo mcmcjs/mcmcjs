@@ -77,13 +77,9 @@ jobs:
         env:
           SELECT: ${{ inputs.example != '' && inputs.example || inputs.volumes }}
         run: |
-          script=juliabugs/JuliaBUGS/docs/gen_bundles.jl
-          if [ ! -f "$script" ]; then
-            echo "::error::gen_bundles.jl is missing at ${{ steps.ref.outputs.sha }}"
-            exit 1
-          fi
           julia --project=juliabugs/JuliaBUGS -e 'using Pkg; Pkg.instantiate()'
-          julia --project=juliabugs/JuliaBUGS "$script" "$GITHUB_WORKSPACE/emitted" "$SELECT"
+          julia --project=juliabugs/JuliaBUGS scripts/bugs-examples/emit.jl \
+            "$GITHUB_WORKSPACE/emitted" "$SELECT"
 
       - name: Fit and export
         working-directory: emitted
