@@ -1,5 +1,11 @@
 # doodleppl
 
+## 0.8.2
+
+### Patch Changes
+
+- 7a87b5e: Open an embedded graph in view mode, whatever the reader did last time
+
 ## 0.8.1
 
 ### Patch Changes
