@@ -48,6 +48,11 @@ const props = withDefaults(
     width?: string
     height?: string
     themeMode?: string
+    // A class name the host page puts on <html> or <body> when it is in dark
+    // mode, e.g. "theme--documenter-dark". The widget follows it, so a page
+    // with its own theme toggle does not need any glue code. Ignored when
+    // themeMode is set, which is the explicit override.
+    themeFrom?: string
     mode?: 'embedded' | 'fullpage'
     // View-only: the graph is shown but cannot be edited, and the edit toggle is
     // hidden. For displaying a model immutably (a gallery entry, a shared link).
@@ -113,6 +118,29 @@ watch(
   },
   { immediate: true }
 )
+
+// Follows `theme-from`: the host names the class it sets when it is dark, and
+// the widget watches for it. The widget puts its own `db-dark-mode` class on the
+// same elements, so the observer sees those writes too; reading the host's class
+// rather than reacting to the mutation keeps that from feeding back.
+let hostThemeObserver: MutationObserver | null = null
+
+const syncThemeFromHost = () => {
+  const marker = props.themeFrom
+  if (!marker || props.themeMode != null) return
+  uiStore.isDarkMode =
+    document.documentElement.classList.contains(marker) ||
+    document.body.classList.contains(marker)
+}
+
+const watchHostTheme = () => {
+  if (!props.themeFrom || typeof MutationObserver === 'undefined') return
+  syncThemeFromHost()
+  hostThemeObserver = new MutationObserver(syncThemeFromHost)
+  for (const node of [document.documentElement, document.body]) {
+    hostThemeObserver.observe(node, { attributes: true, attributeFilter: ['class'] })
+  }
+}
 
 watch(
   () => props.model,
@@ -764,6 +792,7 @@ const handleWidgetClick = () => {
 }
 
 onMounted(async () => {
+  watchHostTheme()
   const manager = getManager()
   manager.register(instanceId.value, {
     setUIActive: (val) => {
@@ -877,6 +906,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   getManager().unregister(instanceId.value)
+  hostThemeObserver?.disconnect()
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('scroll', handleWindowScroll)
   if (observer) observer.disconnect()
