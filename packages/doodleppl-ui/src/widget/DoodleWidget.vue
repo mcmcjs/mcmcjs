@@ -422,7 +422,6 @@ const saveWidgetUIState = () => {
       height: dataPanelSize.height,
     },
     currentGraphId: graphStore.currentGraphId || undefined,
-    editMode: isEditMode.value,
     isFullScreen: isFullScreen.value,
   })
 }
@@ -831,14 +830,13 @@ onMounted(async () => {
       graphStore.selectGraph(savedUIState.currentGraphId)
     if (savedUIState.isFullScreen) {
       isFullScreen.value = true
-      isEditMode.value = true
       activateWidget('click')
     }
   }
 
-  if (savedUIState?.editMode != null) {
-    isEditMode.value = savedUIState.editMode
-  }
+  // Edit mode is not restored. A reader arriving at a page that embeds a graph
+  // expects to look at it, not to land in the editor because of something they
+  // did on a previous visit.
   if (isPinned.value) {
     isFullScreen.value = true
     isEditMode.value = true
