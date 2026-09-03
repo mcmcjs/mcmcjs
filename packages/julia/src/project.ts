@@ -123,9 +123,10 @@ export function managedProjectReady(
  * The `Pkg.add` argument: a PackageSpec per managed package, version-pinned where
  * requested. Unpinned packages resolve to the newest compatible version, which is
  * what mcmcjs needs: a `version` here is an exact range, not a floor, so pinning
- * a minimum is not expressible. Features mcmcjs relies on (JuliaBUGS
- * auto-marginalization, from 0.12) therefore assume an unpinned resolve; an
- * explicit pin to something older fails loudly in the generated model file.
+ * a minimum is not expressible. Features mcmcjs relies on (auto-marginalization
+ * from JuliaBUGS 0.12, and the Metropolis kernels it exposes from 0.17) therefore
+ * assume an unpinned resolve; an explicit pin to something older fails loudly,
+ * either in the generated model file or when the sampler is built.
  */
 function packageSpecsCode(pins?: PackagePins): string {
   const specs = PACKAGES.map((name) => {

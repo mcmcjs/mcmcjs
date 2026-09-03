@@ -596,6 +596,26 @@ function bugs_slice_sampler(conf)
     return SliceSampling.RandPermGibbs(SliceSampling.SliceSteppingOut(width))
 end
 
+# A Gaussian step would never land on an integer, so a block of counts gets a
+# lattice walk. `Gibbs` draws a finite discrete block exactly instead, whatever
+# it is given here.
+function bugs_mh_kernel(model, vns)
+    APPL = JuliaBUGS.AbstractPPL
+    values = [APPL.getvalue(model.evaluation_env, vn) for vn in vns]
+    scalars(v) = v isa AbstractArray ? v : (v,)
+    all(x -> x isa Integer, Iterators.flatten(map(scalars, values))) ||
+        return JuliaBUGS.AdvancedMH.RobustAdaptiveMetropolis()
+    width = sum(length, values)
+    return JuliaBUGS.AdvancedMH.RWMH([DiscreteUniform(-1, 1) for _ in 1:width])
+end
+
+# One block per parameter, each with the kernel its own support calls for. The
+# convenience `Gibbs(model, sampler)` gives every block the same one.
+function bugs_single_site_mh(model)
+    pairs = [vn => bugs_mh_kernel(model, [vn]) for vn in JuliaBUGS.model_parameters(model)]
+    return JuliaBUGS.Gibbs(model, JuliaBUGS.OrderedDict(pairs))
+end
+
 bugs_varname(name) = eval(:(Turing.@varname($(Meta.parse(name)))))
 
 # One spec block becomes one entry of JuliaBUGS's sampler map, keyed by the
@@ -607,7 +627,7 @@ function build_bugs_gibbs(sampler, model)
         vars = [bugs_varname(v) for v in block["variables"]]
         key = length(vars) == 1 ? vars[1] : vars
         algorithm = get(block, "algorithm", "NUTS")
-        component = algorithm == "MH" ? JuliaBUGS.IndependentMH() :
+        component = algorithm == "MH" ? bugs_mh_kernel(model, vars) :
             algorithm == "Slice" ? bugs_slice_sampler(block) :
             (bugs_hmc_sampler(block), adtype)
         key => component
@@ -624,7 +644,7 @@ function build_bugs_sampler(sampler, model)
     algorithm == "Slice" && return bugs_slice_sampler(sampler)
     # Single-site Metropolis over every parameter: the WinBUGS-shaped sampler, and
     # the route to discrete latents that marginalization declines.
-    algorithm == "MH" && return JuliaBUGS.Gibbs(model, JuliaBUGS.IndependentMH())
+    algorithm == "MH" && return bugs_single_site_mh(model)
     algorithm == "Gibbs" && return build_bugs_gibbs(sampler, model)
     return error("the juliabugs backend does not support the $algorithm sampler")
 end
