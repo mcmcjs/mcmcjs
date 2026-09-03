@@ -80,14 +80,24 @@ function sentinelPath(dir: string): string {
 
 // Bumped when the provisioning changes shape so existing envs re-provision; e.g.
 // generation 1 introduced instantiating the committed Manifest for the default,
-// which a pre-existing fresh-resolved env must pick up. The Manifest itself is
-// not part of the sentinel, so resolving it anew is a bump too: generation 2 is
-// the JuliaBUGS 0.16 resolve.
+// which a pre-existing fresh-resolved env must pick up.
 const PROVISION_GENERATION = 2;
+
+// The shipped Manifest's own hash, so re-resolving it re-provisions every managed
+// env. A counter cannot carry this: two different resolves can be given the same
+// number, and the env then keeps whichever it installed first.
+function shippedManifestHash(): string {
+  try {
+    return sha256(readFileSync(join(pinnedEnvDir(), "Manifest.toml"), "utf8"));
+  } catch {
+    return "";
+  }
+}
 
 function expectedSentinel(pins?: PackagePins): string {
   return canonicalJson({
     gen: PROVISION_GENERATION,
+    manifest: shippedManifestHash(),
     packages: [...PACKAGES].sort(),
     pins: pins ?? {},
   });
