@@ -24,7 +24,6 @@ export interface UIState {
     height: number
   }
   currentGraphId?: string
-  isFullScreen?: boolean
 }
 
 export interface GraphData {

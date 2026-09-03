@@ -450,7 +450,6 @@ const saveWidgetUIState = () => {
       height: dataPanelSize.height,
     },
     currentGraphId: graphStore.currentGraphId || undefined,
-    isFullScreen: isFullScreen.value,
   })
 }
 
@@ -857,15 +856,11 @@ onMounted(async () => {
     }
     if (savedUIState.currentGraphId && !props.initialState)
       graphStore.selectGraph(savedUIState.currentGraphId)
-    if (savedUIState.isFullScreen) {
-      isFullScreen.value = true
-      activateWidget('click')
-    }
   }
 
-  // Edit mode is not restored. A reader arriving at a page that embeds a graph
-  // expects to look at it, not to land in the editor because of something they
-  // did on a previous visit.
+  // Neither full screen nor edit mode is restored. A reader arriving at a page
+  // that embeds a graph expects to look at it, not to land in a maximized editor
+  // because of something they did on a previous visit.
   if (isPinned.value) {
     isFullScreen.value = true
     isEditMode.value = true
@@ -1168,7 +1163,7 @@ watch(showNewGraphModal, (val) => {
           'db-widget-ready': widgetInitialized,
           'db-fullscreen': isFullScreen,
         }"
-        v-show="isWidgetInView && showEditorUI && isEditMode && isUIActive"
+        v-show="isWidgetInView && showEditorUI && (isEditMode || isFullScreen) && isUIActive"
       >
         <!-- Collapsed Sidebar Triggers -->
         <template v-if="showEditorUI">
