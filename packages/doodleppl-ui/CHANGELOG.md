@@ -1,5 +1,11 @@
 # doodleppl
 
+## 0.9.1
+
+### Patch Changes
+
+- f929170: Never reopen maximized, and keep the exit control reachable when it is
+
 ## 0.9.0
 
 ### Minor Changes
