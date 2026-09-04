@@ -152,18 +152,21 @@ const shortenUrl = async () => {
   shortError.value = null
 
   try {
-    // is.gd sends `access-control-allow-origin: *`, so it is called directly.
-    // Going through a CORS proxy only added a service that can be down.
+    // TinyURL answers with the short link as plain text and sends the CORS
+    // header a browser needs. is.gd sits behind a bot check that answers a
+    // browser without one, so calling it from here is blocked whatever the
+    // URL's length.
     const response = await fetch(
-      `https://is.gd/create.php?format=json&url=${encodeURIComponent(props.url)}`
+      `https://tinyurl.com/api-create.php?url=${encodeURIComponent(props.url)}`
     )
     if (!response.ok) throw new Error(`HTTP Error ${response.status}`)
 
-    const data = await response.json()
-    if (data.errorcode) throw new Error(data.errormessage || 'Unknown is.gd error')
-    if (!data.shorturl) throw new Error('Invalid response from is.gd')
+    const short = (await response.text()).trim()
+    if (!short.startsWith('http')) {
+      throw new Error(short || 'The shortener did not return a link')
+    }
 
-    shortUrl.value = data.shorturl
+    shortUrl.value = short
 
     // Add to history
     let label = 'Shared Model'
@@ -177,25 +180,25 @@ const shortenUrl = async () => {
     }
 
     const newItem: HistoryItem = {
-      shortUrl: data.shorturl,
+      shortUrl: short,
       label,
       timestamp: Date.now(),
     }
 
     // Add to history (avoid duplicates, limit to 10)
-    urlHistory.value = [
-      newItem,
-      ...urlHistory.value.filter((i) => i.shortUrl !== data.shorturl),
-    ].slice(0, 10)
+    urlHistory.value = [newItem, ...urlHistory.value.filter((i) => i.shortUrl !== short)].slice(
+      0,
+      10
+    )
     saveHistory()
   } catch (e: unknown) {
     console.error('Shortening failed:', e)
-    shortError.value = e instanceof Error ? e.message : String(e)
-    if (shortError.value?.includes('Rate limit')) {
-      shortError.value = 'Rate limit exceeded. Please try again later.'
-    } else if (shortError.value?.includes('Failed to fetch') || shortError.value?.includes('414')) {
-      shortError.value = 'URL is too long for the shortener service. Please use the Long URL.'
-    }
+    const message = e instanceof Error ? e.message : String(e)
+    // A blocked or offline request reads as "Failed to fetch" and says nothing
+    // about the URL, so it is reported as what it is.
+    shortError.value = message.includes('Failed to fetch')
+      ? 'Could not reach the shortener. Please use the Long URL.'
+      : message
   } finally {
     isLoadingShort.value = false
   }
@@ -290,7 +293,7 @@ const handleUrlFocus = (event: FocusEvent) => {
                 class="db-shorten-btn"
               >
                 <i v-if="isLoadingShort" class="fas fa-spinner fa-spin"></i>
-                <span v-else>Shorten URL (is.gd)</span>
+                <span v-else>Shorten URL (TinyURL)</span>
               </BaseButton>
 
               <div v-if="shortError" class="db-error-msg">
@@ -311,11 +314,11 @@ const handleUrlFocus = (event: FocusEvent) => {
               <small>
                 <strong>Note:</strong>
                 <a
-                  href="https://is.gd"
+                  href="https://tinyurl.com"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="db-text-link"
-                  >is.gd</a
+                  >TinyURL</a
                 >
                 is a third-party service. Please avoid generating short links excessively to prevent
                 hitting rate limits. If generation fails, use the Long URL above.
