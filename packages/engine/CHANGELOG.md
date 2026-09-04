@@ -1,5 +1,11 @@
 # @mcmcjs/engine
 
+## 0.6.1
+
+### Patch Changes
+
+- 7aad78a: Refuse an unobserved data entry inside the stan engine, so `mcmc fit` and every other entry point says why instead of only `mcmc run`
+
 ## 0.6.0
 
 ### Minor Changes
