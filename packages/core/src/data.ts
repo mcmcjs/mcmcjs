@@ -74,6 +74,22 @@ export function missingVariables(data: CanonicalData): string[] {
   return Object.keys(data).filter((key) => holdsMissing(data[key] as CanonicalValue));
 }
 
+/**
+ * Why `backend` cannot be given this data, or undefined when it can. Both Julia
+ * PPLs read an unobserved entry as a latent, but Stan's data block has no `NA`:
+ * a censored outcome reaches Stan as its bound plus an observation indicator,
+ * which `mcmc convert --stan` writes. Checked wherever data meets an engine,
+ * since a spec's data file is only loaded once the run starts.
+ */
+export function missingDataRefusal(backend: string, data: CanonicalData): string | undefined {
+  if (backend !== "stan") return undefined;
+  const missing = missingVariables(data);
+  if (missing.length === 0) return undefined;
+  return `the stan backend cannot read an unobserved entry, and ${missing.join(", ")} ${
+    missing.length === 1 ? "has" : "have"
+  } one; Stan takes a censored outcome as its censoring bound plus an observation indicator, which \`mcmc convert --stan\` generates`;
+}
+
 /** Throws unless `data` is a canonical, finite, rectangular numeric data object. */
 export function validateCanonicalData(
   data: Record<string, unknown>,

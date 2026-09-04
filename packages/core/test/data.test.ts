@@ -3,7 +3,13 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { loadDataFile, missingVariables, resolveData, validateCanonicalData } from "../src/data";
+import {
+  loadDataFile,
+  missingDataRefusal,
+  missingVariables,
+  resolveData,
+  validateCanonicalData,
+} from "../src/data";
 
 const write = (name: string, text: string): string => {
   const dir = mkdtempSync(join(tmpdir(), "mcmcjs-data-"));
@@ -122,6 +128,29 @@ describe("missingVariables", () => {
         mu: null,
       }),
     ).toEqual(["t", "mu"]);
+  });
+});
+
+describe("missingDataRefusal", () => {
+  it("lets a Julia backend take an unobserved entry", () => {
+    expect(
+      missingDataRefusal("juliabugs", {
+        N: 2,
+        t: [
+          [1, null],
+          [2, 3],
+        ],
+      }),
+    ).toBeUndefined();
+    expect(missingDataRefusal("turing", { y: [1, null] })).toBeUndefined();
+  });
+
+  it("refuses one on stan, naming the variables and the Stan idiom", () => {
+    expect(missingDataRefusal("stan", { N: 2, y: [1, 2] })).toBeUndefined();
+    expect(missingDataRefusal("stan", { t: [1, null], y: [null, 2] })).toMatch(
+      /stan backend cannot read an unobserved entry, and t, y have one.*indicator/s,
+    );
+    expect(missingDataRefusal("stan", { y: [1, null] })).toMatch(/y has one/);
   });
 });
 

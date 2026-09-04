@@ -6,7 +6,6 @@ import type { DrawBatch } from "@mcmcjs/engine";
 import { describe, expect, it, vi } from "vitest";
 import type { DiagnosticsReport } from "../src/diagnose";
 import {
-  assertMissingSupported,
   autoDetectDataFile,
   buildRunConfig,
   canReuse,
@@ -436,28 +435,6 @@ describe("frozenSpecFor", () => {
     expect(frozen.model.path).toBe("./model.jl");
     expect(frozen.seed).toBe(1);
     expect(config.spec.backend.version).toBe(DEFAULT_JULIA_CHANNEL);
-  });
-});
-
-describe("assertMissingSupported", () => {
-  it("lets a Julia backend take an unobserved entry", () => {
-    expect(() =>
-      assertMissingSupported("juliabugs", {
-        N: 2,
-        t: [
-          [1, null],
-          [2, 3],
-        ],
-      }),
-    ).not.toThrow();
-    expect(() => assertMissingSupported("turing", { y: [1, null] })).not.toThrow();
-  });
-
-  it("refuses one on stan, naming the variables and the Stan idiom", () => {
-    expect(() => assertMissingSupported("stan", { N: 2, y: [1, 2] })).not.toThrow();
-    expect(() => assertMissingSupported("stan", { t: [1, null], y: [null, 2] })).toThrow(
-      /stan backend cannot read an unobserved entry, and t, y have one.*indicator/s,
-    );
   });
 });
 

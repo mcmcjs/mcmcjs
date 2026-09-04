@@ -107,6 +107,18 @@ describe("runFit", () => {
     return cacheDir;
   }
 
+  it("refuses an unobserved data entry before compiling anything", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "stan-fit-"));
+    const spec = makeSpec(dir);
+    spec.data = { N: 3, y: [1, null, 3] };
+    // No spawn and no seeded compile cache: reaching either would be the bug.
+    const result = await runFit(spec, fakeInstall(dir), { outPath: join(dir, "samples.json") });
+
+    expect(result.status).toBe("error");
+    expect(result.stage).toBe("data");
+    expect(result.error).toMatch(/stan backend cannot read an unobserved entry, and y has one/);
+  });
+
   it("runs all chains, streams progress and draws, writes samples and a run record", async () => {
     const dir = mkdtempSync(join(tmpdir(), "stan-fit-"));
     const { spec, compile } = compiled(dir);
