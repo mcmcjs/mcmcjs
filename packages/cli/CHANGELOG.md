@@ -1,5 +1,14 @@
 # mcmcjs
 
+## 0.32.3
+
+### Patch Changes
+
+- f56ec5e: Republish the site when a release bumps the CLI, so the version the installer falls back to follows the release instead of the next docs change
+- Updated dependencies [5512a24]
+- Updated dependencies [0f5d921]
+  - @mcmcjs/julia@0.16.0
+
 ## 0.32.2
 
 ### Patch Changes

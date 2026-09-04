@@ -1,5 +1,15 @@
 # @mcmcjs/julia
 
+## 0.16.0
+
+### Minor Changes
+
+- 5512a24: Build a JuliaBUGS Metropolis block from AdvancedMH, which replaced the removed `IndependentMH` in 0.17: an adaptive random walk on a continuous block, a lattice walk on unbounded counts, and JuliaBUGS's own exact draw on a finite discrete one
+
+### Patch Changes
+
+- 0f5d921: Re-provision a managed Julia environment whenever the shipped Manifest is resolved anew, rather than when a hand-maintained counter changes, so an environment can no longer keep an older resolve
+
 ## 0.15.0
 
 ### Minor Changes
