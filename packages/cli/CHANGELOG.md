@@ -1,5 +1,20 @@
 # mcmcjs
 
+## 0.33.0
+
+### Minor Changes
+
+- 3a92e43: Fit a model whose outcome is partly observed: `mcmc convert` writes the data to a JSON sidecar the TOML spec references, a run snapshots inline data the same way, dotted BUGS names in the data are renamed to match the generated model, and stan says why it cannot read an unobserved entry rather than handing CmdStan a null
+
+### Patch Changes
+
+- Updated dependencies [3a92e43]
+- Updated dependencies [3a92e43]
+  - @mcmcjs/core@0.13.0
+  - @mcmcjs/julia@0.17.0
+  - @mcmcjs/plots@0.8.4
+  - @mcmcjs/stan@0.1.7
+
 ## 0.32.3
 
 ### Patch Changes

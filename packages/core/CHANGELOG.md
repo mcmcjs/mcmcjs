@@ -1,5 +1,11 @@
 # @mcmcjs/core
 
+## 0.13.0
+
+### Minor Changes
+
+- 3a92e43: Accept an unobserved entry in canonical data, written as a JSON null or an empty/`NA` CSV cell, and report which variables carry one through `missingVariables`
+
 ## 0.12.0
 
 ### Minor Changes
