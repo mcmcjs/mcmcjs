@@ -148,6 +148,12 @@ Provide data inline or by reference, but not both.
 
 `data_file` records the reference (path plus hash), not the contents, so large datasets are not copied into the spec or the run store.
 
+Values are finite numbers or rectangular nested numeric arrays.
+An entry may also be unobserved, which is BUGS's `NA`: the model samples it as a latent instead of conditioning on it, so a partly observed outcome comes back in the chain as one variable per unobserved entry.
+Write it as `null` in a JSON data file, or as an empty cell or `NA` in a CSV one.
+TOML has no null, so data with an unobserved entry has to come from a file rather than an inline `[data]` table, and `mcmc convert` writes one beside the spec when the graph needs it.
+The stan backend refuses such data instead of fitting it: Stan's data block has no `NA`, and takes a censored outcome as its censoring bound plus an observation indicator, which `mcmc convert --stan` generates.
+
 ### `[output]`
 
 | Field | Type | Default | Notes |
