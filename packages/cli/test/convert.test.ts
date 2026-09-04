@@ -1,9 +1,15 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseSpec } from "@mcmcjs/core";
+import { loadDataFile, parseSpec } from "@mcmcjs/core";
 import { describe, expect, it } from "vitest";
-import { buildSpec, buildStanSpec, convertGraph, juliaBugsModelFile } from "../src/convert";
+import {
+  buildSpec,
+  buildStanSpec,
+  convertGraph,
+  juliaBugsModelFile,
+  underscoreDottedNames,
+} from "../src/convert";
 
 const GRAPH = JSON.stringify({
   name: "Demo",
@@ -67,6 +73,16 @@ describe("buildSpec", () => {
   });
 });
 
+describe("underscoreDottedNames", () => {
+  it("renames a dotted data key the way the generated @bugs call renames it", () => {
+    expect(underscoreDottedNames({ M: 4, "t.cen": [1, 2] })).toEqual({ M: 4, t_cen: [1, 2] });
+  });
+
+  it("refuses a rename that would shadow another variable", () => {
+    expect(() => underscoreDottedNames({ "t.cen": [1], t_cen: [2] })).toThrow(/becomes t_cen/);
+  });
+});
+
 describe("convertGraph", () => {
   const write = (text: string): string => {
     const dir = mkdtempSync(join(tmpdir(), "mcmcjs-convert-"));
@@ -88,6 +104,25 @@ describe("convertGraph", () => {
     expect(spec.seed).toBe(7);
     expect(spec.data).toEqual({ N: 3, y: [1.0, 0.8, 1.2] });
     expect(spec.model.entry).toBe("build_model");
+  });
+
+  it("sends data with an unobserved entry to a JSON sidecar the spec references", () => {
+    const graph = JSON.parse(GRAPH) as { dataContent: string };
+    graph.dataContent = JSON.stringify({ data: { N: 3, y: [1.0, null, 1.2] }, inits: {} });
+    const result = convertGraph(write(JSON.stringify(graph)), undefined, 7);
+
+    expect(result.dataPath?.endsWith("demo.data.json")).toBe(true);
+    expect(JSON.parse(readFileSync(result.dataPath as string, "utf8"))).toEqual({
+      N: 3,
+      y: [1.0, null, 1.2],
+    });
+
+    // The spec is still TOML, and points at the data the way `--data` would.
+    const spec = parseSpec(result.specPath);
+    expect(spec.specPath.endsWith(".toml")).toBe(true);
+    expect(spec.data).toEqual({});
+    expect(spec.dataFilePath).toBe(result.dataPath);
+    expect(loadDataFile(spec.dataFilePath as string)).toEqual({ N: 3, y: [1.0, null, 1.2] });
   });
 
   it("rejects a graph with a cycle", () => {
