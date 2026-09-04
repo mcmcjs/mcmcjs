@@ -10,7 +10,6 @@ import {
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import {
   appendLedgerEntry,
-  type CanonicalData,
   canonicalJson,
   computeRunKey,
   ensureStore,
@@ -19,6 +18,7 @@ import {
   type LedgerEntry,
   latestOkEntry,
   makeRunId,
+  missingDataRefusal,
   missingVariables,
   parseSamples,
   parseSpec,
@@ -431,22 +431,6 @@ export function frozenSpecFor(
 }
 
 /**
- * Refuses data with an unobserved entry on a backend that cannot sample one.
- * Both Julia PPLs read it as a latent, but Stan's data block has no `NA`: a
- * censored outcome reaches Stan as its bound plus an observation indicator,
- * which is what `mcmc convert --stan` writes.
- */
-export function assertMissingSupported(backend: string, data: CanonicalData): void {
-  if (backend !== "stan") return;
-  const missing = missingVariables(data);
-  if (missing.length === 0) return;
-  const names = missing.join(", ");
-  throw new Error(
-    `the stan backend cannot read an unobserved entry, and ${names} ${missing.length === 1 ? "has" : "have"} one; Stan takes a censored outcome as its censoring bound plus an observation indicator, which \`mcmc convert --stan\` generates`,
-  );
-}
-
-/**
  * Whether a prior same-key run can be reused. A seed is "pinned" when it was
  * given explicitly (--seed or any spec file); a pinned seed must match.
  */
@@ -617,7 +601,10 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       // not inlined into the spec or the store.
       const resolvedData = resolveData(config.spec.data, config.dataFile);
       config.spec.data = resolvedData.data;
-      assertMissingSupported(config.spec.backend.id, resolvedData.data);
+      // The engines refuse this too, but saying it here keeps a runtime from
+      // being started and a model compiled for a run that cannot proceed.
+      const refusal = missingDataRefusal(config.spec.backend.id, resolvedData.data);
+      if (refusal) throw new Error(refusal);
 
       const storeDir = storeDirFor(config.modelPath, opts.store ?? process.env.MCMC_STORE);
       ensureStore(storeDir);

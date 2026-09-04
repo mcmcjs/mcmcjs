@@ -11,8 +11,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  type CanonicalData,
   canonicalJson,
   fromStanCSVFiles,
+  missingDataRefusal,
   parseSamples,
   type ResolvedSpec,
   RUN_RECORD_SCHEMA_VERSION,
@@ -116,6 +118,11 @@ export async function runFit(
   if (io.signal?.aborted) {
     return { status: "cancelled", runtimeRequested, elapsedMs: 0 };
   }
+
+  // CmdStan reads data.json itself and would only say "null values not allowed",
+  // so the reason is given here, before anything is compiled.
+  const refusal = missingDataRefusal("stan", spec.data as CanonicalData);
+  if (refusal) return fail("data", refusal);
 
   let binaryPath: string;
   try {

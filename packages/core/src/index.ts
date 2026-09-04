@@ -1,5 +1,11 @@
 export type { CanonicalArray, CanonicalData, CanonicalValue, ResolvedData } from "./data";
-export { loadDataFile, missingVariables, resolveData, validateCanonicalData } from "./data";
+export {
+  loadDataFile,
+  missingDataRefusal,
+  missingVariables,
+  resolveData,
+  validateCanonicalData,
+} from "./data";
 export { parseSamples } from "./parse-samples";
 export { parseArvizJson } from "./parsers/arviz";
 export { fromChainArrays, toChainArrays } from "./parsers/from-chains";

@@ -11,8 +11,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  type CanonicalData,
   canonicalJson,
   fromStanCSVFiles,
+  missingDataRefusal,
   parseSamples,
   type ResolvedSpec,
   RUN_RECORD_SCHEMA_VERSION,
@@ -135,6 +137,9 @@ export async function runPredict(
   if (io.signal?.aborted) {
     return { status: "cancelled", runtimeRequested, elapsedMs: 0 };
   }
+
+  const refusal = missingDataRefusal("stan", predictData(spec) as CanonicalData);
+  if (refusal) return fail("data", refusal);
 
   let posterior: Samples;
   try {
