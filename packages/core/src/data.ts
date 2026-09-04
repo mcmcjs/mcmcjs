@@ -8,14 +8,18 @@ import { extname } from "node:path";
  * (e.g. `{ N: 10, y: [0.2, -1.1], x: [[1, 2], [3, 4]] }`). This is the same
  * language-neutral JSON a Stan model reads into its data block, and the shape
  * a single file feeds to every backend unchanged.
+ *
+ * `null` is BUGS's `NA`: the entry is unobserved, so the model samples it as a
+ * latent instead of conditioning on it. That is what a partly observed outcome
+ * and a censored one both need, the latter alongside a `C(lower, upper)` bound
+ * in the model. Not every backend can express it; `missingVariables` reports
+ * which variables carry one.
  */
-export type CanonicalArray = (number | CanonicalArray)[];
-export type CanonicalValue = number | CanonicalArray;
+export type CanonicalArray = (number | null | CanonicalArray)[];
+export type CanonicalValue = number | null | CanonicalArray;
 export type CanonicalData = Record<string, CanonicalValue>;
 
 function describe(value: unknown): string {
-  if (value === null) return "null";
-  if (value === undefined) return "undefined";
   if (typeof value === "string") return `"${value}"`;
   if (typeof value === "object") return "an object";
   return String(value);
@@ -28,10 +32,9 @@ function shapeOf(value: unknown): number[] {
 }
 
 function validateValue(value: unknown, where: string, source: string): void {
-  if (value === null || value === undefined) {
-    throw new Error(
-      `${where} in ${source} is ${describe(value)}; canonical data cannot contain missing values`,
-    );
+  if (value === null) return;
+  if (value === undefined) {
+    throw new Error(`${where} in ${source} is undefined; write an unobserved entry as null`);
   }
   if (typeof value === "number") {
     if (!Number.isFinite(value)) {
@@ -55,6 +58,20 @@ function validateValue(value: unknown, where: string, source: string): void {
       );
     }
   });
+}
+
+function holdsMissing(value: CanonicalValue): boolean {
+  if (value === null) return true;
+  return Array.isArray(value) && value.some(holdsMissing);
+}
+
+/**
+ * The variables with at least one unobserved entry, in data order. Empty for
+ * fully observed data, so it also answers whether the data needs a backend that
+ * can sample a latent observation, and a JSON file rather than a TOML table.
+ */
+export function missingVariables(data: CanonicalData): string[] {
+  return Object.keys(data).filter((key) => holdsMissing(data[key] as CanonicalValue));
 }
 
 /** Throws unless `data` is a canonical, finite, rectangular numeric data object. */
@@ -142,10 +159,12 @@ function fromCsv(text: string, source: string): CanonicalData {
         );
       }
       const cell = (r.cells[c] as string).trim();
+      // An empty cell and R's `NA` are both how a table writes an unobserved
+      // entry, and null is what canonical data calls it.
+      if (cell === "" || cell.toUpperCase() === "NA") return null;
       if (!NUMERIC.test(cell)) {
-        const what = cell === "" ? "is empty" : `"${cell}" is not numeric`;
         throw new Error(
-          `column "${key}" at row ${i + 2} of ${source}: ${what}; canonical data is numeric`,
+          `column "${key}" at row ${i + 2} of ${source}: "${cell}" is not numeric; canonical data is numeric`,
         );
       }
       return Number(cell);
@@ -159,7 +178,8 @@ function fromCsv(text: string, source: string): CanonicalData {
 /**
  * Loads a model-data file into canonical form. JSON objects map verbatim and
  * are validated; CSV columns become numeric arrays keyed by header (with N
- * defaulting to the row count). Non-numeric, missing, or ragged values throw.
+ * defaulting to the row count). Non-numeric or ragged values throw; a JSON null
+ * or an empty CSV cell is kept as an unobserved entry.
  */
 export function loadDataFile(path: string): CanonicalData {
   const text = readFileSync(path, "utf8").replace(/^﻿/, "");

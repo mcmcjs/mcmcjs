@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
-import { serializeSpecToml } from "@mcmcjs/core";
+import { type CanonicalData, missingVariables, serializeSpecToml } from "@mcmcjs/core";
 import {
   buildTopologicalOrder,
   discreteLatentNames,
@@ -62,6 +62,23 @@ export function juliaBugsModelFile(modelCode: string, marginalize = false): stri
   ].join("\n");
 }
 
+/**
+ * BUGS allows a period in a variable name. The generated model file passes
+ * `replace_period = true` to `@bugs`, which rewrites `t.cen` to `t_cen`, so the
+ * data keys have to follow or the model reads a variable the data never defines.
+ */
+export function underscoreDottedNames(data: Record<string, unknown>): Record<string, unknown> {
+  const renamed: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    const name = key.replace(/\./g, "_");
+    if (name in renamed) {
+      throw new Error(`data has both ${key} and another name that becomes ${name} in Julia`);
+    }
+    renamed[name] = value;
+  }
+  return renamed;
+}
+
 export interface SamplerSettings {
   draws: number;
   warmup: number;
@@ -108,6 +125,8 @@ export interface ConvertResult {
   name: string;
   modelPath: string;
   specPath: string;
+  /** Where the data went, when an unobserved entry kept it out of the spec. */
+  dataPath?: string;
 }
 
 /** Read a DoodleBUGS graph and write a JuliaBUGS model file plus a fit-able spec. */
@@ -148,14 +167,26 @@ export function convertGraph(
   } else {
     const marginalize = discreteLatentNames(elements).length > 0;
     modelFile = juliaBugsModelFile(generateBugsModel(elements), marginalize);
-    spec = buildSpec(modelFileName, data, seed, sampler);
+    spec = buildSpec(modelFileName, underscoreDottedNames(data), seed, sampler);
+  }
+
+  // A censored or partly observed outcome carries an unobserved entry, which
+  // TOML has no null to write; `data_file` is how a spec points at data anyway,
+  // so it goes to a JSON sidecar and the spec stays TOML.
+  const specData = spec.data as CanonicalData;
+  const dataPath =
+    missingVariables(specData).length > 0 ? resolve(`${prefix}.data.json`) : undefined;
+  if (dataPath) {
+    delete spec.data;
+    spec.data_file = `./${basename(dataPath)}`;
   }
 
   mkdirSync(dirname(modelPath), { recursive: true });
   writeFileSync(modelPath, modelFile);
   writeFileSync(specPath, serializeSpecToml(spec));
+  if (dataPath) writeFileSync(dataPath, `${JSON.stringify(specData, null, 2)}\n`);
 
-  return { name: model.name, modelPath, specPath };
+  return { name: model.name, modelPath, specPath, dataPath };
 }
 
 function parseSeed(value: string): number {
@@ -189,9 +220,11 @@ export function registerConvert(program: Command): void {
         if (opts.json) {
           process.stdout.write(`${JSON.stringify({ ok: true, ...result }, null, 2)}\n`);
         } else {
-          process.stdout.write(
-            `wrote ${result.modelPath}\nwrote ${result.specPath}\n\nfit it with: mcmc fit ${result.specPath}\n`,
-          );
+          const wrote = [result.modelPath, result.specPath, result.dataPath]
+            .filter((path) => path !== undefined)
+            .map((path) => `wrote ${path}\n`)
+            .join("");
+          process.stdout.write(`${wrote}\nfit it with: mcmc fit ${result.specPath}\n`);
         }
         process.exitCode = 0;
       },

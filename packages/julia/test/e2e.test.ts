@@ -1317,3 +1317,131 @@ d("julia e2e: juliabugs unbounded discrete latents through MH", () => {
     expect(pooledMean(samples, "lambda")).toBeGreaterThan(5);
   }, 900_000);
 });
+
+// A partly observed count: the given entries condition the fit, the unobserved
+// ones are latent nodes with an observed child, so their conditional is informed
+// by the data rather than by the prior alone.
+const PARTLY_OBSERVED_DATA = {
+  N: 8,
+  y: [4, 6, 5, 7, 3, 5, 6, 4],
+  n: [7, 9, 8, 10, null, null, null, null],
+};
+
+d("julia e2e: juliabugs partly observed data", () => {
+  it("samples the unobserved counts and conditions on the given ones", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const modelFile = join(dir, "partly_bugs.jl");
+    writeFileSync(modelFile, POISSON_MODEL);
+    const outPath = join(dir, "partly.samples.json");
+    const result = await runFit(
+      {
+        ...spec(300, 2),
+        backend: { id: "juliabugs", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
+        model: { kind: "file", path: modelFile, entry: "build_model" },
+        modelPath: modelFile,
+        sampler: {
+          algorithm: "MH",
+          draws: 300,
+          warmup: 300,
+          chains: 2,
+          adapt_delta: 0.8,
+          thin: 1,
+          parallel: "serial",
+          // Named for the whole array; the given entries keep their own values.
+          initial_params: { lambda: 8, p: 0.7, n: [7, 9, 8, 10, 8, 9, 10, 8] },
+        },
+        data: PARTLY_OBSERVED_DATA,
+      },
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        recordPath: join(dir, "partly.run.json"),
+      },
+    );
+
+    expect(result.status).toBe("ok");
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    // An observed entry is data, so it is not a parameter of the fit.
+    expect(samples.variables).not.toContain("n[1]");
+    expect(samples.variables).toContain("n[5]");
+
+    for (let chain = 0; chain < samples.nChains; chain++) {
+      for (const value of chainView(samples, "n[5]", chain)) {
+        expect(Number.isInteger(value)).toBe(true);
+        // A count below its own observed successes has zero probability.
+        expect(value).toBeGreaterThanOrEqual(PARTLY_OBSERVED_DATA.y[4] as number);
+      }
+    }
+    expect(new Set(Array.from(chainView(samples, "n[5]", 0))).size).toBeGreaterThan(1);
+    // The given counts average 8.5, which the rate has to follow.
+    expect(pooledMean(samples, "lambda")).toBeGreaterThan(5);
+  }, 900_000);
+});
+
+// A partly observed continuous outcome with no children: each unobserved entry
+// is imputed from its own conditional, which is the sampling distribution.
+const PARTLY_NORMAL_MODEL = `import JuliaBUGS
+
+const model_def = JuliaBUGS.@bugs begin
+    mu ~ dnorm(0, 0.001)
+    tau ~ dgamma(0.01, 0.01)
+    for i in 1:N
+        y[i] ~ dnorm(mu, tau)
+    end
+end
+
+build_model(data) = JuliaBUGS.compile(model_def, data; adtype = JuliaBUGS.ADTypes.AutoForwardDiff())
+`;
+
+const PARTLY_NORMAL_DATA = {
+  N: 10,
+  y: [9.8, 10.4, 9.6, 10.1, null, 10.3, 9.9, null, 10.2, 9.7],
+};
+
+d("julia e2e: juliabugs imputes a partly observed continuous outcome", () => {
+  it("returns the unobserved entries as draws centred on the fitted mean", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const modelFile = join(dir, "partly_normal.jl");
+    writeFileSync(modelFile, PARTLY_NORMAL_MODEL);
+    const outPath = join(dir, "partly_normal.samples.json");
+    const result = await runFit(
+      {
+        ...spec(500, 2),
+        backend: { id: "juliabugs", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
+        model: { kind: "file", path: modelFile, entry: "build_model" },
+        modelPath: modelFile,
+        sampler: {
+          algorithm: "NUTS",
+          draws: 500,
+          warmup: 500,
+          chains: 2,
+          adapt_delta: 0.8,
+          thin: 1,
+          parallel: "serial",
+        },
+        data: PARTLY_NORMAL_DATA,
+      },
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        recordPath: join(dir, "partly_normal.run.json"),
+      },
+    );
+
+    expect(result.status).toBe("ok");
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect(samples.variables).not.toContain("y[1]");
+    expect(samples.variables).toContain("y[5]");
+    expect(samples.variables).toContain("y[8]");
+
+    // The observed entries average 10.0, and an imputed entry follows the mean.
+    expect(pooledMean(samples, "mu")).toBeCloseTo(10.0, 0);
+    expect(pooledMean(samples, "y[5]")).toBeCloseTo(10.0, 0);
+    // An imputation is a draw, not a point estimate, so it has to vary.
+    expect(new Set(Array.from(chainView(samples, "y[5]", 0))).size).toBeGreaterThan(1);
+  }, 900_000);
+});

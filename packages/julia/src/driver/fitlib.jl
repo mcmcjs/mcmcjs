@@ -205,8 +205,6 @@ function sampling_kwargs(sampler, warmup, chains)
     return kw
 end
 
-to_namedtuple(data) = (; (Symbol(k) => v for (k, v) in data)...)
-
 # Binds the data so a model can read a variable as a property (`data.y`) or by
 # index (`data["y"]` / `data[:y]`), with `haskey`/`keys` supported, so models
 # written in either idiom run unchanged. The underlying NamedTuple is reached
@@ -235,15 +233,23 @@ function narrow(v::AbstractVector)
     return eltype(elems) <: Real && !isconcretetype(eltype(elems)) ? float.(elems) : elems
 end
 narrow(x) = x
-bugs_namedtuple(data) = (; (Symbol(k) => narrow(v) for (k, v) in data)...)
 
-# JSON null arrives as `nothing`; map it to `missing` so a blanked outcome becomes
-# a sampling (predictive) statement in the model.
+# JSON null arrives as `nothing`; map it to `missing`, which both PPLs read as an
+# unobserved entry: a sampling statement rather than an observation.
 to_missing(x) = x === nothing ? missing : (x isa AbstractVector ? map(to_missing, x) : x)
-predict_namedtuple(data) = (; (Symbol(k) => to_missing(v) for (k, v) in data)...)
+to_namedtuple(data) = (; (Symbol(k) => to_missing(v) for (k, v) in data)...)
 
-# A blanked target compiles to a latent node; JuliaBUGS drops scalar missings.
-bugs_predict_namedtuple(data) = (; (Symbol(k) => narrow(to_missing(v)) for (k, v) in data)...)
+# JuliaBUGS backs an array's unobserved entries with the eltype of its observed
+# ones, so an integer censoring time would leave a continuous latent an Int slot
+# to live in. Float64 holds a count just as exactly, so it holds either.
+function allow_missing(v::AbstractArray)
+    any(ismissing, v) || return v
+    return convert(AbstractArray{Union{Missing,Float64}}, v)
+end
+allow_missing(x) = x
+
+bugs_namedtuple(data) =
+    (; (Symbol(k) => allow_missing(narrow(to_missing(v))) for (k, v) in data)...)
 
 # Rebuild a posterior VNChain (latents only) from our samples wire so it can feed
 # Turing's predict. Scalar leaves are regrouped into their array-valued VarName
@@ -981,13 +987,13 @@ function handle_request(request)
             end
         elseif mode == "predict"
             if backend == "juliabugs"
-                model = Base.invokelatest(entry, bugs_predict_namedtuple(request["data"]))
+                model = Base.invokelatest(entry, bugs_namedtuple(request["data"]))
                 stage = "load_samples"
                 posterior = JSON.parsefile(request["samples"])
                 stage = "predict"
                 Base.invokelatest(predict_bugs, model, posterior, request["predict"]["targets"], rng)
             else
-                model = Base.invokelatest(entry, ModelData(predict_namedtuple(request["data"])))
+                model = Base.invokelatest(entry, ModelData(to_namedtuple(request["data"])))
                 stage = "load_samples"
                 rchn = wire_to_vnchain(JSON.parsefile(request["samples"]), request["predict"]["targets"])
                 stage = "predict"
