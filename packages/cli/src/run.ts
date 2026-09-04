@@ -10,6 +10,7 @@ import {
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import {
   appendLedgerEntry,
+  type CanonicalData,
   canonicalJson,
   computeRunKey,
   ensureStore,
@@ -18,6 +19,7 @@ import {
   type LedgerEntry,
   latestOkEntry,
   makeRunId,
+  missingVariables,
   parseSamples,
   parseSpec,
   type ResolvedSpec,
@@ -429,6 +431,22 @@ export function frozenSpecFor(
 }
 
 /**
+ * Refuses data with an unobserved entry on a backend that cannot sample one.
+ * Both Julia PPLs read it as a latent, but Stan's data block has no `NA`: a
+ * censored outcome reaches Stan as its bound plus an observation indicator,
+ * which is what `mcmc convert --stan` writes.
+ */
+export function assertMissingSupported(backend: string, data: CanonicalData): void {
+  if (backend !== "stan") return;
+  const missing = missingVariables(data);
+  if (missing.length === 0) return;
+  const names = missing.join(", ");
+  throw new Error(
+    `the stan backend cannot read an unobserved entry, and ${names} ${missing.length === 1 ? "has" : "have"} one; Stan takes a censored outcome as its censoring bound plus an observation indicator, which \`mcmc convert --stan\` generates`,
+  );
+}
+
+/**
  * Whether a prior same-key run can be reused. A seed is "pinned" when it was
  * given explicitly (--seed or any spec file); a pinned seed must match.
  */
@@ -599,6 +617,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       // not inlined into the spec or the store.
       const resolvedData = resolveData(config.spec.data, config.dataFile);
       config.spec.data = resolvedData.data;
+      assertMissingSupported(config.spec.backend.id, resolvedData.data);
 
       const storeDir = storeDirFor(config.modelPath, opts.store ?? process.env.MCMC_STORE);
       ensureStore(storeDir);
@@ -744,11 +763,18 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       // Snapshot the inputs before fitting so even a failed run is debuggable.
       // The frozen spec references a data file by path; the spec the fit runs
       // on keeps the loaded data so the model still receives it.
+      // Inline data with an unobserved entry has no TOML form, so it is
+      // snapshotted as JSON beside the spec and referenced from there.
+      let snapshotDataFile = config.dataFile;
+      if (!snapshotDataFile && missingVariables(resolvedData.data).length > 0) {
+        writeFileSync(join(dir, "data.json"), `${JSON.stringify(resolvedData.data, null, 2)}\n`);
+        snapshotDataFile = "./data.json";
+      }
       const frozen = frozenSpecFor(
         config.spec,
         config.channel,
         basename(config.modelPath),
-        config.dataFile,
+        snapshotDataFile,
       );
       const specHash = hashSpec(frozen);
       writeFileSync(join(dir, basename(config.modelPath)), modelSource);
