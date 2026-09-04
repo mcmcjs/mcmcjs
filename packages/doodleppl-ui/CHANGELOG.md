@@ -1,5 +1,11 @@
 # doodleppl
 
+## 0.10.0
+
+### Minor Changes
+
+- 95c884c: Open the graphs a `?share=` link carries, point share links at the page that made them, and call is.gd directly instead of through a CORS proxy
+
 ## 0.9.1
 
 ### Patch Changes
