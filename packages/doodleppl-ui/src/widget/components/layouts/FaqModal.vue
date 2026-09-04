@@ -52,7 +52,7 @@ const faqs = ref<FaqItem[]>([
   },
   {
     q: 'Troubleshooting Sharing & URL Shortener',
-    a: 'The URL shortener (is.gd) is a third-party service. It may fail if: <ul style="margin: 5px 0 5px 20px; padding: 0;"><li>Your project contains a large dataset, making the URL too long for browsers or the shortener service.</li><li>You have generated too many links quickly (rate limiting).</li></ul> In these cases, please use the <strong>Export JSON</strong> feature in the Inspector panel to share your work.',
+    a: 'The URL shortener (TinyURL) is a third-party service. It may fail if: <ul style="margin: 5px 0 5px 20px; padding: 0;"><li>Your project contains a large dataset, making the URL too long for browsers or the shortener service.</li><li>You have generated too many links quickly (rate limiting).</li></ul> In these cases, please use the <strong>Export JSON</strong> feature in the Inspector panel to share your work.',
     open: false,
   },
   {
