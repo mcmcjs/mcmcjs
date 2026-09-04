@@ -611,6 +611,9 @@ const handleWidgetGenerateShareLink = (options: {
   handleGenerateShareLink(options)
 }
 
+/** The graph that was open before mount cleared the selection. */
+let persistedGraphId: string | null = null
+
 const initGraph = async () => {
   if (projectStore.projects.length === 0) {
     projectStore.createProject('Default Project')
@@ -639,7 +642,13 @@ const initGraph = async () => {
   const sourceKey = rawLocalModel || rawModel
   const isLocalFile = !!rawLocalModel
 
-  if (sourceKey) {
+  const open = graphStore.currentGraphId || persistedGraphId
+  const reopened = !!open && proj.graphs.some((g) => g.id === open)
+  let loadedFromSource = false
+
+  if (reopened) {
+    graphStore.selectGraph(open as string)
+  } else if (sourceKey) {
     const map = getSourceMap()
     const mappedGraphId = map[sourceKey]
     const existingGraph = mappedGraphId
@@ -652,6 +661,7 @@ const initGraph = async () => {
     } else {
       try {
         await handleLoadExample(sourceKey, isLocalFile ? 'local' : 'standard', sourceMapApi)
+        loadedFromSource = true
       } catch (error) {
         console.warn('[DoodlePPL] Failed to load model, creating empty graph:', error)
         if (proj.graphs.length === 0) projectStore.addGraphToProject(proj.id, 'Model 1')
@@ -679,8 +689,7 @@ const initGraph = async () => {
       const cy = getCyInstance(graphStore.currentGraphId)
       if (cy) {
         cy.resize()
-        // A graph loaded from a source has no saved viewport, so frame it to fit.
-        if (sourceKey) handleFit()
+        if (loadedFromSource) handleFit()
       }
     }
   })
@@ -824,6 +833,9 @@ onMounted(async () => {
   }
 
   window.addEventListener('scroll', handleWindowScroll, { passive: true })
+  // Deselecting drops the stored id too, so the graph that was open is read
+  // first and handed to initGraph, which reopens it.
+  persistedGraphId = loadLastGraphId()
   graphStore.selectGraph(undefined as unknown as string)
   projectStore.loadProjects()
 
