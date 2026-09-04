@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { loadDataFile, resolveData, validateCanonicalData } from "../src/data";
+import { loadDataFile, missingVariables, resolveData, validateCanonicalData } from "../src/data";
 
 const write = (name: string, text: string): string => {
   const dir = mkdtempSync(join(tmpdir(), "mcmcjs-data-"));
@@ -25,11 +25,30 @@ describe("validateCanonicalData", () => {
     expect(validateCanonicalData(data)).toBe(data);
   });
 
-  it("rejects non-finite, non-numeric, and missing values, naming the path", () => {
+  it("rejects non-finite and non-numeric values, naming the path", () => {
     expect(() => validateCanonicalData({ y: [1, Number.NaN] })).toThrow(/y\[1\].*finite/);
     expect(() => validateCanonicalData({ a: Number.POSITIVE_INFINITY })).toThrow(/a.*finite/);
     expect(() => validateCanonicalData({ s: "x" })).toThrow(/s.*numbers or nested numeric arrays/);
-    expect(() => validateCanonicalData({ y: [1, null, 3] })).toThrow(/y\[1\].*missing/);
+    expect(() => validateCanonicalData({ y: [1, undefined, 3] })).toThrow(/y\[1\].*undefined/);
+  });
+
+  it("keeps a null as an unobserved entry, at any depth", () => {
+    expect(validateCanonicalData({ y: [1, null, 3] })).toEqual({ y: [1, null, 3] });
+    expect(
+      validateCanonicalData({
+        t: [
+          [1, null],
+          [null, null],
+        ],
+        a: null,
+      }),
+    ).toEqual({
+      t: [
+        [1, null],
+        [null, null],
+      ],
+      a: null,
+    });
   });
 
   it("rejects ragged arrays, naming the offending element", () => {
@@ -48,10 +67,10 @@ describe("loadDataFile", () => {
     expect(() => loadDataFile(write("d.json", "{not json"))).toThrow(/invalid JSON in .*d\.json/);
   });
 
-  it("rejects missing values in JSON data, naming the path", () => {
-    expect(() => loadDataFile(write("d.json", JSON.stringify({ y: [1, null, 3] })))).toThrow(
-      /y\[1\].*missing/,
-    );
+  it("loads a JSON null as an unobserved entry", () => {
+    expect(loadDataFile(write("d.json", JSON.stringify({ y: [1, null, 3] })))).toEqual({
+      y: [1, null, 3],
+    });
   });
 
   it("turns CSV columns into numeric vectors with a derived N", () => {
@@ -66,11 +85,10 @@ describe("loadDataFile", () => {
     );
   });
 
-  it("rejects empty cells, naming the column, row, and file", () => {
-    expect(() => loadDataFile(write("d.csv", 'y\n1\n""\n2\n'))).toThrow(
-      /column "y" at row 3.*empty/,
-    );
-    expect(() => loadDataFile(write("d.csv", "y,x\n1,\n"))).toThrow(/column "x" at row 2.*empty/);
+  it("reads an empty cell and an NA as unobserved", () => {
+    expect(loadDataFile(write("d.csv", 'y\n1\n""\n2\n'))).toEqual({ y: [1, null, 2], N: 3 });
+    expect(loadDataFile(write("d.csv", "y,x\n1,\n"))).toEqual({ y: [1], x: [null], N: 1 });
+    expect(loadDataFile(write("d.csv", "y\n1\nNA\nna\n"))).toEqual({ y: [1, null, null], N: 3 });
   });
 
   it("rejects ragged rows and duplicate headers", () => {
@@ -87,6 +105,23 @@ describe("loadDataFile", () => {
 
   it("rejects unknown extensions", () => {
     expect(() => loadDataFile(write("d.yaml", "y: 1"))).toThrow(/unsupported data file/);
+  });
+});
+
+describe("missingVariables", () => {
+  it("names only the variables holding an unobserved entry, in data order", () => {
+    expect(missingVariables({ N: 3, y: [1, 2, 3] })).toEqual([]);
+    expect(
+      missingVariables({
+        N: 2,
+        t: [
+          [1, null],
+          [2, 3],
+        ],
+        cen: [0, 4],
+        mu: null,
+      }),
+    ).toEqual(["t", "mu"]);
   });
 });
 
