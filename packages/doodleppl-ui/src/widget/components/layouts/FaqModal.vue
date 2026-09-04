@@ -32,7 +32,7 @@ const faqs = ref<FaqItem[]>([
   },
   {
     q: 'Does this work on tablets/iPads?',
-    a: 'Yes! DoodleBUGS supports touch interactions. However, for building complex models, we recommend using a desktop device with a mouse and keyboard for the best experience.',
+    a: 'Yes! DoodlePPL supports touch interactions. However, for building complex models, we recommend using a desktop device with a mouse and keyboard for the best experience.',
     open: false,
   },
   {
@@ -47,7 +47,7 @@ const faqs = ref<FaqItem[]>([
   },
   {
     q: 'Why is the Share URL so long?',
-    a: 'DoodleBUGS is a client-side application. We do not store your data on a server. Instead, the entire model structure, parameters, and data are compressed and encoded directly into the URL. This ensures your model remains private and accessible without a database.',
+    a: 'DoodlePPL is a client-side application. We do not store your data on a server. Instead, the entire model structure, parameters, and data are compressed and encoded directly into the URL. This ensures your model remains private and accessible without a database.',
     open: false,
   },
   {

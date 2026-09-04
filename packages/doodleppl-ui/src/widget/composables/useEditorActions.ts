@@ -6,13 +6,20 @@ import { useGraphStore } from '../stores/graphStore'
 import { useUiStore } from '../stores/uiStore'
 import { useDataStore } from '../stores/dataStore'
 import { useScriptStore } from '../stores/scriptStore'
-import { useShareExport } from './useShareExport'
+import { shareBaseUrl, useShareExport } from './useShareExport'
 import { useImportExport } from './useImportExport'
 import { usePersistence } from './usePersistence'
 import { useViewportActions } from './useViewportActions'
 import { useFileExport } from './useFileExport'
 import type { GraphElement, NodeType, UnifiedModelData } from '../types'
 import { examples, isUrl } from '../config/examples'
+
+/** One graph inside a share payload: name, elements, and its data table. */
+interface SharedGraph {
+  n: string
+  e: unknown
+  d?: string
+}
 
 const RESPONSIVE_BREAKPOINT = 768
 const NODE_FOCUS_PADDING = 50
@@ -60,7 +67,8 @@ export function useEditorActions(
     handleExportJson,
   } = useFileExport(generatedCode, stanCode)
 
-  const { shareUrl, minifyGraph, generateShareLink } = useShareExport()
+  const { shareUrl, minifyGraph, expandGraph, generateShareLink, decodeAndDecompress } =
+    useShareExport()
   const { importedGraphData, processGraphFile, clearImportedData } = useImportExport()
   const { getStoredGraphElements, getStoredDataContent, saveLastGraphId } =
     usePersistence(persistencePrefix)
@@ -215,7 +223,7 @@ export function useEditorActions(
         await loadModelData(modelData, modelName, exampleIdOrUrl, sourceMap)
       }
     } catch (error) {
-      console.error('[DoodleBUGS] Load error:', error)
+      console.error('[DoodlePPL] Load error:', error)
       toast.add({
         severity: 'error',
         summary: 'Load Failed',
@@ -327,6 +335,94 @@ export function useEditorActions(
           ? `${window.location.origin}${window.location.pathname}`
           : undefined)
     )
+  }
+
+  /** The `?share=` payload, or null when the URL carries none. */
+  const readSharePayload = async (): Promise<Record<string, unknown> | null> => {
+    if (typeof window === 'undefined') return null
+    const encoded = new URLSearchParams(window.location.search).get('share')
+    if (!encoded) return null
+    const json = await decodeAndDecompress(encoded)
+    return JSON.parse(json) as Record<string, unknown>
+  }
+
+  const addSharedGraph = (projectId: string, shared: SharedGraph, minified: boolean) => {
+    const meta = projectStore.addGraphToProject(projectId, shared.n)
+    if (!meta) return undefined
+    graphStore.updateGraphElements(
+      meta.id,
+      minified ? expandGraph(shared.e as Record<string, unknown>[]) : (shared.e as GraphElement[])
+    )
+    // Shared positions are absolute, so keep them instead of running a layout.
+    graphStore.updateGraphLayout(meta.id, 'preset')
+    if (shared.d) {
+      try {
+        dataStore.updateGraphData(meta.id, {
+          content: JSON.stringify(JSON.parse(shared.d), null, 2),
+        })
+      } catch {
+        dataStore.updateGraphData(meta.id, { content: shared.d })
+      }
+    }
+    return meta
+  }
+
+  /**
+   * Loads the graphs a `?share=` link carries into a new project and returns
+   * whether it did, so the caller can skip its own default graph. The parameter
+   * is then dropped from the address bar, otherwise a reload would import the
+   * same graphs a second time.
+   */
+  const loadFromShareLink = async (): Promise<boolean> => {
+    let payload: Record<string, unknown> | null = null
+    try {
+      payload = await readSharePayload()
+    } catch (error) {
+      console.error('[DoodlePPL] Could not read the share link:', error)
+    }
+    if (!payload) return false
+
+    let loaded = false
+    try {
+      if (payload.v === 3 && payload.pn && Array.isArray(payload.g)) {
+        projectStore.createProject(`${payload.pn} (Shared)`)
+        const projectId = projectStore.currentProjectId
+        if (projectId) {
+          for (const shared of payload.g as SharedGraph[]) {
+            addSharedGraph(projectId, shared, true)
+          }
+          projectStore.saveProjects()
+          const first = projectStore.currentProject?.graphs[0]
+          if (first) graphStore.selectGraph(first.id)
+          loaded = true
+        }
+      } else if (payload.n && payload.e) {
+        projectStore.createProject('Shared Project')
+        const projectId = projectStore.currentProjectId
+        if (projectId) {
+          // v1 links carry unminified elements, v2 minified ones.
+          const meta = addSharedGraph(projectId, payload as unknown as SharedGraph, payload.v === 2)
+          if (meta) {
+            projectStore.saveProjects()
+            graphStore.selectGraph(meta.id)
+            loaded = true
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[DoodlePPL] Could not load the shared model:', error)
+      toast.add({
+        severity: 'error',
+        summary: 'Share link',
+        detail: 'This share link is invalid or corrupted.',
+        life: 5000,
+      })
+    }
+
+    if (loaded && typeof window !== 'undefined') {
+      window.history.replaceState({}, document.title, shareBaseUrl())
+    }
+    return loaded
   }
 
   const createNewProject = () => {
@@ -444,6 +540,7 @@ export function useEditorActions(
     handleSelectNodeFromModal,
     handleShare,
     handleGenerateShareLink,
+    loadFromShareLink,
     createNewProject,
     createNewGraph,
     triggerGraphImport,

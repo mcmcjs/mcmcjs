@@ -152,49 +152,42 @@ const shortenUrl = async () => {
   shortError.value = null
 
   try {
-    const target = `https://is.gd/create.php?format=json&url=${encodeURIComponent(props.url)}`
-    const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(target)}`
-
-    const response = await fetch(proxy)
+    // is.gd sends `access-control-allow-origin: *`, so it is called directly.
+    // Going through a CORS proxy only added a service that can be down.
+    const response = await fetch(
+      `https://is.gd/create.php?format=json&url=${encodeURIComponent(props.url)}`
+    )
     if (!response.ok) throw new Error(`HTTP Error ${response.status}`)
 
-    const proxyData = await response.json()
+    const data = await response.json()
+    if (data.errorcode) throw new Error(data.errormessage || 'Unknown is.gd error')
+    if (!data.shorturl) throw new Error('Invalid response from is.gd')
 
-    if (proxyData.contents) {
-      const data = JSON.parse(proxyData.contents)
-      if (data.errorcode) throw new Error(data.errormessage || 'Unknown is.gd error')
-      if (data.shorturl) {
-        shortUrl.value = data.shorturl
+    shortUrl.value = data.shorturl
 
-        // Add to history
-        let label = 'Shared Model'
-        if (activeTab.value === 'current' && props.currentGraphId) {
-          const g = projectGraphs.value.find((g) => g.id === props.currentGraphId)
-          label = g ? g.name : 'Current Graph'
-        } else if (activeTab.value === 'project' && props.project) {
-          label = `Project: ${props.project.name}`
-        } else if (activeTab.value === 'custom') {
-          label = `Selection (${selectedGraphs.value.size} graphs)`
-        }
-
-        const newItem: HistoryItem = {
-          shortUrl: data.shorturl,
-          label,
-          timestamp: Date.now(),
-        }
-
-        // Add to history (avoid duplicates, limit to 10)
-        urlHistory.value = [
-          newItem,
-          ...urlHistory.value.filter((i) => i.shortUrl !== data.shorturl),
-        ].slice(0, 10)
-        saveHistory()
-      } else {
-        throw new Error('Invalid response from is.gd')
-      }
-    } else {
-      throw new Error('Empty response from proxy')
+    // Add to history
+    let label = 'Shared Model'
+    if (activeTab.value === 'current' && props.currentGraphId) {
+      const g = projectGraphs.value.find((g) => g.id === props.currentGraphId)
+      label = g ? g.name : 'Current Graph'
+    } else if (activeTab.value === 'project' && props.project) {
+      label = `Project: ${props.project.name}`
+    } else if (activeTab.value === 'custom') {
+      label = `Selection (${selectedGraphs.value.size} graphs)`
     }
+
+    const newItem: HistoryItem = {
+      shortUrl: data.shorturl,
+      label,
+      timestamp: Date.now(),
+    }
+
+    // Add to history (avoid duplicates, limit to 10)
+    urlHistory.value = [
+      newItem,
+      ...urlHistory.value.filter((i) => i.shortUrl !== data.shorturl),
+    ].slice(0, 10)
+    saveHistory()
   } catch (e: unknown) {
     console.error('Shortening failed:', e)
     shortError.value = e instanceof Error ? e.message : String(e)
