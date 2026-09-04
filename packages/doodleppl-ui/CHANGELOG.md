@@ -1,5 +1,11 @@
 # doodleppl
 
+## 0.10.1
+
+### Patch Changes
+
+- 7b3c859: Shorten share links through TinyURL, which answers a browser, and reopen the graph that was left open rather than the one the `model` attribute names
+
 ## 0.10.0
 
 ### Minor Changes
