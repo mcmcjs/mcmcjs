@@ -93,9 +93,10 @@ It does not combine with `MH` or `Gibbs`, which propose the discrete latents the
 `algorithm = "Gibbs"` composes per-variable samplers: each `[[sampler.blocks]]` table names the variables it updates and the component that updates them (`NUTS`, `HMC`, `HMCDA`, `MH`, `PG`, or `ESS`), with the same per-algorithm parameters as the top level.
 The classic use is a gradient sampler for continuous parameters and a particle or Metropolis component for the discrete ones.
 On juliabugs the components are `NUTS`, `HMC`, `HMCDA`, `MH`, and `Slice`, and the blocks must cover every parameter exactly once.
-One block is one group: a block naming an array variable updates the whole array together, which for a long vector of discrete states means proposing all of them at once and almost never accepting.
-`algorithm = "MH"` is the single-site alternative, one Metropolis update per parameter.
-`algorithm = "MH"` there is the shorthand for one Metropolis block over every parameter, which is how a model with unbounded discrete latents (a `dpois` count, say) is fitted at all: marginalization can only sum out a finite support.
+One block is one group: a block naming an array variable updates the whole array together.
+A block whose variables all have finite discrete support is drawn exactly from its full conditional, whatever component you name for it, so a vector of categorical states costs nothing to get right.
+Such variables have to be a block of their own; mixing them with continuous ones in one block is refused.
+`algorithm = "MH"` is the single-site shorthand: one block per parameter, an adaptive random walk on the continuous ones, an exact draw on the finite discrete ones, and a lattice walk on unbounded counts, which is how a model with a `dpois` latent is fitted at all since marginalization can only sum out a finite support.
 Two things to expect from a juliabugs Gibbs: JuliaBUGS disables step-size adaptation inside a gradient block, so a `NUTS` block mixes far more slowly than a plain `NUTS` fit and wants many more draws; and both `MH` and `Gibbs` start from the model's own values, so a model whose defaults are impossible under the data (an unobserved count below its observed successes, say) needs `initial_params`, and says so instead of running.
 
 ```toml

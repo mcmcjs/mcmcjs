@@ -596,6 +596,35 @@ function bugs_slice_sampler(conf)
     return SliceSampling.RandPermGibbs(SliceSampling.SliceSteppingOut(width))
 end
 
+# The support of each variable, as `Gibbs` itself classifies it. The stored value
+# does not say: JuliaBUGS keeps a latent count in a Float64 array, so a count
+# reads as continuous and would draw a Gaussian proposal it cannot represent.
+function bugs_node_types(model)
+    gd = model.graph_evaluation_data
+    return Dict(zip(gd.sorted_nodes, Base.invokelatest(JuliaBUGS.Model._compute_node_types, model)))
+end
+
+# A Gaussian step never lands on an integer, so a block of counts gets a lattice
+# walk. `Gibbs` draws a finite discrete block exactly instead, whatever it is
+# given here.
+function bugs_mh_kernel(model, vns, node_types)
+    expanded = JuliaBUGS.expand_variables(vns, model.graph_evaluation_data.model_parameters)
+    all(vn -> get(node_types, vn, :continuous) === :discrete_infinite, expanded) ||
+        return JuliaBUGS.AdvancedMH.RobustAdaptiveMetropolis()
+    return JuliaBUGS.AdvancedMH.RWMH([DiscreteUniform(-1, 1) for _ in expanded])
+end
+
+# One block per parameter, each with the kernel its own support calls for. The
+# convenience `Gibbs(model, sampler)` gives every block the same one.
+function bugs_single_site_mh(model)
+    node_types = bugs_node_types(model)
+    pairs = [
+        vn => bugs_mh_kernel(model, [vn], node_types) for
+        vn in JuliaBUGS.model_parameters(model)
+    ]
+    return JuliaBUGS.Gibbs(model, JuliaBUGS.OrderedDict(pairs))
+end
+
 bugs_varname(name) = eval(:(Turing.@varname($(Meta.parse(name)))))
 
 # One spec block becomes one entry of JuliaBUGS's sampler map, keyed by the
@@ -603,11 +632,12 @@ bugs_varname(name) = eval(:(Turing.@varname($(Meta.parse(name)))))
 # tuple. JuliaBUGS checks that the map covers every parameter exactly once.
 function build_bugs_gibbs(sampler, model)
     adtype = build_adtype(get(sampler, "adtype", "forwarddiff"))
+    node_types = bugs_node_types(model)
     pairs = map(sampler["blocks"]) do block
         vars = [bugs_varname(v) for v in block["variables"]]
         key = length(vars) == 1 ? vars[1] : vars
         algorithm = get(block, "algorithm", "NUTS")
-        component = algorithm == "MH" ? JuliaBUGS.IndependentMH() :
+        component = algorithm == "MH" ? bugs_mh_kernel(model, vars, node_types) :
             algorithm == "Slice" ? bugs_slice_sampler(block) :
             (bugs_hmc_sampler(block), adtype)
         key => component
@@ -624,7 +654,7 @@ function build_bugs_sampler(sampler, model)
     algorithm == "Slice" && return bugs_slice_sampler(sampler)
     # Single-site Metropolis over every parameter: the WinBUGS-shaped sampler, and
     # the route to discrete latents that marginalization declines.
-    algorithm == "MH" && return JuliaBUGS.Gibbs(model, JuliaBUGS.IndependentMH())
+    algorithm == "MH" && return bugs_single_site_mh(model)
     algorithm == "Gibbs" && return build_bugs_gibbs(sampler, model)
     return error("the juliabugs backend does not support the $algorithm sampler")
 end
