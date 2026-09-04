@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CommandRunner } from "@mcmcjs/engine";
@@ -9,6 +9,7 @@ import {
   validatePins,
   validateVersionString,
 } from "../src/project";
+import { pinnedEnvDir } from "../src/runner-common";
 
 const freshDir = (): string => mkdtempSync(join(tmpdir(), "mcmcjs-proj-"));
 
@@ -88,6 +89,26 @@ describe("ensureProject", () => {
     // An env provisioned with a pin is not "ready" for a different pin set.
     expect(managedProjectReady(dir)).toBe(false);
     expect(managedProjectReady(dir, { Turing: "0.44" })).toBe(false);
+  });
+
+  it("stops being ready when the shipped Manifest is resolved anew", async () => {
+    const dir = freshDir();
+    const run: CommandRunner = async () => {
+      writeFileSync(join(dir, "Project.toml"), "");
+      return "";
+    };
+    await ensureProject("/bin/julia", run, dir);
+    expect(managedProjectReady(dir)).toBe(true);
+
+    const shipped = join(pinnedEnvDir(), "Manifest.toml");
+    const before = readFileSync(shipped, "utf8");
+    try {
+      writeFileSync(shipped, `${before}\n# resolved anew\n`);
+      expect(managedProjectReady(dir)).toBe(false);
+    } finally {
+      writeFileSync(shipped, before);
+    }
+    expect(managedProjectReady(dir)).toBe(true);
   });
 });
 
