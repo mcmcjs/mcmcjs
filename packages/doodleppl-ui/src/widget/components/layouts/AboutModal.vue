@@ -1,12 +1,12 @@
 <template>
   <BaseModal :is-open="isOpen" @close="emit('close')">
     <template #header>
-      <h3>About DoodleBUGS</h3>
+      <h3>About DoodlePPL</h3>
     </template>
     <template #body>
       <div class="db-about-content">
         <p>
-          <strong>DoodleBUGS</strong> is a graphical modelling tool designed to simplify the
+          <strong>DoodlePPL</strong> is a graphical modelling tool designed to simplify the
           creation of Bayesian models for analysis with the BUGS language using
           <a
             href="https://github.com/TuringLang/JuliaBUGS.jl"

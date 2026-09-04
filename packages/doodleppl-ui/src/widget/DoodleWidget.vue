@@ -387,6 +387,7 @@ const {
   handleSelectNodeFromModal,
   handleShare,
   handleGenerateShareLink,
+  loadFromShareLink,
   createNewProject: baseCreateNewProject,
   createNewGraph,
   triggerGraphImport,
@@ -603,13 +604,11 @@ const createNewProject = () => {
   uiStore.isLeftSidebarOpen = true
 }
 
-const DOODLEBUGS_BASE_URL = 'https://turinglang.org/JuliaBUGS.jl/DoodleBUGS/'
-
 const handleWidgetGenerateShareLink = (options: {
   scope: 'current' | 'project' | 'custom'
   selectedGraphIds?: string[]
 }) => {
-  handleGenerateShareLink(options, DOODLEBUGS_BASE_URL)
+  handleGenerateShareLink(options)
 }
 
 const initGraph = async () => {
@@ -619,6 +618,19 @@ const initGraph = async () => {
   if (!projectStore.currentProjectId && projectStore.projects.length > 0) {
     projectStore.selectProject(projectStore.projects[0].id)
   }
+
+  // A share link names the graphs to open, so it wins over the last-used graph
+  // and over the example a host page asks for.
+  if (await loadFromShareLink()) {
+    nextTick(() => {
+      if (graphStore.currentGraphId) {
+        getCyInstance(graphStore.currentGraphId)?.resize()
+        handleFit()
+      }
+    })
+    return
+  }
+
   const proj = projectStore.currentProject
   if (!proj) return
 
@@ -641,7 +653,7 @@ const initGraph = async () => {
       try {
         await handleLoadExample(sourceKey, isLocalFile ? 'local' : 'standard', sourceMapApi)
       } catch (error) {
-        console.warn('[DoodleBUGS] Failed to load model, creating empty graph:', error)
+        console.warn('[DoodlePPL] Failed to load model, creating empty graph:', error)
         if (proj.graphs.length === 0) projectStore.addGraphToProject(proj.id, 'Model 1')
         if (!graphStore.currentGraphId && proj.graphs.length > 0)
           graphStore.selectGraph(proj.graphs[0].id)
@@ -834,7 +846,7 @@ onMounted(async () => {
         graphStore.saveGraph(id, content)
       })
     } catch (e) {
-      console.error('DoodleBUGS: Failed to parse state', e)
+      console.error('DoodlePPL: Failed to parse state', e)
     }
   }
 
@@ -1181,7 +1193,7 @@ watch(showNewGraphModal, (val) => {
                 >
                   <span class="db-logo-text-minimized">
                     <span class="db-desktop-text">{{
-                      pinnedGraphTitle ? `DoodleBUGS / ${pinnedGraphTitle}` : 'DoodleBUGS'
+                      pinnedGraphTitle ? `DoodlePPL / ${pinnedGraphTitle}` : 'DoodlePPL'
                     }}</span>
                     <span class="db-mobile-text">DoodleBUGS</span>
                   </span>

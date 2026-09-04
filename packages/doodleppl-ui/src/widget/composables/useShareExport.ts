@@ -35,6 +35,16 @@ const reverseNodeTypeMap: Record<number, string> = Object.fromEntries(
   Object.entries(nodeTypeMap).map(([k, v]) => [v, k])
 )
 
+/**
+ * The page a share link points back to, which is always the page that made it.
+ * A PR preview and a local build therefore share links to themselves rather
+ * than to the published site, which would not be running the code under test.
+ */
+export function shareBaseUrl(): string {
+  if (typeof window === 'undefined') return ''
+  return `${window.location.origin}${window.location.pathname}`
+}
+
 export function useShareExport() {
   const shareUrl = ref('')
 
@@ -178,7 +188,7 @@ export function useShareExport() {
   const generateShareLink = async (payload: object, baseUrlOverride?: string) => {
     try {
       const base64 = await compressAndEncode(JSON.stringify(payload))
-      const baseUrl = baseUrlOverride || window.location.origin + window.location.pathname
+      const baseUrl = baseUrlOverride || shareBaseUrl()
       shareUrl.value = `${baseUrl}?share=${encodeURIComponent(base64)}`
     } catch (e) {
       console.error('Failed to generate share link:', e)

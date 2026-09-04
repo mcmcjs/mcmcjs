@@ -108,7 +108,7 @@ const handleHeaderClick = () => {
       :style="{ cursor: enableDrag ? 'move' : 'pointer' }"
     >
       <span class="db-sidebar-title">
-        {{ pinnedGraphTitle ? `DoodleBUGS / ${pinnedGraphTitle}` : 'DoodleBUGS' }}
+        {{ pinnedGraphTitle ? `DoodlePPL / ${pinnedGraphTitle}` : 'DoodlePPL' }}
       </span>
       <div class="flex items-center ml-auto">
         <button
