@@ -1,5 +1,18 @@
 # mcmcjs
 
+## 0.33.1
+
+### Patch Changes
+
+- 7aad78a: Refuse an unobserved data entry inside the stan engine, so `mcmc fit` and every other entry point says why instead of only `mcmc run`
+- Updated dependencies [7aad78a]
+- Updated dependencies [7aad78a]
+  - @mcmcjs/julia@0.17.1
+  - @mcmcjs/core@0.13.1
+  - @mcmcjs/engine@0.6.1
+  - @mcmcjs/stan@0.1.8
+  - @mcmcjs/plots@0.8.5
+
 ## 0.33.0
 
 ### Minor Changes

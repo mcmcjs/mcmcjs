@@ -1,5 +1,14 @@
 # @mcmcjs/julia
 
+## 0.17.1
+
+### Patch Changes
+
+- 7aad78a: Recognise the new `data` failure stage, so a driver that reports one is not narrowed away to an unknown stage
+- Updated dependencies [7aad78a]
+  - @mcmcjs/core@0.13.1
+  - @mcmcjs/engine@0.6.1
+
 ## 0.17.0
 
 ### Minor Changes
