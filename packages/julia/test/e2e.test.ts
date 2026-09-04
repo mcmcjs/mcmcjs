@@ -1245,3 +1245,75 @@ d("julia e2e: juliabugs evaluation modes agree", () => {
     expect(pooledMean(generated, "sigma")).toBeCloseTo(pooledMean(graph, "sigma"), 1);
   }, 1_200_000);
 });
+
+// An unbounded count, the model MH exists for: marginalization can only sum out a
+// finite support. A Gaussian proposal cannot represent an integer, so this also
+// covers the kernel choice, which reads the node's support rather than the value
+// JuliaBUGS happens to store it in.
+const POISSON_MODEL = `import JuliaBUGS
+
+const model_def = JuliaBUGS.@bugs begin
+    p ~ dbeta(2, 2)
+    lambda ~ dgamma(2, 0.2)
+    for i in 1:N
+        n[i] ~ dpois(lambda)
+        y[i] ~ dbin(p, n[i])
+    end
+end
+
+build_model(data) = JuliaBUGS.compile(model_def, data)
+`;
+
+const POISSON_DATA = { N: 8, y: [4, 6, 5, 7, 3, 5, 6, 4] };
+
+d("julia e2e: juliabugs unbounded discrete latents through MH", () => {
+  it("moves an integer count instead of proposing off the lattice", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const modelFile = join(dir, "poisson_bugs.jl");
+    writeFileSync(modelFile, POISSON_MODEL);
+    const outPath = join(dir, "poisson.samples.json");
+    const result = await runFit(
+      {
+        ...spec(300, 2),
+        backend: { id: "juliabugs", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
+        model: { kind: "file", path: modelFile, entry: "build_model" },
+        modelPath: modelFile,
+        sampler: {
+          algorithm: "MH",
+          draws: 300,
+          warmup: 300,
+          chains: 2,
+          adapt_delta: 0.8,
+          thin: 1,
+          parallel: "serial",
+          // The compiled defaults put every count at zero, which the observed
+          // successes forbid, and an environment-based sampler cannot leave it.
+          initial_params: { lambda: 6, p: 0.7, n: [6, 9, 8, 10, 5, 8, 9, 6] },
+        },
+        data: POISSON_DATA,
+      },
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        recordPath: join(dir, "poisson.run.json"),
+      },
+    );
+
+    expect(result.status).toBe("ok");
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    for (let chain = 0; chain < samples.nChains; chain++) {
+      for (const value of chainView(samples, "n[1]", chain)) {
+        expect(Number.isInteger(value)).toBe(true);
+        // A count below its own observed successes has zero probability.
+        expect(value).toBeGreaterThanOrEqual(POISSON_DATA.y[0] as number);
+      }
+    }
+    // A kernel that cannot land on the lattice would leave the count where it
+    // started, so the run has to show it moving.
+    const counts = new Set(Array.from(chainView(samples, "n[1]", 0)));
+    expect(counts.size).toBeGreaterThan(1);
+    expect(pooledMean(samples, "lambda")).toBeGreaterThan(5);
+  }, 900_000);
+});
