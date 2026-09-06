@@ -94,5 +94,7 @@ jobs:
           clean-exclude: |
             bugs-examples
             bugs-examples/**
+            model-graph
+            model-graph/**
           commit-message: "publish the site from ${{ github.sha }}"
           single-commit: true

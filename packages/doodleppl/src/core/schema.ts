@@ -49,6 +49,10 @@ export const UnifiedModelDataSchema = z.looseObject({
   data: z.record(z.string(), z.unknown()).optional(),
   inits: z.record(z.string(), z.unknown()).optional(),
   version: z.number().optional(),
+  /** the language the model was imported from; decides the variable-name rules. */
+  language: z.enum(["bugs", "stan"]).optional(),
+  /** a layout to run when the document opens in the editor; `layout` stays the editor's panel geometry. */
+  autoLayout: z.string().optional(),
 });
 
 /** The graph format as a JSON Schema document. */

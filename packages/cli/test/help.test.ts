@@ -34,6 +34,7 @@ const GROUPS: Record<string, string> = {
   init: "Start a project:",
   sandbox: "Start a project:",
   convert: "Start a project:",
+  graph: "Start a project:",
   setup: "Toolchain:",
   doctor: "Toolchain:",
   engines: "Toolchain:",

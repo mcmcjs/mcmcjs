@@ -57,9 +57,15 @@ export interface UnifiedModelData {
   graphJSON?: GraphElement[]
   data?: Record<string, unknown>
   inits?: Record<string, unknown>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  layout?: any
+  /** The language the model was imported from; decides the variable-name rules. */
+  language?: ModelLanguage
+  /** A layout to run when the document opens (`dagre`, `klay`, `fcose`, `cola`). */
+  autoLayout?: string
+  /** The editor's panel geometry (code and data panel placement), restored on open. */
+  layout?: Record<string, unknown>
 }
+
+export type ModelLanguage = 'bugs' | 'stan'
 
 export interface ExampleModel {
   name: string
