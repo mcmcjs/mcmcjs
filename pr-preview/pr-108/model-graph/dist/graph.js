@@ -543,8 +543,56 @@ function buildGraph(program, options = {}) {
     if (pattern) node.indices = pattern;
     elements.push(node);
   }
-  const assigned = new Set(flat.map((f2) => f2.stmt.target.name));
   const plateById = new Map(plates.map((p) => [p.id, p]));
+  const cover = (item, f2) => {
+    if (item === null) return { kind: "any" };
+    if ("kind" in item && item.kind === "range") {
+      return {
+        kind: "range",
+        lo: item.lo ? printExpr(item.lo) : "",
+        hi: item.hi ? printExpr(item.hi) : ""
+      };
+    }
+    if (item.kind === "num") return { kind: "lit", v: Number(item.text) };
+    if (item.kind === "var" && !item.index && f2.loopVars.has(item.name)) {
+      for (let p = f2.plate ? plateById.get(f2.plate) : void 0; p; p = p.parent ? plateById.get(p.parent) : void 0) {
+        if (p.variable === item.name) {
+          const [lo = "", hi = ""] = p.range.split(":");
+          return { kind: "range", lo, hi };
+        }
+      }
+    }
+    return { kind: "any" };
+  };
+  const numeric = (s) => /^\d+$/.test(s);
+  const contained = (inner, outer) => {
+    if (outer.kind === "any" || inner.kind === "any") return false;
+    if (inner.kind === "lit" && outer.kind === "lit") return inner.v === outer.v;
+    if (inner.kind === "lit" && outer.kind === "range") {
+      return numeric(outer.lo) && inner.v >= Number(outer.lo) && (!numeric(outer.hi) || inner.v <= Number(outer.hi));
+    }
+    return inner.kind === "range" && outer.kind === "range" && inner.lo === outer.lo && inner.hi === outer.hi;
+  };
+  for (const [key, members] of groups) {
+    const sto = members.find((m) => m.stmt.kind === "stochastic");
+    if (!sto || dataKeys.has(sto.stmt.target.name)) continue;
+    const id = nodeOf.get(key);
+    const node = elements.find((e) => e.type === "node" && e.id === id);
+    if (node?.nodeType !== "stochastic") continue;
+    const own = sto.stmt.target.index ?? [];
+    const fixedElsewhere = [...groups.values()].some(
+      (others) => others.some((o) => {
+        if (o.stmt.kind !== "logical" || o.stmt.target.name !== sto.stmt.target.name) return false;
+        const theirs = o.stmt.target.index ?? [];
+        return theirs.length === own.length && theirs.every((it2, i) => contained(cover(it2, o), cover(own[i] ?? null, sto)));
+      })
+    );
+    if (fixedElsewhere) {
+      node.nodeType = "observed";
+      node.observed = true;
+    }
+  }
+  const assigned = new Set(flat.map((f2) => f2.stmt.target.name));
   const plain = (ref, loopVars) => (ref.index ?? []).every(
     (it2) => it2 !== null && it2.kind === "var" && !it2.index && loopVars.has(it2.name)
   );
