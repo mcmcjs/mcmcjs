@@ -1,83 +1,219 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>BUGS to graph, generated vs hand-drawn</title>
+<title>Model to graph</title>
 <style>
+  :root { --mcmc-fg: #222; --mcmc-bg: #fff; --mcmc-muted: #777; --mcmc-observed: #dcdcdc; --mcmc-plate: #f3f3f3; }
   body { margin: 0; font: 14px system-ui, sans-serif; background: #fafafa; color: #222; }
   header { display: flex; gap: 16px; align-items: center; padding: 10px 16px; border-bottom: 1px solid #ddd; background: #fff; }
-  header select { font: inherit; padding: 4px 8px; }
-  header .note { color: #666; }
-  main { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; padding: 12px 16px; }
-  section h2 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #444; }
-  section .empty { height: 620px; display: grid; place-items: center; color: #999; border: 1px dashed #ccc; border-radius: 6px; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; font-weight: 600; }
+  header .mode a { color: #444; text-decoration: none; padding: 4px 8px; border-radius: 4px; }
+  header .mode a.on { background: #eee; }
+  select, button, input { font: inherit; padding: 4px 8px; }
+  button.primary { background: #222; color: #fff; border: 1px solid #222; border-radius: 4px; cursor: pointer; }
+  button.primary:hover { background: #000; }
+  main { padding: 12px 16px; }
+  .editor { display: grid; grid-template-columns: minmax(360px, 2fr) 3fr; gap: 14px; }
+  .pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row label { color: #555; }
+  textarea { width: 100%; min-height: 420px; box-sizing: border-box; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 10px; border: 1px solid #ccc; border-radius: 6px; resize: vertical; background: #fff; }
+  input.keys { flex: 1; min-width: 160px; }
+  .messages { font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; border-radius: 6px; padding: 8px 10px; display: none; }
+  .messages.warn { display: block; background: #fff8e1; border: 1px solid #f1d27a; color: #6a4b00; }
+  .messages.err { display: block; background: #fdecea; border: 1px solid #f0a8a0; color: #7a1c14; }
+  .messages.ok { display: block; background: #eef7ee; border: 1px solid #a9d3a9; color: #1f5e1f; }
+  .static { overflow: auto; border: 1px solid #ddd; border-radius: 6px; background: var(--mcmc-bg); min-height: 200px; max-height: 46vh; }
+  .static svg { display: block; }
+  .widget { border: 1px solid #ddd; border-radius: 6px; overflow: hidden; }
   doodle-ppl { display: block; }
-  .static { height: 620px; overflow: auto; border: 1px solid #ddd; border-radius: 6px; background: #fff; }
-  .static img { display: block; max-width: none; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .compare h2 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #444; }
+  .compare .empty, .compare .frame { height: 620px; }
+  .compare .empty { display: grid; place-items: center; color: #999; border: 1px dashed #ccc; border-radius: 6px; }
+  .compare .frame { overflow: auto; border: 1px solid #ddd; border-radius: 6px; background: #fff; }
+  .compare .frame img { display: block; max-width: none; }
+  h2.small { margin: 0; font-size: 13px; font-weight: 600; color: #444; }
+  .hint { color: #777; font-size: 12px; }
 </style>
 
 <header>
-  <label>Example <select id="pick"></select></label>
-  <span class="note" id="meta"></span>
+  <h1>Model to graph</h1>
+  <span class="mode"><a href="#editor" id="tab-editor">Editor</a><a href="#compare" id="tab-compare">Compare examples</a></span>
+  <span class="hint" id="status"></span>
 </header>
+
 <main>
-  <section><h2>mcmc graph (TypeScript parser, dagre, SVG)</h2><div id="cli"></div></section>
-  <section><h2>Widget, opened from the Julia prototype's document</h2><div id="gen"></div></section>
-  <section><h2>Hand-drawn (bundled with the widget)</h2><div id="hand"></div></section>
+  <section id="editor" class="editor">
+    <div class="pane">
+      <div class="row">
+        <label>Language <select id="lang"><option value="bugs">BUGS</option><option value="stan">Stan</option></select></label>
+        <label>Example <select id="example"></select></label>
+        <button type="button" class="primary" id="draw">Draw</button>
+        <span class="hint">Ctrl+Enter</span>
+      </div>
+      <textarea id="code" spellcheck="false"></textarea>
+      <div class="row">
+        <label>Data variables</label>
+        <input class="keys" id="keys" placeholder="comma-separated names drawn as observed, e.g. Y, x, N">
+      </div>
+      <div class="messages" id="messages"></div>
+    </div>
+    <div class="pane">
+      <h2 class="small">Drawing (dagre layout, SVG)</h2>
+      <div class="static" id="svg"></div>
+      <h2 class="small">In the DoodlePPL editor</h2>
+      <div class="widget" id="widget"></div>
+    </div>
+  </section>
+
+  <section id="compare" class="compare" hidden>
+    <div style="grid-column: 1 / -1" class="row">
+      <label>Example <select id="pick"></select></label>
+      <span class="hint" id="meta"></span>
+    </div>
+    <div><h2>mcmc graph (TypeScript parser, dagre, SVG)</h2><div id="cli"></div></div>
+    <div><h2>Widget, opened from the Julia prototype's document</h2><div id="gen"></div></div>
+    <div><h2>Hand-drawn (bundled with the widget)</h2><div id="hand"></div></div>
+  </section>
 </main>
 
-<script src="https://unpkg.com/doodleppl@0.9.1/dist/doodleppl.global.js" defer></script>
-<script>
-  const generated = [
-    'rats','pumps','dogs','seeds','surgical_simple','surgical_realistic','magnesium','salm','equiv','dyes',
-    'stacks','epil','blockers','oxford','lsat','bones','mice','kidney','leuk','leukfr',
-    'dugongs','orange_trees','orange_trees_multivariate','biopsies','eyes','hearts','air','cervix','jaws','birats',
-    'schools','beetles','alligators','endo','stagnant','asia',
-    'eye_tracking','circle','hollow_square','parallelogram','ring','square_minus_circle','hepatitis','hepatitis_me',
-    'hips1','hips2','hips3','hips4','pig_weights','bayes_factors',
-  ]
-  const hand = { rats:'rats', pumps:'pumps', seeds:'seeds', surgical_simple:'surgical', dyes:'dyes',
-    blockers:'blockers', salm:'salm', equiv:'equiv', oxford:'oxford', epil:'epil', mice:'mice', kidney:'kidney' }
+<script src="https://unpkg.com/doodleppl@0.10.1/dist/doodleppl.global.js" defer></script>
+<script type="module">
+  import * as G from './dist/graph.js'
 
-  const pick = document.getElementById('pick')
-  for (const k of generated) {
-    const o = document.createElement('option')
-    o.value = k; o.textContent = hand[k] ? `${k}  (has hand-drawn)` : k
-    pick.append(o)
-  }
+  const $ = (id) => document.getElementById(id)
+  const status = (t) => { $('status').textContent = t }
 
-  // A unique storage key per mount stops the widget reopening a graph it cached
-  // in IndexedDB the last time this file was loaded.
-  function mount(host, url) {
+  // ---- data ------------------------------------------------------------------
+  const programs = { bugs: [], stan: [] }
+  programs.bugs = await (await fetch('fixtures/programs.json')).json()
+  programs.stan = await (await fetch('fixtures/stan-programs.json')).json()
+
+  // ---- widget mounting -----------------------------------------------------
+  // A fresh storage key per mount stops the widget reopening a graph it cached.
+  function mountWidget(host, url, height = '560px') {
     host.replaceChildren()
-    if (!url) { const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'no hand-drawn graph'; host.append(d); return }
     const el = document.createElement('doodle-ppl')
     el.setAttribute('local-model', url)
-    el.setAttribute('height', '620px')
+    el.setAttribute('height', height)
     el.setAttribute('storage-key', `viewer-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     host.append(el)
   }
+  let lastBlob = null
+  function mountDocument(host, doc) {
+    if (lastBlob) URL.revokeObjectURL(lastBlob)
+    lastBlob = URL.createObjectURL(new Blob([JSON.stringify(doc)], { type: 'application/json' }))
+    mountWidget(host, lastBlob)
+  }
 
+  // ---- stanc.js, loaded on first use ------------------------------------------
+  let stancReady = null
+  function loadStanc() {
+    if (globalThis.stanc) return Promise.resolve(globalThis.stanc)
+    if (!stancReady) {
+      stancReady = new Promise((resolve, reject) => {
+        status('loading stanc.js (3 MB)...')
+        const s = document.createElement('script')
+        s.src = 'vendor/stanc.js'
+        s.onload = () => { status(''); resolve(globalThis.stanc) }
+        s.onerror = () => reject(new Error('vendor/stanc.js did not load; see README for how to fetch it'))
+        document.head.append(s)
+      })
+    }
+    return stancReady
+  }
+
+  // ---- the editor ------------------------------------------------------------
+  const lang = $('lang'), example = $('example'), code = $('code'), keys = $('keys'), messages = $('messages')
+
+  function fillExamples() {
+    example.replaceChildren()
+    const blank = document.createElement('option'); blank.value = ''; blank.textContent = '(write your own)'
+    example.append(blank)
+    for (const p of programs[lang.value]) {
+      const o = document.createElement('option'); o.value = p.key; o.textContent = p.key; example.append(o)
+    }
+  }
+  function loadExample() {
+    const p = programs[lang.value].find((x) => x.key === example.value)
+    if (!p) return
+    code.value = p.program
+    keys.value = (p.data_keys ?? []).join(', ')
+    draw()
+  }
+  function say(kind, text) { messages.className = `messages ${kind}`; messages.textContent = text }
+  function dataKeys() { return keys.value.split(',').map((s) => s.trim()).filter(Boolean) }
+
+  async function toDocument() {
+    const name = example.value || 'model'
+    if (lang.value === 'bugs') {
+      return G.parseBugs(code.value, { name, dataKeys: dataKeys() })
+    }
+    const stanc = await loadStanc()
+    const r = stanc(name, code.value, ['debug-ast'])
+    if (r.errors?.length) throw new Error(r.errors.filter((e) => e !== '0').join('\n'))
+    const data = Object.fromEntries(dataKeys().map((k) => [k, 0]))
+    return G.graphFromStanAst(r.result, { name, data })
+  }
+
+  async function draw() {
+    try {
+      const { model, warnings } = await toDocument()
+      const elements = model.elements ?? []
+      const layout = G.layoutGraph(elements)
+      $('svg').innerHTML = G.renderGraphSvg(layout)
+      mountDocument($('widget'), { ...model, elements: G.applyLayout(elements, layout) })
+      const n = elements.filter((e) => e.type === 'node' && e.nodeType !== 'plate').length
+      const plates = elements.filter((e) => e.type === 'node' && e.nodeType === 'plate').length
+      const summary = `${n} nodes, ${plates} plates, ${elements.filter((e) => e.type === 'edge').length} edges`
+      if (warnings.length) say('warn', `${summary}\n${warnings.map((w) => `line ${w.line}: ${w.message}`).join('\n')}`)
+      else say('ok', summary)
+    } catch (e) {
+      say('err', e.message ?? String(e))
+    }
+  }
+
+  lang.addEventListener('change', () => { fillExamples(); example.value = programs[lang.value][0]?.key ?? ''; loadExample() })
+  example.addEventListener('change', loadExample)
+  $('draw').addEventListener('click', draw)
+  code.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) draw() })
+
+  // ---- compare mode -----------------------------------------------------------
+  const hand = { rats: 'rats', pumps: 'pumps', seeds: 'seeds', surgical_simple: 'surgical', dyes: 'dyes',
+    blockers: 'blockers', salm: 'salm', equiv: 'equiv', oxford: 'oxford', epil: 'epil', mice: 'mice', kidney: 'kidney' }
+  const pick = $('pick')
+  for (const p of programs.bugs) {
+    const o = document.createElement('option'); o.value = p.key; o.textContent = hand[p.key] ? `${p.key}  (has hand-drawn)` : p.key; pick.append(o)
+  }
   function showStatic(host, url) {
     host.replaceChildren()
-    const box = document.createElement('div')
-    box.className = 'static'
-    const img = document.createElement('img')
-    img.src = `${url}?${Date.now()}`
-    img.alt = url
-    img.onerror = () => { box.replaceChildren(); box.classList.add('empty'); box.textContent = `not rendered: ${url}` }
-    box.append(img)
-    host.append(box)
+    const box = document.createElement('div'); box.className = 'frame'
+    const img = document.createElement('img'); img.src = `${url}?${Date.now()}`; img.alt = url
+    img.onerror = () => { box.className = 'empty'; box.textContent = `not rendered: ${url}` }
+    box.append(img); host.append(box)
   }
-
-  function show(k) {
-    location.hash = k
-    showStatic(document.getElementById('cli'), `cli/${k}.svg`)
-    mount(document.getElementById('gen'), `out/${k}.json`)
-    mount(document.getElementById('hand'), hand[k] ? `hand/${hand[k]}.json` : null)
-    document.getElementById('meta').textContent = `out/${k}.json`
+  function showCompare(k) {
+    showStatic($('cli'), `cli/${k}.svg`)
+    mountWidget($('gen'), `out/${k}.json`, '620px')
+    if (hand[k]) mountWidget($('hand'), `hand/${hand[k]}.json`, '620px')
+    else { const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'no hand-drawn graph'; $('hand').replaceChildren(d) }
+    $('meta').textContent = `out/${k}.json`
   }
+  pick.addEventListener('change', () => showCompare(pick.value))
 
-  pick.addEventListener('change', () => show(pick.value))
-  const start = location.hash.slice(1)
-  pick.value = generated.includes(start) ? start : 'rats'
-  show(pick.value)
+  // ---- modes ---------------------------------------------------------------------
+  function setMode(mode) {
+    const editor = mode !== 'compare'
+    $('editor').hidden = !editor
+    $('compare').hidden = editor
+    $('tab-editor').classList.toggle('on', editor)
+    $('tab-compare').classList.toggle('on', !editor)
+    if (!editor && !pick.dataset.shown) { pick.dataset.shown = '1'; pick.value = 'rats'; showCompare('rats') }
+  }
+  window.addEventListener('hashchange', () => setMode(location.hash.slice(1)))
+  setMode(location.hash.slice(1))
+
+  fillExamples()
+  example.value = 'rats'
+  loadExample()
 </script>

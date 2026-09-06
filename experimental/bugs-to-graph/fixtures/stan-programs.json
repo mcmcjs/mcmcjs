@@ -1,0 +1,139 @@
+[
+  {
+    "key": "blockers",
+    "name": "Blockers: Random Effects Meta-Analysis of Clinical Trials",
+    "source": "bundled graph",
+    "program": "data {\n  int<lower=1> Num;\n  array[Num] int nc;\n  array[Num] int nt;\n  array[Num] int rc;\n  array[Num] int rt;\n}\n\nparameters {\n  real d;\n  real<lower=0> tau;\n  array[Num] real mu;\n  array[Num] real delta;\n  real delta_new;\n}\n\ntransformed parameters {\n  array[Num] real pc;\n  array[Num] real pt;\n  for (i in 1:Num) {\n    pc[i] = inv_logit(mu[i]);\n    pt[i] = inv_logit(mu[i] + delta[i]);\n  }\n}\n\nmodel {\n  d ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  tau ~ gamma(0.001, 0.001);\n  mu ~ normal(0.0, 1.0 / sqrt(1.0E-5));\n  delta ~ normal(d, 1.0 / sqrt(tau));\n  rc ~ binomial(nc, pc);\n  rt ~ binomial(nt, pt);\n  delta_new ~ normal(d, 1.0 / sqrt(tau));\n}\n\ngenerated quantities {\n  real sigma;\n  sigma = 1 / sqrt(tau);\n}\n",
+    "data_keys": ["rt", "nt", "rc", "nc", "Num"]
+  },
+  {
+    "key": "dyes",
+    "name": "Dyes: Variance Components Model",
+    "source": "bundled graph",
+    "program": "data {\n  int<lower=1> batches;\n  int<lower=1> samples;\n  array[batches, samples] real y;\n}\n\nparameters {\n  real theta;\n  real<lower=0> tau_btw;\n  real<lower=0> tau_with;\n  array[batches] real mu;\n}\n\nmodel {\n  theta ~ normal(0.0, 1.0 / sqrt(1.0E-10));\n  tau_btw ~ gamma(0.001, 0.001);\n  tau_with ~ gamma(0.001, 0.001);\n  mu ~ normal(theta, 1.0 / sqrt(tau_btw));\n  for (i in 1:batches) {\n    for (j in 1:samples) {\n      y[i,j] ~ normal(mu[i], 1.0 / sqrt(tau_with));\n    }\n  }\n}\n\ngenerated quantities {\n  real sigma2_btw;\n  real sigma2_with;\n  sigma2_btw = 1 / tau_btw;\n  sigma2_with = 1 / tau_with;\n}\n",
+    "data_keys": ["batches", "samples", "y"]
+  },
+  {
+    "key": "epil",
+    "name": "Epilepsy: Repeated Measures on Poisson Counts",
+    "source": "bundled graph",
+    "program": "data {\n  int<lower=1> N;\n  int<lower=1> T;\n  array[N, T] int y;\n  real log_Base4_bar;\n  real Trt_bar;\n  real BT_bar;\n  real log_Age_bar;\n  real V4_bar;\n  array[N] real Base;\n  array[N] real Trt;\n  array[N] real Age;\n  array[T] real V4;\n}\n\nparameters {\n  real a0;\n  real alpha_Base;\n  real alpha_Trt;\n  real alpha_BT;\n  real alpha_Age;\n  real alpha_V4;\n  real<lower=0> tau_b1;\n  real<lower=0> tau_b;\n  array[N] real b1;\n  array[N, T] real b;\n}\n\ntransformed parameters {\n  array[N, T] real mu;\n  for (j in 1:N) {\n    for (k in 1:T) {\n      mu[j,k] = exp(a0 + alpha_Base * (log(Base[j] / 4) - log_Base4_bar) + alpha_Trt * (Trt[j] - Trt_bar) + alpha_BT * (Trt[j] * log(Base[j] / 4) - BT_bar) + alpha_Age * (log(Age[j]) - log_Age_bar) + alpha_V4 * (V4[k] - V4_bar) + b1[j] + b[j, k]);\n    }\n  }\n}\n\nmodel {\n  a0 ~ normal(0.0, 1.0 / sqrt(1.0E-4));\n  alpha_Base ~ normal(0.0, 1.0 / sqrt(1.0E-4));\n  alpha_Trt ~ normal(0.0, 1.0 / sqrt(1.0E-4));\n  alpha_BT ~ normal(0.0, 1.0 / sqrt(1.0E-4));\n  alpha_Age ~ normal(0.0, 1.0 / sqrt(1.0E-4));\n  alpha_V4 ~ normal(0.0, 1.0 / sqrt(1.0E-4));\n  tau_b1 ~ gamma(1.0E-3, 1.0E-3);\n  tau_b ~ gamma(1.0E-3, 1.0E-3);\n  b1 ~ normal(0.0, 1.0 / sqrt(tau_b1));\n  for (j in 1:N) {\n    for (k in 1:T) {\n      b[j,k] ~ normal(0.0, 1.0 / sqrt(tau_b));\n      y[j,k] ~ poisson(mu[j, k]);\n    }\n  }\n}\n\ngenerated quantities {\n  real alpha0;\n  real sigma_b1;\n  real sigma_b;\n  alpha0 = a0 - alpha_Base * log_Base4_bar - alpha_Trt * Trt_bar - alpha_BT * BT_bar - alpha_Age * log_Age_bar - alpha_V4 * V4_bar;\n  sigma_b1 = 1.0 / sqrt(tau_b1);\n  sigma_b = 1.0 / sqrt(tau_b);\n}\n",
+    "data_keys": [
+      "N",
+      "T",
+      "y",
+      "Trt",
+      "Base",
+      "Age",
+      "V4",
+      "log.Base4.bar",
+      "log.Age.bar",
+      "Trt.bar",
+      "BT.bar",
+      "V4.bar"
+    ]
+  },
+  {
+    "key": "equiv",
+    "name": "Equiv: Bioequivalence in a Cross-Over Trial",
+    "source": "bundled graph",
+    "program": "data {\n  int<lower=1> P;\n  int<lower=1> N;\n  array[P] real sign;\n  array[N] real group;\n  array[N, P] real Y;\n}\n\ntransformed data {\n  array[N, P] int T;\n  for (k in 1:P) {\n    for (i in 1:N) {\n      T[i,k] = to_int(round(group[i] * (k - 1.5) + 1.5));\n    }\n  }\n}\n\nparameters {\n  real mu;\n  real phi;\n  real pi;\n  real<lower=0> tau1;\n  real<lower=0> tau2;\n  array[N] real delta;\n}\n\ntransformed parameters {\n  array[N, P] real m;\n  for (k in 1:P) {\n    for (i in 1:N) {\n      m[i,k] = mu + sign[T[i, k]] * phi / 2 + sign[k] * pi / 2 + delta[i];\n    }\n  }\n}\n\nmodel {\n  mu ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  phi ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  pi ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  tau1 ~ gamma(0.001, 0.001);\n  tau2 ~ gamma(0.001, 0.001);\n  for (k in 1:P) {\n    for (i in 1:N) {\n      Y[i,k] ~ normal(m[i, k], 1.0 / sqrt(tau1));\n    }\n  }\n  delta ~ normal(0.0, 1.0 / sqrt(tau2));\n}\n\ngenerated quantities {\n  real theta;\n  real sigma1;\n  real sigma2;\n  real equiv;\n  theta = exp(phi);\n  sigma1 = 1 / sqrt(tau1);\n  sigma2 = 1 / sqrt(tau2);\n  equiv = (theta - 0.8 >= 0 ? 1 : 0) - (theta - 1.2 >= 0 ? 1 : 0);\n}\n",
+    "data_keys": ["N", "P", "group", "Y", "sign"]
+  },
+  {
+    "key": "hmm",
+    "name": "HMM: Hidden Markov Model with Gaussian Emissions",
+    "source": "bundled graph",
+    "program": "data {\n  int<lower=1> T;\n  int<lower=1> K;\n  array[T] real y;\n  vector[K] pi0;\n  array[K] vector[K] P;\n}\n\nparameters {\n  array[K] real mu;\n  real<lower=0> tau;\n}\n\nmodel {\n  mu ~ normal(0, 1.0 / sqrt(0.01));\n  tau ~ gamma(1, 1);\n  // marginalize the chain z by a forward recursion\n  {\n    vector[K] z_lp;\n    vector[K] z_lp_next;\n    vector[K] z_acc;\n    for (z_val in 1:K) {\n      z_lp[z_val] = categorical_lpmf(z_val | pi0[1:K])\n        + normal_lpdf(y[1] | mu[z_val], 1.0 / sqrt(tau));\n    }\n    for (t in 2:T) {\n      for (z_val in 1:K) {\n        for (z_prev in 1:K) {\n          z_acc[z_prev] = z_lp[z_prev]\n            + categorical_lpmf(z_val | P[z_prev, 1:K]);\n        }\n        z_lp_next[z_val] = log_sum_exp(z_acc)\n          + normal_lpdf(y[t] | mu[z_val], 1.0 / sqrt(tau));\n      }\n      z_lp = z_lp_next;\n    }\n    target += log_sum_exp(z_lp);\n  }\n}\n\ngenerated quantities {\n  array[T] int z;\n  // recover z by forward filtering and backward sampling\n  {\n    array[T] vector[K] z_fwd;\n    vector[K] z_acc;\n    for (z_val in 1:K) {\n      z_fwd[1][z_val] = categorical_lpmf(z_val | pi0[1:K])\n        + normal_lpdf(y[1] | mu[z_val], 1.0 / sqrt(tau));\n    }\n    for (t in 2:T) {\n      for (z_val in 1:K) {\n        for (z_prev in 1:K) {\n          z_acc[z_prev] = z_fwd[t - 1][z_prev]\n            + categorical_lpmf(z_val | P[z_prev, 1:K]);\n        }\n        z_fwd[t][z_val] = log_sum_exp(z_acc)\n          + normal_lpdf(y[t] | mu[z_val], 1.0 / sqrt(tau));\n      }\n    }\n    z[T] = categorical_rng(softmax(z_fwd[T]));\n    for (z_rev in 1:(T - 1)) {\n      int z_at = T - z_rev;\n      for (z_prev in 1:K) {\n        z_acc[z_prev] = z_fwd[z_at][z_prev]\n          + categorical_lpmf(z[z_at + 1] | P[z_prev, 1:K]);\n      }\n      z[z_at] = categorical_rng(softmax(z_acc));\n    }\n  }\n}\n",
+    "data_keys": ["T", "K", "y", "pi0", "P"]
+  },
+  {
+    "key": "kidney",
+    "name": "Kidney: Weibull Regression with Random Effects",
+    "source": "bundled graph",
+    "program": "data {\n  int<lower=1> N;\n  int<lower=1> M;\n  array[N] real sex;\n  array[N] int disease;\n  array[N, M] real age;\n  array[N, M] real t;\n  array[N, M] real t_cen;\n  array[N, M] int t_is_obs;\n}\n\nparameters {\n  real alpha;\n  real beta_age;\n  real beta_sex;\n  real<lower=0> tau;\n  real<lower=0> r;\n  array[3] real beta_dis_free;\n  array[N] real b;\n}\n\ntransformed parameters {\n  array[4] real beta_dis;\n  beta_dis[1] = 0;  // placeholder: outside plate range\n  beta_dis[2] = beta_dis_free[1];\n  beta_dis[3] = beta_dis_free[2];\n  beta_dis[4] = beta_dis_free[3];\n  array[N, M] real mu;\n  for (i in 1:N) {\n    for (j in 1:M) {\n      mu[i,j] = exp(alpha + beta_age * age[i, j] + beta_sex * sex[i] + beta_dis[disease[i]] + b[i]);\n    }\n  }\n}\n\nmodel {\n  alpha ~ normal(0.0, 1.0 / sqrt(0.0001));\n  beta_age ~ normal(0.0, 1.0 / sqrt(0.0001));\n  beta_sex ~ normal(0.0, 1.0 / sqrt(0.0001));\n  tau ~ gamma(1.0E-3, 1.0E-3);\n  r ~ gamma(1.0, 1.0E-3);\n  b ~ normal(0.0, 1.0 / sqrt(tau));\n  for (i in 1:N) {\n    for (j in 1:M) {\n      if (t_is_obs[i,j] == 1) {\n        t[i,j] ~ weibull(r, 1.0 / (mu[i, j]));\n      } else {\n        target += weibull_lccdf(t_cen[i, j] | r, 1.0 / (mu[i, j]));\n      }\n    }\n  }\n  for (k in 2:4) {\n    beta_dis[k] ~ normal(0.0, 1.0 / sqrt(0.0001));\n  }\n}\n\ngenerated quantities {\n  real sigma;\n  sigma = 1 / sqrt(tau);\n}\n",
+    "data_keys": ["N", "M", "t", "t.cen", "sex", "disease", "age", "beta.dis"]
+  },
+  {
+    "key": "mice",
+    "name": "Mice: Weibull Regression",
+    "source": "bundled graph",
+    "program": "data {\n  int<lower=1> M;\n  int<lower=1> N;\n  array[M, N] real t;\n  array[M, N] real t_cen;\n  array[M, N] int t_is_obs;\n}\n\nparameters {\n  real<lower=0.1, upper=10> r;\n  array[M] real beta;\n}\n\ntransformed parameters {\n  array[M] real mu;\n  for (i in 1:M) {\n    mu[i] = exp(beta[i]);\n  }\n}\n\nmodel {\n  r ~ uniform(0.1, 10);\n  beta ~ normal(0.0, 1.0 / sqrt(0.001));\n  for (i in 1:M) {\n    for (j in 1:N) {\n      if (t_is_obs[i,j] == 1) {\n        t[i,j] ~ weibull(r, 1.0 / (mu[i]));\n      } else {\n        target += weibull_lccdf(t_cen[i, j] | r, 1.0 / (mu[i]));\n      }\n    }\n  }\n}\n\ngenerated quantities {\n  array[M] real median;\n  real veh_control;\n  real test_sub;\n  real pos_control;\n  for (i in 1:M) {\n    median[i] = pow(log(2) * exp(-beta[i]), 1 / r);\n  }\n  veh_control = beta[2] - beta[1];\n  test_sub = beta[3] - beta[1];\n  pos_control = beta[4] - beta[1];\n}\n",
+    "data_keys": ["M", "N", "t", "t.cen"]
+  },
+  {
+    "key": "mixed-dag",
+    "name": "Mixed DAG: Discrete and Continuous Latents",
+    "source": "bundled graph",
+    "program": "data {\n  real D;\n  vector[2] piX;\n  vector[2] piZ;\n  array[2] real muX;\n  real tauA;\n  real tauB;\n  real alpha0;\n  real alpha1;\n  array[2] real deltaC;\n  array[2] real deltaZ;\n  real tauD;\n}\n\nparameters {\n  real A;\n  real B;\n}\n\ntransformed parameters {\n  real pC;\n  pC = inv_logit(alpha0 + alpha1 * A);\n}\n\nmodel {\n  B ~ normal(A, 1.0 / sqrt(tauB));\n  // marginalize scalar discrete latents by variable elimination\n  {\n    array[2] real phi_C;\n    // eliminate X\n    vector[2] X_lp;\n    for (X_val in 1:2) {\n      X_lp[X_val] = categorical_lpmf(X_val | piX[1:2])\n        + normal_lpdf(A | (muX[X_val]), 1.0 / sqrt(tauA));\n    }\n    target += log_sum_exp(X_lp);\n    // eliminate C\n    for (Z_val in 1:2) {\n      vector[2] C_lp;\n      for (C_idx in 1:2) {\n        int C_val = C_idx - 1;\n        C_lp[C_idx] = bernoulli_lpmf(C_val | pC)\n          + normal_lpdf(D | (B + deltaC[C_val + 1] + deltaZ[Z_val]), 1.0 / sqrt(tauD));\n      }\n      phi_C[Z_val] = log_sum_exp(C_lp);\n    }\n    // eliminate Z\n    vector[2] Z_lp;\n    for (Z_val in 1:2) {\n      Z_lp[Z_val] = categorical_lpmf(Z_val | piZ[1:2])\n        + phi_C[Z_val];\n    }\n    target += log_sum_exp(Z_lp);\n  }\n}\n\ngenerated quantities {\n  int Z;\n  int C;\n  int X;\n  // recover the scalar discrete latents from their joint conditional posterior\n  {\n    vector[2 * 2 * 2] marg_joint_lp;\n    array[2 * 2 * 2] int marg_conf_Z;\n    array[2 * 2 * 2] int marg_conf_C;\n    array[2 * 2 * 2] int marg_conf_X;\n    int marg_c = 0;\n    int marg_pick;\n    for (Z_val in 1:2) {\n      for (C_idx in 1:2) {\n        int C_val = C_idx - 1;\n        for (X_val in 1:2) {\n          marg_c += 1;\n          marg_joint_lp[marg_c] = categorical_lpmf(Z_val | piZ[1:2])\n            + bernoulli_lpmf(C_val | pC)\n            + categorical_lpmf(X_val | piX[1:2])\n            + normal_lpdf(A | (muX[X_val]), 1.0 / sqrt(tauA))\n            + normal_lpdf(D | (B + deltaC[C_val + 1] + deltaZ[Z_val]), 1.0 / sqrt(tauD));\n          marg_conf_Z[marg_c] = Z_val;\n          marg_conf_C[marg_c] = C_val;\n          marg_conf_X[marg_c] = X_val;\n        }\n      }\n    }\n    marg_pick = categorical_rng(softmax(marg_joint_lp));\n    Z = marg_conf_Z[marg_pick];\n    C = marg_conf_C[marg_pick];\n    X = marg_conf_X[marg_pick];\n  }\n}\n",
+    "data_keys": [
+      "piX",
+      "piZ",
+      "muX",
+      "tauA",
+      "tauB",
+      "alpha0",
+      "alpha1",
+      "deltaC",
+      "deltaZ",
+      "tauD",
+      "D"
+    ]
+  },
+  {
+    "key": "mixture",
+    "name": "Mixture: Two-Component Gaussian Mixture",
+    "source": "bundled graph",
+    "program": "data {\n  int<lower=1> N;\n  vector[2] w;\n  array[N] real y;\n}\n\nparameters {\n  array[2] real mu;\n  array[2] real<lower=0> sigma;\n}\n\nmodel {\n  mu ~ normal(0, 1.0 / sqrt(0.01));\n  sigma ~ exponential(1);\n  for (i in 1:N) {\n    // marginalize out z[i]\n    {\n      vector[2] z_lp;\n      for (z_val in 1:2) {\n        z_lp[z_val] = categorical_lpmf(z_val | w[1:2])\n          + normal_lpdf(y[i] | (mu[z_val]), 1.0 / sqrt((1 / (sigma[z_val] * sigma[z_val]))));\n      }\n      target += log_sum_exp(z_lp);\n    }\n  }\n}\n\ngenerated quantities {\n  array[N] int z;\n  // recover z from its conditional posterior\n  for (i in 1:N) {\n    vector[2] z_lp;\n    for (z_val in 1:2) {\n      z_lp[z_val] = categorical_lpmf(z_val | w[1:2])\n        + normal_lpdf(y[i] | (mu[z_val]), 1.0 / sqrt((1 / (sigma[z_val] * sigma[z_val]))));\n    }\n    z[i] = categorical_rng(softmax(z_lp));\n  }\n}\n",
+    "data_keys": ["w", "y", "N"]
+  },
+  {
+    "key": "oxford",
+    "name": "Oxford: Smooth Fit to Log-Odds Ratios",
+    "source": "bundled graph",
+    "program": "data {\n  int<lower=1> K;\n  array[K] real year;\n  array[K] int n0;\n  array[K] int n1;\n  array[K] int r0;\n  array[K] int r1;\n}\n\nparameters {\n  real alpha;\n  real beta1;\n  real beta2;\n  real<lower=0> tau;\n  array[K] real mu;\n  array[K] real b;\n}\n\ntransformed parameters {\n  array[K] real p0;\n  array[K] real logPsi;\n  array[K] real p1;\n  for (i in 1:K) {\n    p0[i] = inv_logit(mu[i]);\n    logPsi[i] = alpha + beta1 * year[i] + beta2 * (year[i] * year[i] - 22) + b[i];\n    p1[i] = inv_logit(mu[i] + logPsi[i]);\n  }\n}\n\nmodel {\n  alpha ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  beta1 ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  beta2 ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  tau ~ gamma(0.001, 0.001);\n  mu ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  b ~ normal(0, 1.0 / sqrt(tau));\n  r0 ~ binomial(n0, p0);\n  r1 ~ binomial(n1, p1);\n}\n\ngenerated quantities {\n  real sigma;\n  sigma = 1 / sqrt(tau);\n}\n",
+    "data_keys": ["r1", "n1", "r0", "n0", "year", "K"]
+  },
+  {
+    "key": "pumps",
+    "name": "Pumps: Conjugate Gamma-Poisson Hierarchical Model",
+    "source": "bundled graph",
+    "program": "data {\n  int<lower=1> N;\n  array[N] real t;\n  array[N] int x;\n}\n\nparameters {\n  real<lower=0> alpha;\n  real<lower=0> beta;\n  array[N] real<lower=0> theta;\n}\n\ntransformed parameters {\n  array[N] real lambda;\n  for (i in 1:N) {\n    lambda[i] = theta[i] * t[i];\n  }\n}\n\nmodel {\n  alpha ~ exponential(1);\n  beta ~ gamma(0.1, 1.0);\n  theta ~ gamma(alpha, beta);\n  x ~ poisson(lambda);\n}\n",
+    "data_keys": ["t", "x", "N"]
+  },
+  {
+    "key": "rats",
+    "name": "Rats: A Normal Hierarchical Model",
+    "source": "bundled graph",
+    "program": "data {\n  int<lower=1> N;\n  int<lower=1> T;\n  array[T] real x;\n  real xbar;\n  array[N, T] real Y;\n}\n\nparameters {\n  real<lower=0> tau_c;\n  real alpha_c;\n  real<lower=0> alpha_tau;\n  real beta_c;\n  real<lower=0> beta_tau;\n  array[N] real alpha;\n  array[N] real beta;\n}\n\ntransformed parameters {\n  array[N, T] real mu;\n  for (i in 1:N) {\n    for (j in 1:T) {\n      mu[i,j] = alpha[i] + beta[i] * (x[j] - xbar);\n    }\n  }\n}\n\nmodel {\n  alpha ~ normal(alpha_c, 1.0 / sqrt(alpha_tau));\n  beta ~ normal(beta_c, 1.0 / sqrt(beta_tau));\n  for (i in 1:N) {\n    for (j in 1:T) {\n      Y[i,j] ~ normal(mu[i,j], 1.0 / sqrt(tau_c));\n    }\n  }\n  tau_c ~ gamma(0.001, 0.001);\n  alpha_c ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  alpha_tau ~ gamma(0.001, 0.001);\n  beta_c ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  beta_tau ~ gamma(0.001, 0.001);\n}\n\ngenerated quantities {\n  real sigma;\n  real alpha0;\n  sigma = 1 / sqrt(tau_c);\n  alpha0 = alpha_c - xbar * beta_c;\n}\n",
+    "data_keys": ["N", "T", "x", "xbar", "Y"]
+  },
+  {
+    "key": "salm",
+    "name": "Salm: Extra-Poisson Variation in Dose-Response Study",
+    "source": "bundled graph",
+    "program": "data {\n  int<lower=1> doses;\n  int<lower=1> plates;\n  array[doses] real x;\n  array[doses, plates] int y;\n}\n\nparameters {\n  real alpha;\n  real beta;\n  real gamma;\n  real<lower=0> tau;\n  array[doses, plates] real lambda;\n}\n\ntransformed parameters {\n  array[doses, plates] real mu;\n  for (i in 1:doses) {\n    for (j in 1:plates) {\n      mu[i,j] = exp(alpha + beta * log(x[i] + 10) + gamma * x[i] + lambda[i, j]);\n    }\n  }\n}\n\nmodel {\n  alpha ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  beta ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  gamma ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  tau ~ gamma(0.001, 0.001);\n  for (i in 1:doses) {\n    for (j in 1:plates) {\n      lambda[i,j] ~ normal(0.0, 1.0 / sqrt(tau));\n      y[i,j] ~ poisson(mu[i, j]);\n    }\n  }\n}\n\ngenerated quantities {\n  real sigma;\n  sigma = 1 / sqrt(tau);\n}\n",
+    "data_keys": ["doses", "plates", "y", "x"]
+  },
+  {
+    "key": "seeds",
+    "name": "Seeds: Random Effects Logistic Regression",
+    "source": "bundled graph",
+    "program": "data {\n  int<lower=1> N;\n  array[N] real x1;\n  array[N] real x2;\n  array[N] int n;\n  array[N] int r;\n}\n\nparameters {\n  real alpha0;\n  real alpha1;\n  real alpha2;\n  real alpha12;\n  real<lower=0> tau;\n  array[N] real b;\n}\n\ntransformed parameters {\n  array[N] real p;\n  for (i in 1:N) {\n    p[i] = inv_logit(alpha0 + alpha1 * x1[i] + alpha2 * x2[i] + alpha12 * x1[i] * x2[i] + b[i]);\n  }\n}\n\nmodel {\n  alpha0 ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  alpha1 ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  alpha2 ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  alpha12 ~ normal(0.0, 1.0 / sqrt(1.0E-6));\n  tau ~ gamma(0.001, 0.001);\n  b ~ normal(0.0, 1.0 / sqrt(tau));\n  r ~ binomial(n, p);\n}\n\ngenerated quantities {\n  real sigma;\n  sigma = 1 / sqrt(tau);\n}\n",
+    "data_keys": ["r", "n", "x1", "x2", "N"]
+  },
+  {
+    "key": "surgical",
+    "name": "Surgical: Institutional Ranking",
+    "source": "bundled graph",
+    "program": "data {\n  int<lower=1> N;\n  array[N] int n;\n  array[N] int r;\n}\n\nparameters {\n  array[N] real<lower=0, upper=1> p;\n}\n\nmodel {\n  p ~ beta(1.0, 1.0);\n  r ~ binomial(n, p);\n}\n",
+    "data_keys": ["n", "r", "N"]
+  },
+  {
+    "key": "eight_schools",
+    "name": "Eight schools",
+    "source": "examples/",
+    "program": "data {\n  int<lower=1> J;\n  array[J] real y;\n  array[J] real<lower=0> sigma;\n}\nparameters {\n  real mu;\n  real<lower=0> tau;\n  array[J] real theta;\n}\nmodel {\n  mu ~ normal(0, 5);\n  tau ~ cauchy(0, 5);\n  theta ~ normal(mu, tau);\n  y ~ normal(theta, sigma);\n}\ngenerated quantities {\n  array[J] real y_rep;\n  for (j in 1:J) {\n    y_rep[j] = normal_rng(theta[j], sigma[j]);\n  }\n}\n",
+    "data_keys": ["J", "y", "sigma"]
+  }
+]
