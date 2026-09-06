@@ -70,7 +70,9 @@ const firstRender = (core: Core) => {
   hasFitContent = true
   const pending = graphStore.takePendingLayout(props.graphId)
   if (pending) {
-    applyLayoutWithFit(core, pending)
+    // Synchronous, so the graph is settled before its first paint and nothing
+    // else can move it while an animation is under way.
+    applyLayoutWithFit(core, pending, { animate: false })
     graphStore.updateGraphLayout(props.graphId, pending)
     return
   }
