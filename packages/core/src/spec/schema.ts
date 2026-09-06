@@ -221,7 +221,15 @@ const ModelFile = z.object({
 });
 
 const Output = z
-  .object({ format: z.literal("mcmcchains-json").default("mcmcchains-json") })
+  .object({
+    format: z.literal("mcmcchains-json").default("mcmcchains-json"),
+    /**
+     * Which variables the samples file stores, BUGS's monitor list: a name
+     * (`theta`, or one element `theta[2]`) or a glob (`mean.*`). Unset keeps
+     * every variable. The sampler's own statistics are always kept.
+     */
+    keep: z.array(z.string().min(1)).min(1).optional(),
+  })
   .default({ format: "mcmcchains-json" });
 
 const Predict = z

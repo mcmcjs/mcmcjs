@@ -49,6 +49,16 @@ export function parsePackageVersions(arg: string): { name: string; versions: str
   return { name, versions };
 }
 
+/** Parses a `--keep a,b[1],mean.*` list into the spec's `[output] keep` patterns. */
+export function parseKeepList(arg: string): string[] {
+  const patterns = arg
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (patterns.length === 0) throw new Error("--keep expects a comma-separated list of variables");
+  return patterns;
+}
+
 /** The MatrixEntry fields carried over from a FitResult. */
 function resultFields(result: FitResult): Omit<MatrixEntry, "version"> {
   return {
@@ -143,6 +153,10 @@ export function registerFit(program: Command, ctx: EngineContext): void {
       "--verbose",
       "show the full raw install/precompile and sampler output, not a collapsed spinner",
     )
+    .option(
+      "--keep <list>",
+      "store only these variables in the samples file, comma-separated names or globs (e.g. theta,mean.*); overrides the spec's [output] keep",
+    )
     .option("--json", "print the result as JSON")
     .action(
       async (
@@ -154,11 +168,13 @@ export function registerFit(program: Command, ctx: EngineContext): void {
           versions?: string;
           packageVersions?: string;
           keepGoing?: boolean;
+          keep?: string;
           verbose?: boolean;
           json?: boolean;
         },
       ) => {
         const spec = parseSpec(specPath);
+        if (opts.keep) spec.output = { ...spec.output, keep: parseKeepList(opts.keep) };
         validatePins(spec.backend.packages); // fail fast on a bad spec pin
         // Load a referenced data file (recorded by path + hash, not inlined).
         const resolvedData = resolveData(spec.data, spec.dataFilePath);

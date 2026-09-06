@@ -1,6 +1,17 @@
 import type { MatrixResult } from "@mcmcjs/julia";
 import { describe, expect, it } from "vitest";
-import { defaultOut, formatFitResult, formatMatrix, matrixOutDir } from "../src/fit";
+import { defaultOut, formatFitResult, formatMatrix, matrixOutDir, parseKeepList } from "../src/fit";
+
+describe("parseKeepList", () => {
+  it("splits on commas and trims, keeping globs and subscripts as written", () => {
+    expect(parseKeepList("theta, mean.*,BL[2]")).toEqual(["theta", "mean.*", "BL[2]"]);
+  });
+
+  it("drops empty entries and rejects an empty list", () => {
+    expect(parseKeepList("a,,b,")).toEqual(["a", "b"]);
+    expect(() => parseKeepList(" , ")).toThrow(/--keep/);
+  });
+});
 
 describe("output paths", () => {
   it("derives the single-fit and matrix output paths from the spec name", () => {

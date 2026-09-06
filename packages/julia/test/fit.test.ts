@@ -34,7 +34,7 @@ function spec(): ResolvedSpec {
       parallel: "serial",
     },
     data: { J: 8 },
-    output: { format: "mcmcchains-json" },
+    output: { format: "mcmcchains-json", keep: ["mu"] },
     seed: 42,
     specPath: "/x/m.toml",
     modelPath: "/x/m.jl",
@@ -74,6 +74,8 @@ describe("runFit", () => {
     expect(request.seed).toBe(42);
     expect(request.out).toBe(outPath);
     expect(request.data).toEqual({ J: 8 });
+    // The [output] table reaches the driver, so keep can filter what it writes.
+    expect(request.output).toEqual({ format: "mcmcchains-json", keep: ["mu"] });
 
     const record = JSON.parse(readFileSync(`${outPath}.run.json`, "utf8"));
     expect(record.schema_version).toBe("0");

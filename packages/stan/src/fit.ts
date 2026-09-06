@@ -14,6 +14,7 @@ import {
   type CanonicalData,
   canonicalJson,
   fromStanCSVFiles,
+  keepSamples,
   missingDataRefusal,
   parseSamples,
   type ResolvedSpec,
@@ -217,7 +218,9 @@ export async function runFit(
     let samplesJson: string;
     try {
       const texts = csvPaths.map((path) => readFileSync(path, "utf8"));
-      samplesJson = JSON.stringify(toMCMCChainsJson(fromStanCSVFiles(texts)));
+      samplesJson = JSON.stringify(
+        toMCMCChainsJson(keepSamples(fromStanCSVFiles(texts), spec.output.keep)),
+      );
       parseSamples(samplesJson);
     } catch (error) {
       return fail("load_samples", `could not read CmdStan output: ${(error as Error).message}`);

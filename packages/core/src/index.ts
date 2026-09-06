@@ -6,6 +6,7 @@ export {
   resolveData,
   validateCanonicalData,
 } from "./data";
+export { keepMatcher, keepSamples } from "./keep";
 export { parseSamples } from "./parse-samples";
 export { parseArvizJson } from "./parsers/arviz";
 export { fromChainArrays, toChainArrays } from "./parsers/from-chains";

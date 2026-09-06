@@ -158,6 +158,22 @@ describe("runFit", () => {
     expect(record.samples_file).toBe(outPath);
   });
 
+  it("stores only the variables the spec's [output] keep names", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "stan-fit-"));
+    const { spec, compile } = compiled(dir);
+    spec.output = { ...spec.output, keep: ["nothing.named.this"] };
+    await seedCache(spec, compile.cacheRoot);
+
+    const outPath = join(dir, "samples.json");
+    const result = await runFit(spec, fakeInstall(dir), { spawn: fakeCmdStan(), outPath, compile });
+    expect(result.status).toBe("ok");
+
+    const samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect(samples.variables).not.toContain("theta");
+    expect(samples.nChains).toBe(2);
+    expect(samples.nDraws).toBe(4);
+  });
+
   it("reports a failing chain as a sample-stage error", async () => {
     const dir = mkdtempSync(join(tmpdir(), "stan-fit-"));
     const { spec, compile } = compiled(dir);

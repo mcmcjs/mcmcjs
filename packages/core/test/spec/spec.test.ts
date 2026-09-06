@@ -25,6 +25,15 @@ describe("SpecSchema", () => {
     expect(spec.sampler.chains).toBe(4);
     expect(spec.model.entry).toBe("build_model");
     expect(spec.output.format).toBe("mcmcchains-json");
+    expect(spec.output.keep).toBeUndefined();
+  });
+
+  it("accepts an [output] keep list and rejects an empty one", () => {
+    const spec = SpecSchema.parse({ ...VALID, output: { keep: ["theta", "mean.*", "BL[2]"] } });
+    expect(spec.output.keep).toEqual(["theta", "mean.*", "BL[2]"]);
+    expect(spec.output.format).toBe("mcmcchains-json");
+    expect(() => SpecSchema.parse({ ...VALID, output: { keep: [] } })).toThrow();
+    expect(() => SpecSchema.parse({ ...VALID, output: { keep: [""] } })).toThrow();
   });
 
   it("rejects an unknown sampler key", () => {

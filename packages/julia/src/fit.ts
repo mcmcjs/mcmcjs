@@ -60,6 +60,7 @@ export function fitRequest(
     },
     data: spec.data,
     sampler: spec.sampler,
+    output: spec.output,
     seed: spec.seed,
     out: outPath,
     ...(opts?.streamDraws ? { stream_draws: true } : {}),
