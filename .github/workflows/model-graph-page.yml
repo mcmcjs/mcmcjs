@@ -1,0 +1,64 @@
+name: Model graph page
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or tag holding experimental/bugs-to-graph"
+        type: string
+        default: main
+      stanc_version:
+        description: "stanc3 release whose browser build the page uses"
+        type: string
+        default: v2.39.0
+
+permissions:
+  contents: read
+
+concurrency: model-graph-page
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          node-version: 22
+
+      - name: Is the token configured?
+        id: key
+        env:
+          SITE_TOKEN: ${{ secrets.SITE_TOKEN }}
+        run: |
+          if [ -n "$SITE_TOKEN" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Build the page
+        working-directory: experimental/bugs-to-graph
+        run: |
+          node build-bundle.mjs
+          mkdir -p vendor
+          curl -sSL -o vendor/stanc.js "https://github.com/stan-dev/stanc3/releases/download/${{ inputs.stanc_version }}/stanc.js"
+          mkdir -p ../../site-model-graph/dist ../../site-model-graph/vendor ../../site-model-graph/fixtures
+          cp viewer.html ../../site-model-graph/index.html
+          cp dist/graph.js ../../site-model-graph/dist/
+          cp vendor/stanc.js ../../site-model-graph/vendor/
+          cp fixtures/programs.json fixtures/stan-programs.json ../../site-model-graph/fixtures/
+          ls -la ../../site-model-graph ../../site-model-graph/*
+
+      - name: Publish
+        if: steps.key.outputs.present == 'true'
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          token: ${{ secrets.SITE_TOKEN }}
+          repository-name: mcmcjs/mcmcjs.github.io
+          branch: deploy
+          folder: site-model-graph
+          target-folder: model-graph
+          clean: true
+          single-commit: true
+          commit-message: "Publish the model graph page from ${{ inputs.ref }}"
