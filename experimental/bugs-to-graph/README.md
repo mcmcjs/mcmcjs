@@ -11,10 +11,10 @@ curl -sL -o vendor/stanc.js https://github.com/stan-dev/stanc3/releases/download
 python3 -m http.server 8124           # then open http://127.0.0.1:8124/viewer.html
 ```
 
-`viewer.html`: write BUGS or Stan, or pick an example, and press Draw. The program is
-parsed in the browser, laid out with dagre, and opened in a DoodlePPL editor instance
-through a `blob:` document with the positions filled in; the Drawing tab shows the same
-graph as SVG. Warnings say what the graph format could not hold. Stan is parsed by
+`viewer.html`: write BUGS or Stan, or pick an example, and the graph follows as you type.
+The program is parsed in the browser, laid out with dagre, and opened in a DoodlePPL editor
+instance through a `blob:` document with the positions filled in; the Drawing tab shows the
+same graph as SVG. A program that does not parse yet leaves the last good graph in place. Warnings say what the graph format could not hold. Stan is parsed by
 stanc3's own browser build, `vendor/stanc.js`, fetched the first time Stan is drawn.
 
 `compare.html`: for each of the 50 BUGS examples, the `mcmc graph` drawing, the widget
