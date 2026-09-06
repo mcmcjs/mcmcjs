@@ -1,0 +1,183 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model to graph</title>
+<style>
+  :root { --mcmc-fg: #222; --mcmc-bg: #fff; --mcmc-muted: #777; --mcmc-observed: #dcdcdc; --mcmc-plate: #f3f3f3; --line: #e2e2e2; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #fff; color: #222; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 15px; font-weight: 600; margin: 0 auto 0 0; }
+  .seg { display: inline-flex; border: 1px solid #ccc; border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; background: #fff; padding: 5px 12px; font: inherit; cursor: pointer; color: #444; }
+  .seg button.on { background: #222; color: #fff; }
+  select, button.primary { font: inherit; padding: 5px 10px; border-radius: 6px; border: 1px solid #ccc; background: #fff; }
+  button.primary { background: #222; color: #fff; border-color: #222; cursor: pointer; }
+  main { flex: 1; display: grid; grid-template-columns: minmax(340px, 38%) 1fr; min-height: 0; }
+  .code { display: flex; flex-direction: column; border-right: 1px solid var(--line); min-width: 0; }
+  textarea { flex: 1; width: 100%; border: 0; resize: none; padding: 14px 18px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; outline: none; background: #fff; color: #222; }
+  .observed { display: flex; align-items: center; gap: 8px; padding: 8px 18px; border-top: 1px solid var(--line); color: #666; font-size: 13px; }
+  .observed input { flex: 1; border: 0; font: inherit; outline: none; color: #222; background: transparent; }
+  .messages { padding: 8px 18px; border-top: 1px solid var(--line); font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; color: #555; min-height: 36px; }
+  .messages.err { color: #9a1b12; background: #fdf3f2; }
+  .messages.warn { color: #6a4b00; background: #fffaea; }
+  .view { display: flex; flex-direction: column; min-width: 0; }
+  .tabs { display: flex; gap: 2px; padding: 8px 18px 0; border-bottom: 1px solid var(--line); }
+  .tabs button { border: 0; border-bottom: 2px solid transparent; background: none; padding: 6px 10px; font: inherit; color: #666; cursor: pointer; margin-bottom: -1px; }
+  .tabs button.on { color: #222; border-bottom-color: #222; }
+  .panel { flex: 1; min-height: 0; overflow: auto; }
+  .panel[hidden] { display: none; }
+  #svg { padding: 18px; background: var(--mcmc-bg); }
+  #svg svg { display: block; max-width: 100%; height: auto; }
+  doodle-ppl { display: block; height: 100%; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; grid-template-rows: 45vh 1fr; } .code { border-right: 0; border-bottom: 1px solid var(--line); } }
+</style>
+
+<header>
+  <h1>Model to graph</h1>
+  <span class="seg" id="lang"><button type="button" data-v="bugs" class="on">BUGS</button><button type="button" data-v="stan">Stan</button></span>
+  <select id="example" aria-label="Example"></select>
+  <button type="button" class="primary" id="draw">Draw</button>
+</header>
+
+<main>
+  <section class="code">
+    <textarea id="code" spellcheck="false" aria-label="Model code"></textarea>
+    <label class="observed">Observed <input id="keys" placeholder="data variable names, comma-separated"></label>
+    <div class="messages" id="messages"></div>
+  </section>
+  <section class="view">
+    <div class="tabs">
+      <button type="button" data-p="widget" class="on">Interactive</button>
+      <button type="button" data-p="svg">Drawing</button>
+    </div>
+    <div class="panel" id="widget"></div>
+    <div class="panel" id="svg" hidden></div>
+  </section>
+</main>
+
+<!-- The widget built from this branch (build-bundle.mjs copies it here); the
+     released package does not yet apply a layout on open or validate by language. -->
+<script src="vendor/doodleppl.global.js" defer></script>
+<script type="module">
+  import * as G from './dist/graph.js'
+
+  const $ = (id) => document.getElementById(id)
+  const programs = {
+    bugs: await (await fetch('fixtures/programs.json')).json(),
+    stan: await (await fetch('fixtures/stan-programs.json')).json(),
+  }
+  let language = 'bugs'
+
+  // ---- the two views ------------------------------------------------------------
+  let lastBlob = null
+  function showWidget(doc) {
+    const host = $('widget')
+    host.replaceChildren()
+    if (lastBlob) URL.revokeObjectURL(lastBlob)
+    lastBlob = URL.createObjectURL(new Blob([JSON.stringify(doc)], { type: 'application/json' }))
+    const el = document.createElement('doodle-ppl')
+    el.setAttribute('local-model', lastBlob)
+    el.setAttribute('height', '100%')
+    // A fresh storage key per draw stops the widget reopening a cached graph.
+    el.setAttribute('storage-key', `graph-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    host.append(el)
+  }
+  for (const b of document.querySelectorAll('.tabs button')) {
+    b.addEventListener('click', () => {
+      for (const o of document.querySelectorAll('.tabs button')) o.classList.toggle('on', o === b)
+      $('widget').hidden = b.dataset.p !== 'widget'
+      $('svg').hidden = b.dataset.p !== 'svg'
+    })
+  }
+
+  // ---- stanc.js, fetched the first time Stan is drawn ---------------------------
+  let stancLoading = null
+  function loadStanc() {
+    if (globalThis.stanc) return Promise.resolve(globalThis.stanc)
+    if (!stancLoading) {
+      say('', 'loading the Stan compiler (3 MB, once)...')
+      stancLoading = new Promise((resolve, reject) => {
+        const s = document.createElement('script')
+        s.src = 'vendor/stanc.js'
+        s.onload = () => resolve(globalThis.stanc)
+        s.onerror = () => reject(new Error('the Stan compiler (vendor/stanc.js) did not load'))
+        document.head.append(s)
+      })
+    }
+    return stancLoading
+  }
+
+  // ---- editor state ---------------------------------------------------------------
+  const code = $('code'), keys = $('keys'), example = $('example')
+  const say = (kind, text) => { $('messages').className = `messages ${kind}`; $('messages').textContent = text }
+  const observed = () => keys.value.split(',').map((s) => s.trim()).filter(Boolean)
+
+  function fillExamples(selected) {
+    example.replaceChildren()
+    const own = document.createElement('option'); own.value = ''; own.textContent = 'Write your own'
+    example.append(own)
+    for (const p of programs[language]) {
+      const o = document.createElement('option'); o.value = p.key; o.textContent = p.key; example.append(o)
+    }
+    example.value = selected ?? ''
+  }
+  // The selected example's data, embedded in the document so the widget's Data
+  // tab is filled and its observed nodes validate. Hand-written code has none.
+  let exampleData = null
+  function loadExample() {
+    const p = programs[language].find((x) => x.key === example.value)
+    exampleData = p?.data && Object.keys(p.data).length ? p.data : null
+    if (!p) { code.value = ''; keys.value = ''; code.focus(); return }
+    code.value = p.program
+    keys.value = (p.data_keys ?? []).join(', ')
+    draw()
+  }
+
+  async function toDocument() {
+    const name = example.value || 'model'
+    const names = observed()
+    if (language === 'bugs') return G.parseBugs(code.value, { name, dataKeys: names, data: exampleData ?? undefined })
+    const stanc = await loadStanc()
+    const r = stanc(name, code.value, ['debug-ast'])
+    if (r.errors?.length) throw new Error(r.errors.filter((e) => e !== '0').join('\n'))
+    // Without example data, a placeholder per observed name still marks the nodes observed.
+    return G.graphFromStanAst(r.result, { name, data: exampleData ?? Object.fromEntries(names.map((k) => [k, 0])) })
+  }
+
+  async function draw() {
+    if (!code.value.trim()) { say('', ''); return }
+    try {
+      const { model, warnings } = await toDocument()
+      const elements = model.elements ?? []
+      const layout = G.layoutGraph(elements)
+      $('svg').innerHTML = G.renderGraphSvg(layout)
+      // Positions from the page's dagre pass, and a request for the widget to run
+      // its own dagre on open so the two views agree.
+      showWidget({ ...model, elements: G.applyLayout(elements, layout), autoLayout: 'dagre' })
+      const count = (t) => elements.filter((e) => e.type === 'node' && (t === 'plate') === (e.nodeType === 'plate')).length
+      const summary = `${count('node')} nodes, ${count('plate')} plates, ${elements.filter((e) => e.type === 'edge').length} edges`
+      if (warnings.length) say('warn', `${summary}\n${warnings.map((w) => (w.line ? `line ${w.line}: ` : '') + w.message).join('\n')}`)
+      else say('', summary)
+    } catch (e) {
+      say('err', e.message ?? String(e))
+    }
+  }
+
+  for (const b of $('lang').querySelectorAll('button')) {
+    b.addEventListener('click', () => {
+      language = b.dataset.v
+      for (const o of $('lang').querySelectorAll('button')) o.classList.toggle('on', o === b)
+      fillExamples(programs[language][0]?.key)
+      loadExample()
+      history.replaceState(null, '', `#${language}`)
+    })
+  }
+  example.addEventListener('change', loadExample)
+  $('draw').addEventListener('click', draw)
+  code.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) draw() })
+
+  if (location.hash === '#stan') $('lang').querySelector('[data-v="stan"]').click()
+  else { fillExamples('rats'); loadExample() }
+</script>
