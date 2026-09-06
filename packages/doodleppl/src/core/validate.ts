@@ -45,6 +45,36 @@ function plateRanges(nodes: GraphNode[]): Map<string, { lo: string; hi: string }
   return ranges;
 }
 
+/**
+ * The loop ranges in force for one node: its enclosing plates, nearest first,
+ * then any plate elsewhere. Two plates may share a loop variable with different
+ * ranges (`for (k in 1:K)` and `for (k in 2:K)` in Alligators), so a node's
+ * `k` has to be read against the plate it actually sits in.
+ */
+function rangesFor(
+  node: GraphNode,
+  nodeMap: Map<string, GraphNode>,
+  global: Map<string, { lo: string; hi: string }>,
+): Map<string, { lo: string; hi: string }> {
+  const ranges = new Map(global);
+  const chain: GraphNode[] = [];
+  for (
+    let p = node.parent ? nodeMap.get(node.parent) : undefined;
+    p;
+    p = p.parent ? nodeMap.get(p.parent) : undefined
+  ) {
+    chain.push(p);
+  }
+  // Outermost first, so the nearest plate's range is the one that survives.
+  for (const p of chain.reverse()) {
+    const parts = (p.loopRange || "").split(":").map((s) => s.trim());
+    if (p.loopVariable && parts.length === 2) {
+      ranges.set(p.loopVariable, { lo: parts[0] as string, hi: parts[1] as string });
+    }
+  }
+  return ranges;
+}
+
 function indexCoverage(
   index: string,
   ranges: Map<string, { lo: string; hi: string }>,
@@ -92,8 +122,20 @@ function nodeIndexList(node: GraphNode): string[] {
  * statements defining the same array location. Mirrors JuliaBUGS, which tracks
  * assignments per location rather than per name.
  */
-function indexOverlapIssues(nodes: GraphNode[]): ValidationIssue[] {
+function indexOverlapIssues(nodes: GraphNode[], language: ModelLanguage): ValidationIssue[] {
   const ranges = plateRanges(nodes);
+  // Two statements on one element conflict only when both define it. A `<-`
+  // beside an observed `~` on the same element is the data-transform idiom
+  // (Endo fixes Y[i, 1] and Y[i, 2], then Y[i, 1:J] ~ dmulti). In Stan an `=`
+  // followed by `~` is a prior on a transformed quantity and two `~` add their
+  // densities, so only two assignments can clash there.
+  const conflicts = (a: GraphNode, b: GraphNode): boolean => {
+    const det = (n: GraphNode) => n.nodeType === "deterministic";
+    const obs = (n: GraphNode) => n.nodeType === "observed";
+    if ((det(a) && obs(b)) || (obs(a) && det(b))) return false;
+    if (language === "stan") return det(a) && det(b);
+    return true;
+  };
   const assigning = nodes.filter(
     (n) =>
       n.nodeType === "stochastic" || n.nodeType === "observed" || n.nodeType === "deterministic",
@@ -104,15 +146,19 @@ function indexOverlapIssues(nodes: GraphNode[]): ValidationIssue[] {
     byName.set(base, [...(byName.get(base) ?? []), n]);
   }
 
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   const issues: ValidationIssue[] = [];
   for (const [name, group] of byName) {
     if (group.length < 2) continue;
-    const coverage = group.map((n) => nodeIndexList(n).map((idx) => indexCoverage(idx, ranges)));
+    const coverage = group.map((n) =>
+      nodeIndexList(n).map((idx) => indexCoverage(idx, rangesFor(n, nodeMap, ranges))),
+    );
     for (let a = 0; a < group.length; a++) {
       for (let b = a + 1; b < group.length; b++) {
         const ca = coverage[a] as IndexCoverage[];
         const cb = coverage[b] as IndexCoverage[];
         if (ca.length !== cb.length) continue;
+        if (!conflicts(group[a] as GraphNode, group[b] as GraphNode)) continue;
         const scalars = ca.length === 0;
         if (scalars || ca.every((cov, i) => coveragesOverlap(cov, cb[i] as IndexCoverage))) {
           issues.push({
@@ -156,9 +202,14 @@ export function validateGraph(
   const edges = elements.filter((el): el is GraphEdge => el.type === "edge");
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   const dataKeys = new Set(Object.keys(data));
-  const nameRule = NAME_RULES[options.language ?? "bugs"];
+  const language = options.language ?? "bugs";
+  const nameRule = NAME_RULES[language];
+  // Variables some element of which the model assigns.
+  const assignedNames = new Set(
+    nodes.filter((n) => n.nodeType === "deterministic").map((n) => n.name),
+  );
 
-  const issues: ValidationIssue[] = indexOverlapIssues(nodes);
+  const issues: ValidationIssue[] = indexOverlapIssues(nodes, language);
 
   for (const node of nodes) {
     if (node.nodeType === "stochastic" || node.nodeType === "observed") {
@@ -172,11 +223,19 @@ export function validateGraph(
         for (const p of params) {
           for (const ident of p.match(/[A-Za-z_][A-Za-z0-9_.]*/g) ?? []) referenced.add(ident);
         }
+        // A parent that only feeds the node's equation (`y <- 1 - Y` before
+        // `y ~ dbern(p)`) or a censoring bound is not a distribution input.
+        const elsewhere = new Set<string>();
+        for (const text of [node.equation, node.censorLower, node.censorUpper]) {
+          for (const ident of text?.match(/[A-Za-z_][A-Za-z0-9_.]*/g) ?? []) elsewhere.add(ident);
+        }
         const parentNames = new Set<string>();
         for (const e of edges) {
           if (e.target !== node.id) continue;
           const source = nodeMap.get(e.source);
-          if (source && !referenced.has(source.name)) parentNames.add(source.name);
+          if (!source || referenced.has(source.name)) continue;
+          if (elsewhere.has(source.name)) continue;
+          parentNames.add(source.name);
         }
         const provided = params.length + parentNames.size;
         if (provided !== dist.paramCount) {
@@ -205,9 +264,15 @@ export function validateGraph(
             if (source) parentNames.add(source.name);
           }
         }
-        const identifiers = new Set(node.equation.match(/[a-zA-Z_][a-zA-Z0-9_.]*/g) ?? []);
+        // Numeric literals go first, or `1.0E-6` reads as a variable named E; a
+        // name followed by `(` is a function call in either language.
+        const text = node.equation.replace(/\b\d+(?:\.\d*)?(?:[eE][+-]?\d+)?\b/g, " ");
+        const called = new Set(
+          [...text.matchAll(/([a-zA-Z_][a-zA-Z0-9_.]*)\s*\(/g)].map((m) => m[1] as string),
+        );
+        const identifiers = new Set(text.match(/[a-zA-Z_][a-zA-Z0-9_.]*/g) ?? []);
         for (const identifier of identifiers) {
-          if (BUGS_FUNCTIONS.has(identifier)) continue;
+          if (BUGS_FUNCTIONS.has(identifier) || called.has(identifier)) continue;
           const base = identifier.split("[")[0] as string;
           if (!parentNames.has(base) && !loopVars.has(base) && !dataKeys.has(base)) {
             issues.push({
@@ -220,7 +285,12 @@ export function validateGraph(
       }
     }
 
-    if (node.observed && !dataKeys.has(node.name)) {
+    // An observed node whose value is written by the model, on this node
+    // (`y <- 1 - Y` then `y ~ dbern(p)`) or on sibling elements of the same
+    // variable (Endo fixes Y[i, 1] and Y[i, 2], then Y[i, 1:J] ~ dmulti), has no
+    // data to ask for.
+    const fixedByModel = Boolean(node.equation?.trim()) || assignedNames.has(node.name);
+    if (node.observed && !fixedByModel && !dataKeys.has(node.name)) {
       issues.push({
         nodeId: node.id,
         field: "name",

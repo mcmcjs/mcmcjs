@@ -41,6 +41,194 @@ describe("variable names by language", () => {
   });
 });
 
+describe("constructs a parsed program produces", () => {
+  const n = (x: Partial<GraphElement> & { id: string }): GraphElement =>
+    ({ type: "node", ...x }) as GraphElement;
+  const e = (source: string, target: string): GraphElement => ({
+    id: `${source}_${target}`,
+    type: "edge",
+    source,
+    target,
+  });
+
+  it("an observed node whose value is an equation needs no data, and its equation's parents are not distribution inputs", () => {
+    // Dogs: y[i, j] <- 1 - Y[i, j] then y[i, j] ~ dbern(p[i, j]).
+    const els = [
+      n({ id: "Y", name: "Y", nodeType: "constant" }),
+      n({ id: "p", name: "p", nodeType: "deterministic", equation: "0.5" }),
+      n({
+        id: "y",
+        name: "y",
+        nodeType: "observed",
+        observed: true,
+        equation: "1 - Y",
+        distribution: "dbern",
+        param1: "p",
+      }),
+      e("Y", "y"),
+      e("p", "y"),
+    ];
+    expect(validateGraph(els, { Y: [1, 0] })).toEqual([]);
+  });
+
+  it("a censoring bound is not a distribution input", () => {
+    const els = [
+      n({ id: "r", name: "r", nodeType: "stochastic", distribution: "dexp", param1: "1" }),
+      n({ id: "mu", name: "mu", nodeType: "stochastic", distribution: "dexp", param1: "1" }),
+      n({ id: "cen", name: "t.cen", nodeType: "constant" }),
+      n({
+        id: "t",
+        name: "t",
+        nodeType: "observed",
+        observed: true,
+        distribution: "dweib",
+        param1: "r",
+        param2: "mu",
+        censorLower: "t.cen",
+      }),
+      e("r", "t"),
+      e("mu", "t"),
+      e("cen", "t"),
+    ];
+    expect(validateGraph(els, { t: [1], "t.cen": [0] })).toEqual([]);
+  });
+
+  it("a scientific-notation literal in an equation is not a variable, and a called name is a function", () => {
+    const els = [
+      n({
+        id: "mu",
+        name: "mu",
+        nodeType: "stochastic",
+        distribution: "dnorm",
+        param1: "0",
+        param2: "1",
+      }),
+      n({ id: "tau", name: "tau", nodeType: "deterministic", equation: "1.0E-6" }),
+      n({ id: "p", name: "p", nodeType: "deterministic", equation: "inv_logit(mu) + 2.5e3" }),
+      e("mu", "p"),
+    ];
+    expect(validateGraph(els, {}, { language: "stan" })).toEqual([]);
+  });
+
+  it("a constraint on the first element beside a plate from 2 is not an overlap, even when another plate reuses the loop variable from 1", () => {
+    // Alligators: alpha[1] <- 0; for (k in 2:K) alpha[k] ~ dnorm; and elsewhere for (k in 1:K).
+    const els = [
+      n({ id: "plate_k", name: "Plate.k", nodeType: "plate", loopVariable: "k", loopRange: "1:K" }),
+      n({
+        id: "plate_k_2",
+        name: "Plate.k",
+        nodeType: "plate",
+        loopVariable: "k",
+        loopRange: "2:K",
+      }),
+      n({ id: "a1", name: "alpha", indices: "1", nodeType: "deterministic", equation: "0" }),
+      n({
+        id: "ak",
+        name: "alpha",
+        indices: "k",
+        parent: "plate_k_2",
+        nodeType: "stochastic",
+        distribution: "dnorm",
+        param1: "0",
+        param2: "1.0E-5",
+      }),
+      n({
+        id: "m",
+        name: "m",
+        indices: "k",
+        parent: "plate_k",
+        nodeType: "deterministic",
+        equation: "k",
+      }),
+    ];
+    expect(validateGraph(els, {}).filter((i) => /already defined/.test(i.message))).toEqual([]);
+  });
+
+  it("still flags two statements that do cover the same element", () => {
+    const els = [
+      n({ id: "plate_k", name: "Plate.k", nodeType: "plate", loopVariable: "k", loopRange: "1:K" }),
+      n({ id: "a1", name: "alpha", indices: "1", nodeType: "deterministic", equation: "0" }),
+      n({
+        id: "ak",
+        name: "alpha",
+        indices: "k",
+        parent: "plate_k",
+        nodeType: "stochastic",
+        distribution: "dnorm",
+        param1: "0",
+        param2: "1",
+      }),
+    ];
+    expect(validateGraph(els, {}).filter((i) => /already defined/.test(i.message))).toHaveLength(1);
+  });
+
+  it("fixing elements of an observed multivariate node is the data-transform idiom, not a redefinition", () => {
+    // Endo: Y[i, 1] <- 1; Y[i, 2] <- 0; Y[i, 1:J] ~ dmulti(p[i, 1:J], 1).
+    const els = [
+      n({ id: "plate_i", name: "Plate.i", nodeType: "plate", loopVariable: "i", loopRange: "1:I" }),
+      n({
+        id: "y1",
+        name: "Y",
+        indices: "i, 1",
+        parent: "plate_i",
+        nodeType: "deterministic",
+        equation: "1",
+      }),
+      n({
+        id: "y2",
+        name: "Y",
+        indices: "i, 2",
+        parent: "plate_i",
+        nodeType: "deterministic",
+        equation: "0",
+      }),
+      n({
+        id: "yv",
+        name: "Y",
+        indices: "i, 1:J",
+        parent: "plate_i",
+        nodeType: "observed",
+        observed: true,
+        distribution: "dmulti",
+        param1: "p[i, 1:J]",
+        param2: "1",
+      }),
+    ];
+    expect(
+      validateGraph(els, { Y: [[1, 0]] }).filter((i) => /already defined/.test(i.message)),
+    ).toEqual([]);
+    // The observed vector has no data of its own: the model writes it.
+    expect(validateGraph(els, {}).filter((i) => /no data found/.test(i.message))).toEqual([]);
+  });
+
+  it("in Stan an assignment followed by a prior on the same element is legal; in BUGS it is a redefinition", () => {
+    const els = [
+      n({ id: "plate_k", name: "Plate.k", nodeType: "plate", loopVariable: "k", loopRange: "2:4" }),
+      n({
+        id: "b2",
+        name: "beta_dis",
+        indices: "2",
+        nodeType: "deterministic",
+        equation: "beta_dis_free[1]",
+      }),
+      n({
+        id: "bk",
+        name: "beta_dis",
+        indices: "k",
+        parent: "plate_k",
+        nodeType: "stochastic",
+        distribution: "dnorm",
+        param1: "0",
+        param2: "1",
+      }),
+    ];
+    const overlaps = (language: "bugs" | "stan") =>
+      validateGraph(els, {}, { language }).filter((i) => /already defined/.test(i.message));
+    expect(overlaps("stan")).toEqual([]);
+    expect(overlaps("bugs")).toHaveLength(1);
+  });
+});
+
 const node = (n: Partial<GraphElement> & { id: string }): GraphElement =>
   ({ type: "node", ...n }) as GraphElement;
 const edge = (id: string, source: string, target: string): GraphElement => ({

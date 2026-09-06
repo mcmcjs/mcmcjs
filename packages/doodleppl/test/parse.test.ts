@@ -231,6 +231,28 @@ describe("syntax the parser must accept", () => {
 });
 
 describe("the three complexities", () => {
+  it("a ~ whose elements other statements fix is observed; one whose elements they do not is a parameter", () => {
+    // Endo: the outcome vector is written by hand, then given its likelihood.
+    const endo =
+      parseBugs(
+        "model { for (i in 1:I) { Y[i, 1] <- 1\n Y[i, 2] <- 0\n Y[i, 1:J] ~ dmulti(p[i, 1:J], 1) } }",
+      ).model.elements ?? [];
+    const yv = must(
+      nodes(endo).find((n) => n.name === "Y" && n.indices === "i, 1:J"),
+      "Y[i, 1:J]",
+    );
+    expect(yv.nodeType).toBe("observed");
+    // Alligators: alpha[1] is pinned, alpha[k] over 2:K is a free parameter.
+    const alligators =
+      parseBugs("model { alpha[1] <- 0\n for (k in 2:K) { alpha[k] ~ dnorm(0, 1.0E-5) } }").model
+        .elements ?? [];
+    const ak = must(
+      nodes(alligators).find((n) => n.name === "alpha" && n.indices === "k"),
+      "alpha[k]",
+    );
+    expect(ak.nodeType).toBe("stochastic");
+  });
+
   it("corner constraints split a variable into a node per subscript pattern", () => {
     const src = "model { alpha[1] <- 0\n for (k in 2:K) { alpha[k] ~ dnorm(0, 1.0E-5) } }";
     const ns = nodes(parseBugs(src).model.elements ?? []).filter((n) => n.name === "alpha");
