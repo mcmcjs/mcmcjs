@@ -1,9 +1,9 @@
 # Model to graph, experimental
 
-The study, the oracles and the demo page behind `@mcmcjs/doodleppl/parse`,
+The study, the oracles and the demo pages behind `@mcmcjs/doodleppl/parse`,
 `@mcmcjs/doodleppl/render` and `mcmc graph`. Nothing here is wired into the build.
 
-## The page
+## The pages
 
 ```
 node build-bundle.mjs                  # bundles parse, render and codegen into dist/graph.js
@@ -11,16 +11,18 @@ curl -sL -o vendor/stanc.js https://github.com/stan-dev/stanc3/releases/download
 python3 -m http.server 8124           # then open http://127.0.0.1:8124/viewer.html
 ```
 
-**Editor** (`#editor`): write BUGS or Stan, or pick an example, and press Draw. The
-program is parsed in the browser, laid out with dagre, drawn as SVG, and opened in a
-DoodlePPL editor instance through a `blob:` document with the positions filled in.
-Warnings say what the graph format could not hold. Stan is parsed by stanc3's own
-browser build, `vendor/stanc.js`, fetched on first use; the walker reads the AST it
-prints.
+`viewer.html`: write BUGS or Stan, or pick an example, and press Draw. The program is
+parsed in the browser, laid out with dagre, and opened in a DoodlePPL editor instance
+through a `blob:` document with the positions filled in; the Drawing tab shows the same
+graph as SVG. Warnings say what the graph format could not hold. Stan is parsed by
+stanc3's own browser build, `vendor/stanc.js`, fetched the first time Stan is drawn.
 
-**Compare examples** (`#compare`): for each of the 50 BUGS examples, the `mcmc graph`
-drawing, the widget opened on the Julia prototype's document, and the hand-drawn graph
-bundled with the widget, side by side.
+`compare.html`: for each of the 50 BUGS examples, the `mcmc graph` drawing, the widget
+opened on the Julia prototype's document, and the hand-drawn graph bundled with the
+widget, side by side. It needs `node render-all.mjs` and `graph.jl` to have run.
+
+The hosted copy is published by the `model-graph-page` workflow to
+`https://mcmcjs.github.io/model-graph/`.
 
 ## What else is here
 
@@ -30,8 +32,9 @@ bundled with the widget, side by side.
   TypeScript parser was checked against. It stays until nothing needs it.
 - `fixtures/programs.json` holds the 50 BUGS example programs with their data keys;
   `fixtures/stan-programs.json` holds Stan programs generated from the 15 bundled graphs
-  plus eight schools; `fixtures/stan-asts.json` holds stanc3's AST for each, so the
-  package tests need no stanc. The package tests keep their own copies.
+  plus eight schools; `fixtures/stan-asts.json` holds stanc3's AST for each of those and
+  for the probe programs, so the package tests need no stanc. The package tests keep
+  their own copies.
 - `render-all.mjs` runs `mcmc graph` over every BUGS program in svg, png and json.
 
 ## Why the obvious route fails

@@ -249,6 +249,8 @@ interface Target {
   /** Subscript text of the target, "" when unindexed. */
   pattern: string;
   indexed: boolean;
+  /** Set when the target was wrapped in a function, e.g. `to_vector(y)`. */
+  through?: string;
 }
 
 interface Flat {
@@ -297,7 +299,33 @@ function targetOf(e: S | undefined): Target | undefined {
     const idxs = Array.isArray(e[2]) ? e[2] : [];
     return name ? { name, pattern: idxs.map(printIndex).join(", "), indexed: true } : undefined;
   }
+  // `to_vector(y) ~ ...`: the statement is about y, through a reshaping function.
+  if (head(e) === "FunApp") {
+    const args = Array.isArray(e[3]) ? e[3] : [];
+    const inner = args.length === 1 ? targetOf(expr(args[0])) : undefined;
+    return inner ? { ...inner, through: nameOf(e[2]) ?? "a function" } : undefined;
+  }
   return undefined;
+}
+
+// A `target +=` term that is a density call is a `~` statement in disguise.
+const DENSITY_SUFFIX = /_(lpdf|lpmf|lupdf|lupmf)$/;
+
+/** Every density call inside a `target +=` expression, as (distribution, args). */
+function densityCalls(
+  e: S | undefined,
+  out: { dist: string; args: S[] }[] = [],
+): { dist: string; args: S[] }[] {
+  if (!Array.isArray(e)) return out;
+  if (head(e) === "FunApp" || head(e) === "CondDistApp") {
+    const fn = nameOf(e[2]) ?? "";
+    if (DENSITY_SUFFIX.test(fn)) {
+      out.push({ dist: fn.replace(DENSITY_SUFFIX, ""), args: Array.isArray(e[3]) ? e[3] : [] });
+      return out;
+    }
+  }
+  for (const c of e) densityCalls(c, out);
+  return out;
 }
 
 function lvalueTarget(lhs: S | undefined): Target | undefined {
@@ -370,10 +398,24 @@ export function graphFromStanAst(ast: string | S, options: StanGraphOptions = {}
           break;
         }
         case "Tilde": {
-          const target = targetOf(expr(deep(s, "arg")));
+          const targetExpr = expr(deep(s, "arg"));
+          const target = targetOf(targetExpr);
           const dist = nameOf(deep(s, "distribution"));
           const args = (deep(s, "args")?.[1] as S[] | undefined) ?? [];
-          if (!target || !dist) break;
+          if (!dist) break;
+          if (!target) {
+            warnings.push({
+              line,
+              message: `${print(targetExpr)} ~ ${dist}(...) is a statement about an expression, which has no node; it is not drawn`,
+            });
+            break;
+          }
+          if (target.through) {
+            warnings.push({
+              line,
+              message: `${target.through}(${target.name}) ~ ${dist}(...) is drawn as a statement about "${target.name}"`,
+            });
+          }
           const trunc = deep(s, "truncation");
           if (trunc && trunc[1] !== "NoTruncate") {
             warnings.push({
@@ -432,10 +474,22 @@ export function graphFromStanAst(ast: string | S, options: StanGraphOptions = {}
         case "TargetPE":
         case "JacobianPE": {
           const what = head(s) === "TargetPE" ? "target +=" : "jacobian +=";
-          warnings.push({
-            line,
-            message: `${what} ${print(expr(s[1])).slice(0, 60)} is a factor with no node of its own; it is not drawn`,
-          });
+          const term = expr(s[1]);
+          // `target += normal_lpdf(y | mu, sigma)` is `y ~ normal(mu, sigma)`.
+          let drawn = 0;
+          for (const { dist, args } of densityCalls(term)) {
+            const [first, ...rest] = args;
+            const target = targetOf(expr(first));
+            if (!target) continue;
+            flat.push({ kind: "stochastic", target, dist, args: rest, loopVars, plate, line });
+            drawn++;
+          }
+          if (drawn === 0) {
+            warnings.push({
+              line,
+              message: `${what} ${print(term).slice(0, 60)} is a factor with no node of its own; it is not drawn`,
+            });
+          }
           break;
         }
         default:
@@ -467,9 +521,14 @@ export function graphFromStanAst(ast: string | S, options: StanGraphOptions = {}
     if (!size) continue;
     const parentPlate = f.plate ? plates.find((p) => p.id === f.plate) : undefined;
     if (parentPlate?.range.endsWith(`:${size}`)) continue;
+    // An explicit `for (i in 1:N)` elsewhere is the same plate; join it rather
+    // than draw a second one over the same range.
+    const range = `1:${size}`;
+    const existing = plates.find((p) => p.range === range && p.parent === f.plate);
     // Never a declared name: `vector[N] r` must not loop over `n` when `n` is data.
-    const v = implicitLoopVar(size, new Set([...f.loopVars, ...decls.keys()]));
-    const p = newPlate(v, `1:${size}`, f.plate);
+    const v =
+      existing?.variable ?? implicitLoopVar(size, new Set([...f.loopVars, ...decls.keys()]));
+    const p = existing ?? newPlate(v, range, f.plate);
     f.plate = p.id;
     f.target = { name: f.target.name, pattern: v, indexed: true };
     f.loopVars = new Set([...f.loopVars, v]);

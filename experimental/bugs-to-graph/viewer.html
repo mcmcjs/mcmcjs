@@ -1,79 +1,59 @@
 <!doctype html>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model to graph</title>
 <style>
-  :root { --mcmc-fg: #222; --mcmc-bg: #fff; --mcmc-muted: #777; --mcmc-observed: #dcdcdc; --mcmc-plate: #f3f3f3; }
-  body { margin: 0; font: 14px system-ui, sans-serif; background: #fafafa; color: #222; }
-  header { display: flex; gap: 16px; align-items: center; padding: 10px 16px; border-bottom: 1px solid #ddd; background: #fff; }
-  header h1 { font-size: 15px; margin: 0 8px 0 0; font-weight: 600; }
-  header .mode a { color: #444; text-decoration: none; padding: 4px 8px; border-radius: 4px; }
-  header .mode a.on { background: #eee; }
-  select, button, input { font: inherit; padding: 4px 8px; }
-  button.primary { background: #222; color: #fff; border: 1px solid #222; border-radius: 4px; cursor: pointer; }
-  button.primary:hover { background: #000; }
-  main { padding: 12px 16px; }
-  .editor { display: grid; grid-template-columns: minmax(360px, 2fr) 3fr; gap: 14px; }
-  .pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .row label { color: #555; }
-  textarea { width: 100%; min-height: 420px; box-sizing: border-box; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 10px; border: 1px solid #ccc; border-radius: 6px; resize: vertical; background: #fff; }
-  input.keys { flex: 1; min-width: 160px; }
-  .messages { font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; border-radius: 6px; padding: 8px 10px; display: none; }
-  .messages.warn { display: block; background: #fff8e1; border: 1px solid #f1d27a; color: #6a4b00; }
-  .messages.err { display: block; background: #fdecea; border: 1px solid #f0a8a0; color: #7a1c14; }
-  .messages.ok { display: block; background: #eef7ee; border: 1px solid #a9d3a9; color: #1f5e1f; }
-  .static { overflow: auto; border: 1px solid #ddd; border-radius: 6px; background: var(--mcmc-bg); min-height: 200px; max-height: 46vh; }
-  .static svg { display: block; }
-  .widget { border: 1px solid #ddd; border-radius: 6px; overflow: hidden; }
-  doodle-ppl { display: block; }
-  .compare { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-  .compare h2 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #444; }
-  .compare .empty, .compare .frame { height: 620px; }
-  .compare .empty { display: grid; place-items: center; color: #999; border: 1px dashed #ccc; border-radius: 6px; }
-  .compare .frame { overflow: auto; border: 1px solid #ddd; border-radius: 6px; background: #fff; }
-  .compare .frame img { display: block; max-width: none; }
-  h2.small { margin: 0; font-size: 13px; font-weight: 600; color: #444; }
-  .hint { color: #777; font-size: 12px; }
+  :root { --mcmc-fg: #222; --mcmc-bg: #fff; --mcmc-muted: #777; --mcmc-observed: #dcdcdc; --mcmc-plate: #f3f3f3; --line: #e2e2e2; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #fff; color: #222; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 15px; font-weight: 600; margin: 0 auto 0 0; }
+  .seg { display: inline-flex; border: 1px solid #ccc; border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; background: #fff; padding: 5px 12px; font: inherit; cursor: pointer; color: #444; }
+  .seg button.on { background: #222; color: #fff; }
+  select, button.primary { font: inherit; padding: 5px 10px; border-radius: 6px; border: 1px solid #ccc; background: #fff; }
+  button.primary { background: #222; color: #fff; border-color: #222; cursor: pointer; }
+  main { flex: 1; display: grid; grid-template-columns: minmax(340px, 38%) 1fr; min-height: 0; }
+  .code { display: flex; flex-direction: column; border-right: 1px solid var(--line); min-width: 0; }
+  textarea { flex: 1; width: 100%; border: 0; resize: none; padding: 14px 18px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; outline: none; background: #fff; color: #222; }
+  .observed { display: flex; align-items: center; gap: 8px; padding: 8px 18px; border-top: 1px solid var(--line); color: #666; font-size: 13px; }
+  .observed input { flex: 1; border: 0; font: inherit; outline: none; color: #222; background: transparent; }
+  .messages { padding: 8px 18px; border-top: 1px solid var(--line); font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; color: #555; min-height: 36px; }
+  .messages.err { color: #9a1b12; background: #fdf3f2; }
+  .messages.warn { color: #6a4b00; background: #fffaea; }
+  .view { display: flex; flex-direction: column; min-width: 0; }
+  .tabs { display: flex; gap: 2px; padding: 8px 18px 0; border-bottom: 1px solid var(--line); }
+  .tabs button { border: 0; border-bottom: 2px solid transparent; background: none; padding: 6px 10px; font: inherit; color: #666; cursor: pointer; margin-bottom: -1px; }
+  .tabs button.on { color: #222; border-bottom-color: #222; }
+  .panel { flex: 1; min-height: 0; overflow: auto; }
+  .panel[hidden] { display: none; }
+  #svg { padding: 18px; background: var(--mcmc-bg); }
+  #svg svg { display: block; max-width: 100%; height: auto; }
+  doodle-ppl { display: block; height: 100%; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; grid-template-rows: 45vh 1fr; } .code { border-right: 0; border-bottom: 1px solid var(--line); } }
 </style>
 
 <header>
   <h1>Model to graph</h1>
-  <span class="mode"><a href="#editor" id="tab-editor">Editor</a><a href="#compare" id="tab-compare">Compare examples</a></span>
-  <span class="hint" id="status"></span>
+  <span class="seg" id="lang"><button type="button" data-v="bugs" class="on">BUGS</button><button type="button" data-v="stan">Stan</button></span>
+  <select id="example" aria-label="Example"></select>
+  <button type="button" class="primary" id="draw">Draw</button>
 </header>
 
 <main>
-  <section id="editor" class="editor">
-    <div class="pane">
-      <div class="row">
-        <label>Language <select id="lang"><option value="bugs">BUGS</option><option value="stan">Stan</option></select></label>
-        <label>Example <select id="example"></select></label>
-        <button type="button" class="primary" id="draw">Draw</button>
-        <span class="hint">Ctrl+Enter</span>
-      </div>
-      <textarea id="code" spellcheck="false"></textarea>
-      <div class="row">
-        <label>Data variables</label>
-        <input class="keys" id="keys" placeholder="comma-separated names drawn as observed, e.g. Y, x, N">
-      </div>
-      <div class="messages" id="messages"></div>
-    </div>
-    <div class="pane">
-      <h2 class="small">Drawing (dagre layout, SVG)</h2>
-      <div class="static" id="svg"></div>
-      <h2 class="small">In the DoodlePPL editor</h2>
-      <div class="widget" id="widget"></div>
-    </div>
+  <section class="code">
+    <textarea id="code" spellcheck="false" aria-label="Model code"></textarea>
+    <label class="observed">Observed <input id="keys" placeholder="data variable names, comma-separated"></label>
+    <div class="messages" id="messages"></div>
   </section>
-
-  <section id="compare" class="compare" hidden>
-    <div style="grid-column: 1 / -1" class="row">
-      <label>Example <select id="pick"></select></label>
-      <span class="hint" id="meta"></span>
+  <section class="view">
+    <div class="tabs">
+      <button type="button" data-p="widget" class="on">Interactive</button>
+      <button type="button" data-p="svg">Drawing</button>
     </div>
-    <div><h2>mcmc graph (TypeScript parser, dagre, SVG)</h2><div id="cli"></div></div>
-    <div><h2>Widget, opened from the Julia prototype's document</h2><div id="gen"></div></div>
-    <div><h2>Hand-drawn (bundled with the widget)</h2><div id="hand"></div></div>
+    <div class="panel" id="widget"></div>
+    <div class="panel" id="svg" hidden></div>
   </section>
 </main>
 
@@ -82,138 +62,112 @@
   import * as G from './dist/graph.js'
 
   const $ = (id) => document.getElementById(id)
-  const status = (t) => { $('status').textContent = t }
-
-  // ---- data ------------------------------------------------------------------
-  const programs = { bugs: [], stan: [] }
-  programs.bugs = await (await fetch('fixtures/programs.json')).json()
-  programs.stan = await (await fetch('fixtures/stan-programs.json')).json()
-
-  // ---- widget mounting -----------------------------------------------------
-  // A fresh storage key per mount stops the widget reopening a graph it cached.
-  function mountWidget(host, url, height = '560px') {
-    host.replaceChildren()
-    const el = document.createElement('doodle-ppl')
-    el.setAttribute('local-model', url)
-    el.setAttribute('height', height)
-    el.setAttribute('storage-key', `viewer-${Date.now()}-${Math.random().toString(36).slice(2)}`)
-    host.append(el)
+  const programs = {
+    bugs: await (await fetch('fixtures/programs.json')).json(),
+    stan: await (await fetch('fixtures/stan-programs.json')).json(),
   }
+  let language = 'bugs'
+
+  // ---- the two views ------------------------------------------------------------
   let lastBlob = null
-  function mountDocument(host, doc) {
+  function showWidget(doc) {
+    const host = $('widget')
+    host.replaceChildren()
     if (lastBlob) URL.revokeObjectURL(lastBlob)
     lastBlob = URL.createObjectURL(new Blob([JSON.stringify(doc)], { type: 'application/json' }))
-    mountWidget(host, lastBlob)
+    const el = document.createElement('doodle-ppl')
+    el.setAttribute('local-model', lastBlob)
+    el.setAttribute('height', '100%')
+    // A fresh storage key per draw stops the widget reopening a cached graph.
+    el.setAttribute('storage-key', `graph-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    host.append(el)
+  }
+  for (const b of document.querySelectorAll('.tabs button')) {
+    b.addEventListener('click', () => {
+      for (const o of document.querySelectorAll('.tabs button')) o.classList.toggle('on', o === b)
+      $('widget').hidden = b.dataset.p !== 'widget'
+      $('svg').hidden = b.dataset.p !== 'svg'
+    })
   }
 
-  // ---- stanc.js, loaded on first use ------------------------------------------
-  let stancReady = null
+  // ---- stanc.js, fetched the first time Stan is drawn ---------------------------
+  let stancLoading = null
   function loadStanc() {
     if (globalThis.stanc) return Promise.resolve(globalThis.stanc)
-    if (!stancReady) {
-      stancReady = new Promise((resolve, reject) => {
-        status('loading stanc.js (3 MB)...')
+    if (!stancLoading) {
+      say('', 'loading the Stan compiler (3 MB, once)...')
+      stancLoading = new Promise((resolve, reject) => {
         const s = document.createElement('script')
         s.src = 'vendor/stanc.js'
-        s.onload = () => { status(''); resolve(globalThis.stanc) }
-        s.onerror = () => reject(new Error('vendor/stanc.js did not load; see README for how to fetch it'))
+        s.onload = () => resolve(globalThis.stanc)
+        s.onerror = () => reject(new Error('the Stan compiler (vendor/stanc.js) did not load'))
         document.head.append(s)
       })
     }
-    return stancReady
+    return stancLoading
   }
 
-  // ---- the editor ------------------------------------------------------------
-  const lang = $('lang'), example = $('example'), code = $('code'), keys = $('keys'), messages = $('messages')
+  // ---- editor state ---------------------------------------------------------------
+  const code = $('code'), keys = $('keys'), example = $('example')
+  const say = (kind, text) => { $('messages').className = `messages ${kind}`; $('messages').textContent = text }
+  const observed = () => keys.value.split(',').map((s) => s.trim()).filter(Boolean)
 
-  function fillExamples() {
+  function fillExamples(selected) {
     example.replaceChildren()
-    const blank = document.createElement('option'); blank.value = ''; blank.textContent = '(write your own)'
-    example.append(blank)
-    for (const p of programs[lang.value]) {
+    const own = document.createElement('option'); own.value = ''; own.textContent = 'Write your own'
+    example.append(own)
+    for (const p of programs[language]) {
       const o = document.createElement('option'); o.value = p.key; o.textContent = p.key; example.append(o)
     }
+    example.value = selected ?? ''
   }
   function loadExample() {
-    const p = programs[lang.value].find((x) => x.key === example.value)
-    if (!p) return
+    const p = programs[language].find((x) => x.key === example.value)
+    if (!p) { code.value = ''; keys.value = ''; code.focus(); return }
     code.value = p.program
     keys.value = (p.data_keys ?? []).join(', ')
     draw()
   }
-  function say(kind, text) { messages.className = `messages ${kind}`; messages.textContent = text }
-  function dataKeys() { return keys.value.split(',').map((s) => s.trim()).filter(Boolean) }
 
   async function toDocument() {
     const name = example.value || 'model'
-    if (lang.value === 'bugs') {
-      return G.parseBugs(code.value, { name, dataKeys: dataKeys() })
-    }
+    if (language === 'bugs') return G.parseBugs(code.value, { name, dataKeys: observed() })
     const stanc = await loadStanc()
     const r = stanc(name, code.value, ['debug-ast'])
     if (r.errors?.length) throw new Error(r.errors.filter((e) => e !== '0').join('\n'))
-    const data = Object.fromEntries(dataKeys().map((k) => [k, 0]))
-    return G.graphFromStanAst(r.result, { name, data })
+    return G.graphFromStanAst(r.result, { name, data: Object.fromEntries(observed().map((k) => [k, 0])) })
   }
 
   async function draw() {
+    if (!code.value.trim()) { say('', ''); return }
     try {
       const { model, warnings } = await toDocument()
       const elements = model.elements ?? []
       const layout = G.layoutGraph(elements)
       $('svg').innerHTML = G.renderGraphSvg(layout)
-      mountDocument($('widget'), { ...model, elements: G.applyLayout(elements, layout) })
-      const n = elements.filter((e) => e.type === 'node' && e.nodeType !== 'plate').length
-      const plates = elements.filter((e) => e.type === 'node' && e.nodeType === 'plate').length
-      const summary = `${n} nodes, ${plates} plates, ${elements.filter((e) => e.type === 'edge').length} edges`
-      if (warnings.length) say('warn', `${summary}\n${warnings.map((w) => `line ${w.line}: ${w.message}`).join('\n')}`)
-      else say('ok', summary)
+      showWidget({ ...model, elements: G.applyLayout(elements, layout) })
+      const count = (t) => elements.filter((e) => e.type === 'node' && (t === 'plate') === (e.nodeType === 'plate')).length
+      const summary = `${count('node')} nodes, ${count('plate')} plates, ${elements.filter((e) => e.type === 'edge').length} edges`
+      if (warnings.length) say('warn', `${summary}\n${warnings.map((w) => (w.line ? `line ${w.line}: ` : '') + w.message).join('\n')}`)
+      else say('', summary)
     } catch (e) {
       say('err', e.message ?? String(e))
     }
   }
 
-  lang.addEventListener('change', () => { fillExamples(); example.value = programs[lang.value][0]?.key ?? ''; loadExample() })
+  for (const b of $('lang').querySelectorAll('button')) {
+    b.addEventListener('click', () => {
+      language = b.dataset.v
+      for (const o of $('lang').querySelectorAll('button')) o.classList.toggle('on', o === b)
+      fillExamples(programs[language][0]?.key)
+      loadExample()
+      history.replaceState(null, '', `#${language}`)
+    })
+  }
   example.addEventListener('change', loadExample)
   $('draw').addEventListener('click', draw)
   code.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) draw() })
 
-  // ---- compare mode -----------------------------------------------------------
-  const hand = { rats: 'rats', pumps: 'pumps', seeds: 'seeds', surgical_simple: 'surgical', dyes: 'dyes',
-    blockers: 'blockers', salm: 'salm', equiv: 'equiv', oxford: 'oxford', epil: 'epil', mice: 'mice', kidney: 'kidney' }
-  const pick = $('pick')
-  for (const p of programs.bugs) {
-    const o = document.createElement('option'); o.value = p.key; o.textContent = hand[p.key] ? `${p.key}  (has hand-drawn)` : p.key; pick.append(o)
-  }
-  function showStatic(host, url) {
-    host.replaceChildren()
-    const box = document.createElement('div'); box.className = 'frame'
-    const img = document.createElement('img'); img.src = `${url}?${Date.now()}`; img.alt = url
-    img.onerror = () => { box.className = 'empty'; box.textContent = `not rendered: ${url}` }
-    box.append(img); host.append(box)
-  }
-  function showCompare(k) {
-    showStatic($('cli'), `cli/${k}.svg`)
-    mountWidget($('gen'), `out/${k}.json`, '620px')
-    if (hand[k]) mountWidget($('hand'), `hand/${hand[k]}.json`, '620px')
-    else { const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'no hand-drawn graph'; $('hand').replaceChildren(d) }
-    $('meta').textContent = `out/${k}.json`
-  }
-  pick.addEventListener('change', () => showCompare(pick.value))
-
-  // ---- modes ---------------------------------------------------------------------
-  function setMode(mode) {
-    const editor = mode !== 'compare'
-    $('editor').hidden = !editor
-    $('compare').hidden = editor
-    $('tab-editor').classList.toggle('on', editor)
-    $('tab-compare').classList.toggle('on', !editor)
-    if (!editor && !pick.dataset.shown) { pick.dataset.shown = '1'; pick.value = 'rats'; showCompare('rats') }
-  }
-  window.addEventListener('hashchange', () => setMode(location.hash.slice(1)))
-  setMode(location.hash.slice(1))
-
-  fillExamples()
-  example.value = 'rats'
-  loadExample()
+  if (location.hash === '#stan') $('lang').querySelector('[data-v="stan"]').click()
+  else { fillExamples('rats'); loadExample() }
 </script>

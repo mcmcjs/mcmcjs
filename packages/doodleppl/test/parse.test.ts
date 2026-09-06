@@ -256,6 +256,30 @@ describe("the three complexities", () => {
     expect(edges(els).some((e) => e.source === p.id && e.target === p.id)).toBe(true);
   });
 
+  it("a reference into a split variable connects the exact node when it names one, else every node", () => {
+    const src =
+      "model { for (i in 1:N) { y[i] ~ dnorm(lambda[T[i]], tau)\n T[i] ~ dcat(P[]) }\n" +
+      " lambda[1] ~ dnorm(0, 1)\n lambda[2] <- lambda[1] + theta\n" +
+      " z ~ dnorm(lambda[1], 1)\n theta ~ dunif(0, 1000)\n tau ~ dgamma(1, 1) }";
+    const els = parseBugs(src, { dataKeys: ["y", "N"] }).model.elements ?? [];
+    const label = (id: string) => {
+      const n = must(
+        nodes(els).find((x) => x.id === id),
+        id,
+      );
+      return n.indices ? `${n.name}[${n.indices}]` : n.name;
+    };
+    const into = (name: string) =>
+      edges(els)
+        .filter((e) => nodes(els).find((x) => x.id === e.target)?.name === name)
+        .map((e) => label(e.source))
+        .sort();
+    // lambda[T[i]] may be either element: both lambda nodes feed y.
+    expect(into("y")).toEqual(["T[i]", "lambda[1]", "lambda[2]", "tau"]);
+    // lambda[1] names one element exactly: only that node feeds z.
+    expect(into("z")).toEqual(["lambda[1]"]);
+  });
+
   it("loops over the same variable with different ranges are different plates", () => {
     const src =
       "model { for (k in 1:K) { a[k] ~ dnorm(0, 1) }\n for (k in 2:K) { b[k] ~ dnorm(0, 1) } }";

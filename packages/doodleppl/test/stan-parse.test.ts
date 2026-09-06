@@ -54,8 +54,8 @@ describe("parseSexp", () => {
 });
 
 describe("graphFromStanAst on every fixture", () => {
-  it("has all 17 programs with an AST", () => {
-    expect(fixtures).toHaveLength(17);
+  it("has all 20 programs with an AST", () => {
+    expect(fixtures).toHaveLength(20);
     expect(fixtures.every((f) => f.ast)).toBe(true);
   });
 
@@ -162,6 +162,38 @@ describe("the probe program, one construct at a time", () => {
   it("target += is reported, not drawn", () => {
     expect(warnings.some((w) => /target \+=/.test(w.message))).toBe(true);
     expect(nodes(els).some((n) => /target/.test(n.name))).toBe(false);
+  });
+});
+
+describe("constructs that used to produce a wrong graph", () => {
+  it("a likelihood written as target += normal_lpdf(y | mu, sigma) is y ~ normal(mu, sigma)", () => {
+    const { model, warnings } = graphOf(fixture("target_lpdf"));
+    const els = model.elements ?? [];
+    const y = named(els, "y");
+    expect(y.nodeType).toBe("observed");
+    expect(y.distribution).toBe("normal");
+    expect([y.param1, y.param2]).toEqual(["mu", "sigma"]);
+    const e = edgeNames(els);
+    expect(e.has("mu -> y")).toBe(true);
+    expect(e.has("sigma -> y")).toBe(true);
+    expect(warnings.some((w) => /target \+=/.test(w.message))).toBe(false);
+  });
+
+  it("~ on to_vector(y) is a statement about y, and says so", () => {
+    const { model, warnings } = graphOf(fixture("tilde_through_function"));
+    const y = named(model.elements ?? [], "y");
+    expect(y.nodeType).toBe("observed");
+    expect(y.distribution).toBe("normal");
+    expect(warnings.some((w) => /to_vector\(y\)/.test(w.message))).toBe(true);
+  });
+
+  it("an explicit loop and a vectorised statement over the same N share one plate", () => {
+    const els = graphOf(fixture("shared_plate")).model.elements ?? [];
+    const plates = nodes(els).filter((n) => n.nodeType === "plate");
+    expect(plates).toHaveLength(1);
+    expect(plates[0]?.loopRange).toBe("1:N");
+    expect(named(els, "m").parent).toBe(plates[0]?.id);
+    expect(named(els, "y").parent).toBe(plates[0]?.id);
   });
 });
 
