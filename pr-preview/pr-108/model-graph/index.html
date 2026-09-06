@@ -12,8 +12,7 @@
   .seg { display: inline-flex; border: 1px solid #ccc; border-radius: 6px; overflow: hidden; }
   .seg button { border: 0; background: #fff; padding: 5px 12px; font: inherit; cursor: pointer; color: #444; }
   .seg button.on { background: #222; color: #fff; }
-  select, button.primary { font: inherit; padding: 5px 10px; border-radius: 6px; border: 1px solid #ccc; background: #fff; }
-  button.primary { background: #222; color: #fff; border-color: #222; cursor: pointer; }
+  select { font: inherit; padding: 5px 10px; border-radius: 6px; border: 1px solid #ccc; background: #fff; }
   main { flex: 1; display: grid; grid-template-columns: minmax(340px, 38%) 1fr; min-height: 0; }
   .code { display: flex; flex-direction: column; border-right: 1px solid var(--line); min-width: 0; }
   textarea { flex: 1; width: 100%; border: 0; resize: none; padding: 14px 18px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; outline: none; background: #fff; color: #222; }
@@ -38,12 +37,11 @@
   <h1>Model to graph</h1>
   <span class="seg" id="lang"><button type="button" data-v="bugs" class="on">BUGS</button><button type="button" data-v="stan">Stan</button></span>
   <select id="example" aria-label="Example"></select>
-  <button type="button" class="primary" id="draw">Draw</button>
 </header>
 
 <main>
   <section class="code">
-    <textarea id="code" spellcheck="false" aria-label="Model code"></textarea>
+    <textarea id="code" spellcheck="false" aria-label="Model code" placeholder="Write a model here; the graph follows as you type."></textarea>
     <label class="observed">Observed <input id="keys" placeholder="data variable names, comma-separated"></label>
     <div class="messages" id="messages"></div>
   </section>
@@ -70,18 +68,25 @@
   }
   let language = 'bugs'
 
-  // ---- the two views ------------------------------------------------------------
+  // ---- the interactive view ------------------------------------------------------
+  // One widget at a time, under one storage key. Everything the widget persists
+  // lives in localStorage under that key, so it is cleared before each mount:
+  // a fresh instance every time, and nothing accumulates while you type.
+  const LIVE_KEY = 'model-graph-live'
+  function purgeWidgetStorage() {
+    for (const k of Object.keys(localStorage)) if (k.startsWith(`db-${LIVE_KEY}`)) localStorage.removeItem(k)
+  }
   let lastBlob = null
   function showWidget(doc) {
     const host = $('widget')
     host.replaceChildren()
+    purgeWidgetStorage()
     if (lastBlob) URL.revokeObjectURL(lastBlob)
     lastBlob = URL.createObjectURL(new Blob([JSON.stringify(doc)], { type: 'application/json' }))
     const el = document.createElement('doodle-ppl')
     el.setAttribute('local-model', lastBlob)
     el.setAttribute('height', '100%')
-    // A fresh storage key per draw stops the widget reopening a cached graph.
-    el.setAttribute('storage-key', `graph-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    el.setAttribute('storage-key', LIVE_KEY)
     host.append(el)
   }
   for (const b of document.querySelectorAll('.tabs button')) {
@@ -114,6 +119,9 @@
   const say = (kind, text) => { $('messages').className = `messages ${kind}`; $('messages').textContent = text }
   const observed = () => keys.value.split(',').map((s) => s.trim()).filter(Boolean)
 
+  // The selected example's data, embedded in the document so the widget's Data
+  // tab is filled and its observed nodes validate. Hand-written code has none.
+  let exampleData = null
   function fillExamples(selected) {
     example.replaceChildren()
     const own = document.createElement('option'); own.value = ''; own.textContent = 'Write your own'
@@ -123,16 +131,13 @@
     }
     example.value = selected ?? ''
   }
-  // The selected example's data, embedded in the document so the widget's Data
-  // tab is filled and its observed nodes validate. Hand-written code has none.
-  let exampleData = null
   function loadExample() {
     const p = programs[language].find((x) => x.key === example.value)
     exampleData = p?.data && Object.keys(p.data).length ? p.data : null
     if (!p) { code.value = ''; keys.value = ''; code.focus(); return }
     code.value = p.program
     keys.value = (p.data_keys ?? []).join(', ')
-    draw()
+    redraw({ now: true })
   }
 
   async function toDocument() {
@@ -146,23 +151,43 @@
     return G.graphFromStanAst(r.result, { name, data: exampleData ?? Object.fromEntries(names.map((k) => [k, 0])) })
   }
 
+  // ---- live redraw ----------------------------------------------------------------
+  // The drawing follows every edit as soon as typing pauses briefly; the widget,
+  // which is a full editor instance, follows a little later and only when the
+  // graph itself changed. A program that does not parse yet leaves the last
+  // good graph in place and says what is wrong.
+  let drawTimer = null, widgetTimer = null, lastWidgetSignature = ''
+  function redraw({ now = false } = {}) {
+    clearTimeout(drawTimer)
+    drawTimer = setTimeout(draw, now ? 0 : 200)
+  }
   async function draw() {
     if (!code.value.trim()) { say('', ''); return }
+    let result
     try {
-      const { model, warnings } = await toDocument()
-      const elements = model.elements ?? []
-      const layout = G.layoutGraph(elements)
-      $('svg').innerHTML = G.renderGraphSvg(layout)
-      // Positions from the page's dagre pass, and a request for the widget to run
-      // its own dagre on open so the two views agree.
-      showWidget({ ...model, elements: G.applyLayout(elements, layout), autoLayout: 'dagre' })
-      const count = (t) => elements.filter((e) => e.type === 'node' && (t === 'plate') === (e.nodeType === 'plate')).length
-      const summary = `${count('node')} nodes, ${count('plate')} plates, ${elements.filter((e) => e.type === 'edge').length} edges`
-      if (warnings.length) say('warn', `${summary}\n${warnings.map((w) => (w.line ? `line ${w.line}: ` : '') + w.message).join('\n')}`)
-      else say('', summary)
+      result = await toDocument()
     } catch (e) {
       say('err', e.message ?? String(e))
+      return
     }
+    const { model, warnings } = result
+    const elements = model.elements ?? []
+    const layout = G.layoutGraph(elements)
+    $('svg').innerHTML = G.renderGraphSvg(layout)
+    const count = (t) => elements.filter((e) => e.type === 'node' && (t === 'plate') === (e.nodeType === 'plate')).length
+    const summary = `${count('node')} nodes, ${count('plate')} plates, ${elements.filter((e) => e.type === 'edge').length} edges`
+    if (warnings.length) say('warn', `${summary}\n${warnings.map((w) => (w.line ? `line ${w.line}: ` : '') + w.message).join('\n')}`)
+    else say('', summary)
+
+    const doc = { ...model, elements: G.applyLayout(elements, layout), autoLayout: 'dagre' }
+    const signature = JSON.stringify(doc.elements)
+    clearTimeout(widgetTimer)
+    const delay = $('widget').childElementCount === 0 ? 0 : 500
+    widgetTimer = setTimeout(() => {
+      if (signature === lastWidgetSignature) return
+      lastWidgetSignature = signature
+      showWidget(doc)
+    }, delay)
   }
 
   for (const b of $('lang').querySelectorAll('button')) {
@@ -175,8 +200,9 @@
     })
   }
   example.addEventListener('change', loadExample)
-  $('draw').addEventListener('click', draw)
-  code.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) draw() })
+  // Editing an example keeps its data attached: it still describes the same variables.
+  code.addEventListener('input', () => redraw())
+  keys.addEventListener('input', () => redraw())
 
   if (location.hash === '#stan') $('lang').querySelector('[data-v="stan"]').click()
   else { fillExamples('rats'); loadExample() }
