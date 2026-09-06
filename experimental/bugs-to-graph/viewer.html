@@ -121,8 +121,12 @@
     }
     example.value = selected ?? ''
   }
+  // The selected example's data, embedded in the document so the widget's Data
+  // tab is filled and its observed nodes validate. Hand-written code has none.
+  let exampleData = null
   function loadExample() {
     const p = programs[language].find((x) => x.key === example.value)
+    exampleData = p?.data && Object.keys(p.data).length ? p.data : null
     if (!p) { code.value = ''; keys.value = ''; code.focus(); return }
     code.value = p.program
     keys.value = (p.data_keys ?? []).join(', ')
@@ -131,11 +135,13 @@
 
   async function toDocument() {
     const name = example.value || 'model'
-    if (language === 'bugs') return G.parseBugs(code.value, { name, dataKeys: observed() })
+    const names = observed()
+    if (language === 'bugs') return G.parseBugs(code.value, { name, dataKeys: names, data: exampleData ?? undefined })
     const stanc = await loadStanc()
     const r = stanc(name, code.value, ['debug-ast'])
     if (r.errors?.length) throw new Error(r.errors.filter((e) => e !== '0').join('\n'))
-    return G.graphFromStanAst(r.result, { name, data: Object.fromEntries(observed().map((k) => [k, 0])) })
+    // Without example data, a placeholder per observed name still marks the nodes observed.
+    return G.graphFromStanAst(r.result, { name, data: exampleData ?? Object.fromEntries(names.map((k) => [k, 0])) })
   }
 
   async function draw() {
