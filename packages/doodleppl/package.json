@@ -48,6 +48,11 @@
       "import": "./dist/codegen/stan.js",
       "require": "./dist/codegen/stan.cjs"
     },
+    "./parse": {
+      "types": "./dist/parse/index.d.ts",
+      "import": "./dist/parse/index.js",
+      "require": "./dist/parse/index.cjs"
+    },
     "./graph.schema.json": "./dist/graph.schema.json"
   },
   "files": [
