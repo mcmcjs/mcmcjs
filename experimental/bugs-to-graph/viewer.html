@@ -6,10 +6,12 @@
   header { display: flex; gap: 16px; align-items: center; padding: 10px 16px; border-bottom: 1px solid #ddd; background: #fff; }
   header select { font: inherit; padding: 4px 8px; }
   header .note { color: #666; }
-  main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px 16px; }
+  main { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; padding: 12px 16px; }
   section h2 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #444; }
   section .empty { height: 620px; display: grid; place-items: center; color: #999; border: 1px dashed #ccc; border-radius: 6px; }
   doodle-ppl { display: block; }
+  .static { height: 620px; overflow: auto; border: 1px solid #ddd; border-radius: 6px; background: #fff; }
+  .static img { display: block; max-width: none; }
 </style>
 
 <header>
@@ -17,7 +19,8 @@
   <span class="note" id="meta"></span>
 </header>
 <main>
-  <section><h2>Generated from the BUGS program</h2><div id="gen"></div></section>
+  <section><h2>mcmc graph (TypeScript parser, dagre, SVG)</h2><div id="cli"></div></section>
+  <section><h2>Widget, opened from the Julia prototype's document</h2><div id="gen"></div></section>
   <section><h2>Hand-drawn (bundled with the widget)</h2><div id="hand"></div></section>
 </main>
 
@@ -53,8 +56,21 @@
     host.append(el)
   }
 
+  function showStatic(host, url) {
+    host.replaceChildren()
+    const box = document.createElement('div')
+    box.className = 'static'
+    const img = document.createElement('img')
+    img.src = `${url}?${Date.now()}`
+    img.alt = url
+    img.onerror = () => { box.replaceChildren(); box.classList.add('empty'); box.textContent = `not rendered: ${url}` }
+    box.append(img)
+    host.append(box)
+  }
+
   function show(k) {
     location.hash = k
+    showStatic(document.getElementById('cli'), `cli/${k}.svg`)
     mount(document.getElementById('gen'), `out/${k}.json`)
     mount(document.getElementById('hand'), hand[k] ? `hand/${hand[k]}.json` : null)
     document.getElementById('meta').textContent = `out/${k}.json`

@@ -1,40 +1,23 @@
 # BUGS to graph, experimental
 
-Turning a BUGS model back into a DoodlePPL graph document, so the widget can show
-a graph for examples nobody has drawn by hand.
+The study and the oracles behind `@mcmcjs/doodleppl/parse`, `@mcmcjs/doodleppl/render`
+and `mcmc graph`. Nothing here is wired into the build.
 
-Nothing here is wired into the build. It writes JSON to its own `out/` directory.
+- `STUDY.md` takes apart what blocks turning a BUGS program into a graph, with counts
+  over all 50 registered examples, and says where the parser should live and why.
+- `graph.jl` is the Julia prototype that produced the first evidence. It walks the model
+  AST with JuliaBUGS's parser, and it served as the oracle the TypeScript parser was
+  checked against. It stays until nothing needs it.
+- `fixtures/programs.json` holds the 50 example programs with their data keys; the
+  package tests keep their own copy.
+- `render-all.mjs` runs `mcmc graph` over every program in svg, png and json.
+- `viewer.html` shows, per example, the `mcmc graph` drawing, the widget opened on the
+  prototype's document, and the hand-drawn graph bundled with the widget:
+  `python3 -m http.server 8124` in this directory, then open `viewer.html`.
 
 ## Why the obvious route fails
 
-JuliaBUGS already turns BUGS into a graph: that is what `compile` does. But that
-graph is unrolled to array elements. For Rats it has **367 nodes** (`mu[5, 4]`,
-`alpha[3]`, `Y[6, 4]`), because every entry of every array is its own vertex.
-
-DoodlePPL wants the *syntactic* graph: one node per variable, with `for` loops as
-plates. Rats has 9 of those. So the source has to be the model AST, not the
-compiled graph. Reaching for the compiled graph is the trap here.
-
-## What breaks, measured over all 50 registered examples
-
-| | count |
-|---|---:|
-| clean, no special handling | 22 |
-| a hybrid node, both `~` and `=` on one variable | 14 |
-| a computed index, e.g. `mu[group[i], t]` | 18 |
-| plate nesting deeper than 2 | 7 |
-
-Each of these turns out to be several distinct things once the statements are
-listed, and most need nothing from the schema. `STUDY.md` takes them apart one by
-one with counts, and says where the parser should live and why.
-
-`viewer.html` shows every generated graph beside its hand-drawn counterpart in
-the real widget: `python3 -m http.server 8124` in this directory, then open
-`viewer.html`.
-
-## Usage
-
-```
-julia --project=<JuliaBUGS.jl> graph.jl            # all examples
-julia --project=<JuliaBUGS.jl> graph.jl rats air   # named ones
-```
+JuliaBUGS already turns BUGS into a graph: that is what `compile` does. But that graph
+is unrolled to array elements, 367 vertices for Rats (`mu[5, 4]`, `alpha[3]`). The
+widget wants one node per variable with `for` loops as plates, 9 nodes for Rats. The
+source has to be the program text or its AST, where the loops still exist.

@@ -25,6 +25,8 @@ export default defineConfig({
   format: ["esm"],
   clean: true,
   sourcemap: true,
+  // Optional native binding, loaded at runtime only when a PNG is asked for.
+  external: ["@resvg/resvg-js"],
   define: {
     __MCMC_VERSION__: JSON.stringify(pkg.version),
     __MCMC_META__: JSON.stringify(meta),

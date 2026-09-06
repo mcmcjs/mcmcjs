@@ -320,14 +320,14 @@
   },
   {
     "data_keys": ["x", "N", "C"],
-    "inits_keys": {},
+    "inits_keys": [],
     "key": "eye_tracking",
     "name": "Eye Tracking: dirichlet process prior",
     "program": "model{   \n    for( i in 1 : N ) {\n        S[i] ~ dcat(pi[])\n        mu[i] <- theta[S[i]]\n        x[i] ~ dpois(mu[i])\n        for (j in 1 : C) {\n            SC[i, j] <- equals(j, S[i])\n        }\n    }\n\n    # Precision Parameter\n    alpha <- 1\n    # alpha~ dgamma(0.1,0.1)\n    \n    # Constructive DPP\n    p[1] <- r[1]\n    for (j in 2 : C) {\n        p[j] <- r[j] * (1 - r[j - 1]) * p[j -1 ] / r[j - 1]\n    }\n    p.sum <- sum(p[])\n    for (j in 1:C){\n        theta[j] ~ dgamma(A, B)\n        r[j] ~ dbeta(1, alpha)\n        # scaling to ensure sum to 1\n        pi[j] <- p[j] / p.sum\n    }\n    \n    # hierarchical prior on theta[i] or preset parameters\n    A ~ dexp(0.1)\n    B ~ dgamma(0.1, 0.1)\n    # A <- 1\n    # B <- 1\n    \n    # total clusters\n    K <- sum(cl[])\n    for (j in 1 : C) {\n        sumSC[j] <- sum(SC[ , j])\n        cl[j] <- step(sumSC[j] -1)\n    }\n}\n",
     "volume": "VOLUME_3"
   },
   {
-    "data_keys": {},
+    "data_keys": [],
     "inits_keys": ["x", "y"],
     "key": "circle",
     "name": "Fun Shapes: Circle",
@@ -335,7 +335,7 @@
     "volume": "VOLUME_3"
   },
   {
-    "data_keys": {},
+    "data_keys": [],
     "inits_keys": ["x", "y"],
     "key": "hollow_square",
     "name": "Fun Shapes: Hollow Square",
@@ -343,7 +343,7 @@
     "volume": "VOLUME_3"
   },
   {
-    "data_keys": {},
+    "data_keys": [],
     "inits_keys": ["x", "y"],
     "key": "parallelogram",
     "name": "Fun Shapes: Parallelogram",
@@ -351,7 +351,7 @@
     "volume": "VOLUME_3"
   },
   {
-    "data_keys": {},
+    "data_keys": [],
     "inits_keys": ["x", "y"],
     "key": "ring",
     "name": "Fun Shapes: Ring",
@@ -359,7 +359,7 @@
     "volume": "VOLUME_3"
   },
   {
-    "data_keys": {},
+    "data_keys": [],
     "inits_keys": ["x", "y"],
     "key": "square_minus_circle",
     "name": "Fun Shapes: Square minus Circle",
@@ -399,7 +399,7 @@
       "p.strata",
       "lambda"
     ],
-    "inits_keys": {},
+    "inits_keys": [],
     "key": "hips1",
     "name": "Hips1: Closed form estimates for each strata",
     "program": "model {\n    for(k in 1 : K) {    # loop over strata\n\n    # Cost and benefit equations in closed form:\n    ####################################\n\n        # Costs\n        for(t in 1 : N) {\n            ct[k, t] <- inprod(pi[k, t, ], c[]) / pow((1 + delta.c), t - 1)\n        } \n        C[k] <- C0 + sum(ct[k, ])\n\n        # Benefits - life expectancy\n        for(t in 1:N) {\n            blt[k, t] <- inprod(pi[k, t, ], bl[]) / pow((1 + delta.b), t - 1)\n        } \n        BL[k] <- sum(blt[k, ])\n\n        # Benefits - QALYs\n        for(t in 1 : N) {\n            bqt[k, t] <- inprod(pi[k,t, ], bq[]) / pow((1 + delta.b), t - 1)\n        } \n        BQ[k] <- sum(bqt[k, ])\n\n        # Markov model probabilities:\n        #######################\n\n        # Transition matrix\n        for(t in 2 : N) {\n            Lambda[k, t, 1, 1] <- 1 -  gamma[k, t] - lambda[k, t]\n            Lambda[k, t, 1, 2] <- gamma[k, t] * lambda.op\n            Lambda[k, t, 1, 3] <- gamma[k, t] * (1 - lambda.op)\n            Lambda[k, t, 1, 4] <- 0\n            Lambda[k, t, 1, 5] <- lambda[k, t] \n\n            Lambda[k, t, 2, 1] <- 0\n            Lambda[k, t, 2, 2] <- 0 \n            Lambda[k, t, 2, 3] <- 0 \n            Lambda[k, t, 2, 4] <- 0 \n            Lambda[k, t, 2, 5] <- 1 \n\n            Lambda[k, t, 3, 1] <- 0\n            Lambda[k, t, 3, 2] <- 0 \n            Lambda[k, t, 3, 3] <- 0\n            Lambda[k, t, 3, 4] <- 1 -  lambda[k, t]\n            Lambda[k, t, 3, 5] <- lambda[k, t]\n\n            Lambda[k, t, 4, 1] <- 0\n            Lambda[k, t, 4, 2] <- rho * lambda.op\n            Lambda[k, t, 4, 3] <- rho * (1 - lambda.op)\n            Lambda[k, t, 4, 4] <- 1 - rho - lambda[k, t]\n            Lambda[k, t, 4, 5] <- lambda[k,t]\n\n            Lambda[k, t, 5, 1] <- 0\n            Lambda[k, t, 5, 2] <- 0 \n            Lambda[k, t, 5, 3] <- 0\n            Lambda[k, t, 5, 4] <- 0\n            Lambda[k, t, 5, 5] <- 1\n\n            gamma[k, t] <- h[k] * (t - 1)\n        }\n\n        # Marginal probability of being in each state at time 1\n        pi[k,1,1] <- 1 - lambda.op  pi[k,1, 2]<-0     pi[k,1,3] <- 0   \n        pi[k,1, 4] <- 0   pi[k,1, 5] <- lambda.op\n\n        # Marginal probability of being in each state at time t>1\n        for(t in 2:N) {\n            for(s in 1:S) {\n                pi[k, t, s] <- inprod(pi[k, t - 1, ], Lambda[k, t, , s])\n            }\n        }\n    }\n\n    # Mean and sd of costs and benefits over strata\n    #######################################\n\n    mean.C <- inprod(p.strata[], C[])\n    for(k in 1:12) { \n        dev.C[k]  <- pow(C[k] - mean.C, 2) \n    }\n    var.C <- inprod(p.strata[], dev.C[])\n    sd.C <- sqrt(var.C)\n\n    mean.BL <- inprod(p.strata[], BL[])\n    for(k in 1:12) { \n        dev.BL[k]  <- pow(BL[k] - mean.BL, 2) \n    }\n    var.BL <- inprod(p.strata[], dev.BL[])\n    sd.BL <- sqrt(var.BL)\n\n    mean.BQ <- inprod(p.strata[], BQ[])\n    for(k in 1:12) { \n        dev.BQ[k]  <- pow(BQ[k] - mean.BQ, 2) \n    }\n    var.BQ <- inprod(p.strata[], dev.BQ[])\n    sd.BQ <- sqrt(var.BQ)\n}\n",
@@ -422,7 +422,7 @@
       "p.strata",
       "lambda"
     ],
-    "inits_keys": {},
+    "inits_keys": [],
     "key": "hips2",
     "name": "Hips2: MC estimates for each strata",
     "program": "model {\n\n\t\tfor(k in 1 : K) {    # loop over strata\n\n\t\t# Cost and benefit equations \n\t\t#######################\n\n\t\t# Costs\n\t\t\tfor(t in 1 : N) {\n\t\t\t\tct[k, t] <- inprod(y[k, t, ], c[]) / pow(1 + delta.c, t - 1)\n\t\t\t} \n\t\t\tC[k] <- C0 + sum(ct[k, ])\n\n\t\t\t# Benefits - life expectancy\n\t\t\tfor(t in 1 : N) {\n\t\t\t\tblt[k, t] <- inprod(y[k, t, ], bl[]) / pow(1 + delta.b, t - 1)\n\t\t\t} \n\t\t\tBL[k] <- sum(blt[k, ])\n\n\t\t\t# Benefits - QALYs\n\t\t\tfor(t in 1:N) {\n\t\t\t\tbqt[k, t] <- inprod(y[k, t, ], bq[]) / pow(1 + delta.b, t - 1)\n\t\t\t} \n\t\t\tBQ[k] <- sum(bqt[k, ])\n\n\n\t\t\t# Markov model probabilities:\n\t\t\t#######################\n\n\t\t\t# Transition matrix\n\t\t\tfor(t in 1 : N) {\n\t\t\t\tLambda[k, t, 1, 1] <- 1 -  gamma[k, t] - lambda[k, t]\n\t\t\t\tLambda[k, t, 1, 2] <- gamma[k, t] * lambda.op\n\t\t\t\tLambda[k, t, 1, 3] <- gamma[k, t] *(1 - lambda.op)\n\t\t\t\tLambda[k, t, 1, 4] <- 0\n\t\t\t\tLambda[k, t, 1, 5] <- lambda[k, t] \n\n\t\t\t\tLambda[k, t, 2, 1] <- 0\n\t\t\t\tLambda[k, t, 2, 2] <- 0 \n\t\t\t\tLambda[k, t, 2, 3] <- 0 \n\t\t\t\tLambda[k, t, 2, 4] <- 0 \n\t\t\t\tLambda[k, t, 2, 5] <- 1 \n\n\t\t\t\tLambda[k, t, 3, 1] <- 0\n\t\t\t\tLambda[k, t, 3, 2] <- 0 \n\t\t\t\tLambda[k, t, 3, 3] <- 0\n\t\t\t\tLambda[k, t, 3, 4] <- 1 -  lambda[k, t]\n\t\t\t\tLambda[k, t, 3, 5] <- lambda[k, t]\n\n\t\t\t\tLambda[k, t, 4, 1] <- 0\n\t\t\t\tLambda[k, t, 4, 2] <- rho * lambda.op\n\t\t\t\tLambda[k, t, 4, 3] <- rho * (1 - lambda.op)\n\t\t\t\tLambda[k, t, 4, 4] <- 1 - rho - lambda[k, t]\n\t\t\t\tLambda[k, t, 4, 5] <- lambda[k, t]\n\n\t\t\t\tLambda[k, t, 5, 1] <- 0\n\t\t\t\tLambda[k, t, 5, 2] <- 0 \n\t\t\t\tLambda[k, t, 5, 3] <- 0\n\t\t\t\tLambda[k, t, 5, 4] <- 0\n\t\t\t\tLambda[k, t, 5, 5] <- 1\n\n\t\t\t\tgamma[k, t] <- h[k] * (t - 1)\n\t\t\t}\n\n\t\t\t# Marginal probability of being in each state at time 1\n\t\t\tpi[k, 1, 1] <- 1 - lambda.op  pi[k, 1, 2]<-0     pi[k, 1, 3] <- 0   pi[k, 1, 4] <- 0  \n\t\t\tpi[k, 1, 5] <- lambda.op\n\n\t\t\t# state of each individual in strata k at time t =1 \n\t\t\ty[k,1,1 : S] ~ dmulti(pi[k,1, ], 1)   \n\n\t\t\t# state of each individual in strata k at time t > 1\n\t\t\tfor(t in 2 : N) {\n\t\t\t\tfor(s in 1:S) {                 \n\t\t\t\t\t#  sampling probabilities        \n\t\t\t\t\tpi[k, t, s] <- inprod(y[k, t - 1, ], Lambda[k, t, , s])   \n\t\t\t\t}\n\t\t\t\ty[k, t, 1 : S] ~ dmulti(pi[k, t, ], 1)     \n\t\t\t}\n\n\t\t}\n\n\t\t# Mean of costs and benefits over strata\n\t\t#################################\n\n\t\tmean.C <- inprod(p.strata[], C[])\n\t\tmean.BL <- inprod(p.strata[], BL[])\n\t\tmean.BQ <- inprod(p.strata[], BQ[])\n\n\t}\n",
@@ -446,7 +446,7 @@
       "p.strata",
       "lambda"
     ],
-    "inits_keys": {},
+    "inits_keys": [],
     "key": "hips3",
     "name": "Hips3: MC estimates for each strata, allowing for parameter uncertainty in revision hazard, h",
     "program": "model {\n\n    for(k in 1 : K) {    # loop over strata\n\n    # Cost and benefit equations in closed form:\n    ####################################\n\n        # Costs\n        for(t in 1 : N) {\n            ct[k, t] <- inprod(pi[k, t, ], c[]) / pow((1 + delta.c), t - 1)\n        } \n        C[k] <- C0 + sum(ct[k, ])\n\n        # Benefits - life expectancy\n        for(t in 1:N) {\n            blt[k, t] <- inprod(pi[k, t, ], bl[]) / pow((1 + delta.b), t - 1)\n        } \n        BL[k] <- sum(blt[k, ])\n\n        # Benefits - QALYs\n        for(t in 1 : N) {\n            bqt[k, t] <- inprod(pi[k,t, ], bq[]) / pow((1 + delta.b), t - 1)\n        } \n        BQ[k] <- sum(bqt[k, ])\n\n        # Markov model probabilities:\n        #######################\n\n        # Transition matrix\n        for(t in 2 : N) {\n            Lambda[k, t, 1, 1] <- 1 -  gamma[k, t] - lambda[k, t]\n            Lambda[k, t, 1, 2] <- gamma[k, t] * lambda.op\n            Lambda[k, t, 1, 3] <- gamma[k, t] * (1 - lambda.op)\n            Lambda[k, t, 1, 4] <- 0\n            Lambda[k, t, 1, 5] <- lambda[k, t] \n\n            Lambda[k, t, 2, 1] <- 0\n            Lambda[k, t, 2, 2] <- 0 \n            Lambda[k, t, 2, 3] <- 0 \n            Lambda[k, t, 2, 4] <- 0 \n            Lambda[k, t, 2, 5] <- 1 \n\n            Lambda[k, t, 3, 1] <- 0\n            Lambda[k, t, 3, 2] <- 0 \n            Lambda[k, t, 3, 3] <- 0\n            Lambda[k, t, 3, 4] <- 1 -  lambda[k, t]\n            Lambda[k, t, 3, 5] <- lambda[k, t]\n\n            Lambda[k, t, 4, 1] <- 0\n            Lambda[k, t, 4, 2] <- rho * lambda.op\n            Lambda[k, t, 4, 3] <- rho * (1 - lambda.op)\n            Lambda[k, t, 4, 4] <- 1 - rho - lambda[k, t]\n            Lambda[k, t, 4, 5] <- lambda[k,t]\n\n            Lambda[k, t, 5, 1] <- 0\n            Lambda[k, t, 5, 2] <- 0 \n            Lambda[k, t, 5, 3] <- 0\n            Lambda[k, t, 5, 4] <- 0\n            Lambda[k, t, 5, 5] <- 1\n\n            gamma[k, t] <- h[k] * (t - 1)\n        }\n\n        # Marginal probability of being in each state at time 1\n        pi[k,1,1] <- 1 - lambda.op  pi[k,1, 2]<-0     pi[k,1,3] <- 0   \n        pi[k,1, 4] <- 0   pi[k,1, 5] <- lambda.op\n\n        # Marginal probability of being in each state at time t>1\n        for(t in 2:N) {\n            for(s in 1:S) {\n                pi[k, t, s] <- inprod(pi[k, t - 1, ], Lambda[k, t, , s])\n            }\n        }\n    }\n\n    # age-sex specific revision hazard\n    for(k in 1 : K) { \n        logh[k] ~ dnorm(logh0[k], tau)\n        h[k] <- exp(logh[k])  \n    }\n\n    # Calculate mean and variance across strata at each iteration \n    # (Gives overall mean and variance using approach 1)\n\n    mean.C <- inprod(p.strata[], C[])\n    mean.BL <- inprod(p.strata[], BL[])\n    mean.BQ <- inprod(p.strata[], BQ[])\n\n    for(k in 1:12) {\n        C.dev[k] <- pow(C[k]-mean.C , 2)\n        BL.dev[k] <- pow(BL[k]-mean.BL , 2)\n        BQ.dev[k] <- pow(BQ[k]-mean.BQ , 2)\n    }\n    var.C <- inprod(p.strata[], C.dev[])\n    var.BL <- inprod(p.strata[], BL.dev[])\n    var.BQ <- inprod(p.strata[], BQ.dev[])\n\n}\n",
