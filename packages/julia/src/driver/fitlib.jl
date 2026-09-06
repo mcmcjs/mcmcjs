@@ -453,14 +453,39 @@ function extra_columns(chn)
     return cols
 end
 
+# A keep pattern matches a column by its full leaf name (`theta[2]`), by its
+# base name (`theta` keeps every element), or as a glob with `*` against either.
+# @mcmcjs/core's keepMatcher applies the same rule for the Stan backend.
+function keep_matches(name::AbstractString, patterns)
+    base = first(split(name, '['; limit = 2))
+    for p in patterns
+        p = String(p)
+        if occursin('*', p)
+            parts = map(s -> replace(s, r"([\\.^\$|?()\[\]{}+])" => s"\\\1"), split(p, '*'))
+            rx = Regex("^" * join(parts, ".*") * "\$")
+            (occursin(rx, name) || occursin(rx, base)) && return true
+        elseif p == name || p == base
+            return true
+        end
+    end
+    return false
+end
+
+keep_patterns(request) = get(get(request, "output", Dict()), "keep", nothing)
+
 # FlexiChains-native wire writer. DimArray(chn) splits array-valued parameters
 # into scalar leaves (theta -> theta[1], theta[2]) in the (iter, chain, param)
 # orientation; the sampler's statistics become the internals section.
-function vnchain_to_wire(chn)
+function vnchain_to_wire(chn; keep = nothing)
     da = DimensionalData.DimArray(chn)
-    pnames = string.(collect(DimensionalData.lookup(da, :param)))
+    allnames = string.(collect(DimensionalData.lookup(da, :param)))
+    # The spec's [output] keep list: only these columns are stored.
+    sel = keep === nothing ? collect(eachindex(allnames)) :
+          [i for (i, n) in enumerate(allnames) if keep_matches(n, keep)]
+    pnames = allnames[sel]
     arr = parent(da)
-    nIter, nChains, nParams = size(arr)
+    nIter, nChains, _ = size(arr)
+    nParams = length(sel)
 
     extras = extra_columns(chn)
     enames = first.(extras)
@@ -471,7 +496,7 @@ function vnchain_to_wire(chn)
     # prior) becomes null, which the samples parser reads back as NaN.
     cell(v) = v === missing || !isfinite(v) ? nothing : Float64(v)
     for c in 1:nChains, p in 1:nParams, i in 1:nIter
-        flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(arr[i, c, p])
+        flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(arr[i, c, sel[p]])
     end
     for (k, (_, draw)) in enumerate(extras)
         p = nParams + k
@@ -1043,7 +1068,7 @@ function handle_request(request)
                         ),
                     )
                 end
-                vnchain_to_wire(chn)
+                vnchain_to_wire(chn; keep = keep_patterns(request))
             else
                 sampler, warmup = build_sampler(sampler_conf, modelmod)
                 # The draw streamer assumes chains arrive one at a time; with
@@ -1055,7 +1080,7 @@ function handle_request(request)
                     build_and_sample, entry, data, sampler, draws, chains, rng;
                     callback = cb, extra, parallel,
                 )
-                vnchain_to_wire(chn)
+                vnchain_to_wire(chn; keep = keep_patterns(request))
             end
         end
 

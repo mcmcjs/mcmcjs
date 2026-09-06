@@ -49,7 +49,7 @@ import { ZodError } from "zod";
 import { pickModel } from "./browse";
 import { convertGraph } from "./convert";
 import { buildDiagnosticsReport, type DiagnosticsReport, formatReportHuman } from "./diagnose";
-import { backendLabel, entryHelp, formatFitResult } from "./fit";
+import { backendLabel, entryHelp, formatFitResult, parseKeepList } from "./fit";
 import { installRunner, juliaupBin } from "./julia";
 import { parseFloatOption, parseIntOption } from "./options";
 import { rendererFor } from "./progress";
@@ -127,6 +127,7 @@ export interface RunCliOptions {
   prior?: boolean;
   algorithm?: string;
   thin?: number;
+  keep?: string[];
   adtype?: string;
   parallel?: string;
   backend?: string;
@@ -213,6 +214,7 @@ function applyOverrides(spec: Spec, opts: RunCliOptions): Spec {
       ...(opts.chains !== undefined ? { chains: opts.chains } : {}),
       ...(opts.adaptDelta !== undefined ? { adapt_delta: opts.adaptDelta } : {}),
     },
+    output: { ...spec.output, ...(opts.keep ? { keep: opts.keep } : {}) },
   });
 }
 
@@ -350,6 +352,7 @@ export function buildRunConfig(inputPath: string, opts: RunCliOptions): RunConfi
       chains: opts.chains ?? 4,
       ...(opts.adaptDelta !== undefined ? { adapt_delta: opts.adaptDelta } : {}),
     },
+    ...(opts.keep ? { output: { keep: opts.keep } } : {}),
   });
   // With no spec and no --data, fall back to a sibling data file (e.g. data.csv
   // next to the model) so the bare `mcmc run model.jl` works; --data still wins.
@@ -506,6 +509,11 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       "sampler: NUTS | HMC | HMCDA | MH | ESS | SMC | PG | Slice | Gibbs | External | Prior (default NUTS)",
     )
     .option("--thin <n>", "keep every thin-th draw", parseIntOption)
+    .option(
+      "--keep <list>",
+      "store only these variables in the samples file, comma-separated names or globs (e.g. theta,mean.*)",
+      parseKeepList,
+    )
     .option(
       "--adtype <name>",
       "AD backend for gradient samplers: forwarddiff | reversediff | mooncake",
