@@ -673,6 +673,7 @@ export function graphFromStanAst(ast: string | S, options: StanGraphOptions = {}
   const model: UnifiedModelData = {
     name: options.name ?? "Imported Stan model",
     version: 1,
+    language: "stan",
     elements,
   };
   if (options.data) model.dataContent = JSON.stringify({ data: options.data, inits: {} }, null, 2);

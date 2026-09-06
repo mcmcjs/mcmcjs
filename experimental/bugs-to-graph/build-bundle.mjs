@@ -5,6 +5,7 @@
 // esbuild is a dependency of tsup rather than of the workspace root, so it is
 // resolved through pnpm's virtual store.
 
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,3 +33,17 @@ await build({
   loader: { ".tpl": "text" },
   logLevel: "info",
 });
+
+// The page loads the widget built from this tree, not the released package,
+// so the two fixes it depends on (layout on open, validation by language) are
+// present. Build it first: pnpm --filter @mcmcjs/doodleppl build && pnpm --filter doodleppl build
+const widget = join(root, "packages/doodleppl-ui/dist/doodleppl.global.js");
+if (existsSync(widget)) {
+  mkdirSync(join(here, "vendor"), { recursive: true });
+  copyFileSync(widget, join(here, "vendor/doodleppl.global.js"));
+  console.log("copied the widget bundle to vendor/doodleppl.global.js");
+} else {
+  console.warn(
+    "widget bundle not found; build doodleppl-ui first so vendor/doodleppl.global.js exists",
+  );
+}

@@ -37,10 +37,14 @@ jobs:
         run: |
           if [ -n "$SITE_TOKEN" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
 
+      - name: Build the widget from this ref
+        run: pnpm --filter @mcmcjs/doodleppl build && pnpm --filter doodleppl build
+
       - name: Build the page
         working-directory: experimental/bugs-to-graph
         run: |
           node build-bundle.mjs
+          test -s vendor/doodleppl.global.js
           mkdir -p vendor
           curl -sSL -o vendor/stanc.js "https://github.com/stan-dev/stanc3/releases/download/${{ inputs.stanc_version }}/stanc.js"
           mkdir -p ../../site-model-graph/dist ../../site-model-graph/vendor ../../site-model-graph/fixtures

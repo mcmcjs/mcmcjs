@@ -1,7 +1,7 @@
 import { ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import { validateGraph as validateElements } from '@mcmcjs/doodleppl'
-import type { GraphElement, ValidationError, ModelData } from '../types'
+import type { GraphElement, ModelData, ModelLanguage, ValidationError } from '../types'
 
 // Helper to compare error maps
 const areErrorMapsEqual = (
@@ -26,11 +26,18 @@ const areErrorMapsEqual = (
  * @param elements - A ref containing the graph elements.
  * @param modelData - A ref containing the parsed model data and inits.
  */
-export function useGraphValidator(elements: Ref<GraphElement[]>, modelData: Ref<ModelData>) {
+export function useGraphValidator(
+  elements: Ref<GraphElement[]>,
+  modelData: Ref<ModelData>,
+  // The language the graph was imported from; its variable-name rules apply.
+  language?: Ref<ModelLanguage | undefined>
+) {
   const validationErrors = ref<Map<string, ValidationError[]>>(new Map())
 
   const validateGraph = () => {
-    const issues = validateElements(elements.value, modelData.value.data)
+    const issues = validateElements(elements.value, modelData.value.data, {
+      language: language?.value,
+    })
     const newErrors = new Map<string, ValidationError[]>()
     for (const issue of issues) {
       const list = newErrors.get(issue.nodeId)
@@ -44,7 +51,10 @@ export function useGraphValidator(elements: Ref<GraphElement[]>, modelData: Ref<
     }
   }
 
-  watch([elements, modelData], validateGraph, { deep: true, immediate: true })
+  watch([elements, modelData, ...(language ? [language] : [])], validateGraph, {
+    deep: true,
+    immediate: true,
+  })
 
   return {
     validateGraph,

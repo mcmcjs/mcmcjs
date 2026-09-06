@@ -1,5 +1,5 @@
 import { BUGS_FUNCTIONS, getDistribution } from "./catalog";
-import type { GraphEdge, GraphElement, GraphNode } from "./types";
+import type { GraphEdge, GraphElement, GraphNode, ModelLanguage } from "./types";
 
 export interface ValidationIssue {
   nodeId: string;
@@ -135,14 +135,28 @@ function indexOverlapIssues(nodes: GraphNode[]): ValidationIssue[] {
  * observed nodes backed by data, BUGS variable-name validity, and index-range
  * overlap between nodes that share a name.
  */
+export interface ValidateOptions {
+  /** Which language's variable-name rules apply. Default BUGS. */
+  language?: ModelLanguage;
+}
+
+// BUGS names take letters, digits and dots; Stan names take letters, digits and
+// underscores, and may not end in a double underscore (reserved).
+const NAME_RULES: Record<ModelLanguage, { ok: (name: string) => boolean; label: string }> = {
+  bugs: { ok: (n) => /^[a-zA-Z][a-zA-Z0-9.]*$/.test(n), label: "BUGS" },
+  stan: { ok: (n) => /^[a-zA-Z][a-zA-Z0-9_]*$/.test(n) && !n.endsWith("__"), label: "Stan" },
+};
+
 export function validateGraph(
   elements: GraphElement[],
   data: Record<string, unknown> = {},
+  options: ValidateOptions = {},
 ): ValidationIssue[] {
   const nodes = elements.filter((el): el is GraphNode => el.type === "node");
   const edges = elements.filter((el): el is GraphEdge => el.type === "edge");
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   const dataKeys = new Set(Object.keys(data));
+  const nameRule = NAME_RULES[options.language ?? "bugs"];
 
   const issues: ValidationIssue[] = indexOverlapIssues(nodes);
 
@@ -217,11 +231,11 @@ export function validateGraph(
     // Plates are exempt: their name is only a UI label.
     if (node.nodeType !== "plate") {
       const baseName = (node.name.split("[")[0] as string).trim();
-      if (!/^[a-zA-Z][a-zA-Z0-9.]*$/.test(baseName)) {
+      if (!nameRule.ok(baseName)) {
         issues.push({
           nodeId: node.id,
           field: "name",
-          message: `Base name '${baseName}' is not a valid BUGS variable name.`,
+          message: `Base name '${baseName}' is not a valid ${nameRule.label} variable name.`,
         });
       }
     }

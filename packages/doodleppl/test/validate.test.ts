@@ -2,6 +2,45 @@ import { describe, expect, it } from "vitest";
 import type { GraphElement } from "../src/core/types";
 import { validateGraph } from "../src/core/validate";
 
+describe("variable names by language", () => {
+  const stochastic = (name: string): GraphElement[] => [
+    {
+      id: "n",
+      name,
+      type: "node",
+      nodeType: "stochastic",
+      distribution: "dnorm",
+      param1: "0",
+      param2: "1",
+    },
+  ];
+  const nameIssues = (name: string, language?: "bugs" | "stan") =>
+    validateGraph(stochastic(name), {}, language ? { language } : {}).filter(
+      (i) => i.field === "name",
+    );
+
+  it("BUGS is the default: dots allowed, underscores not", () => {
+    expect(nameIssues("tau.c")).toEqual([]);
+    expect(nameIssues("tau_c").map((i) => i.message)).toEqual([
+      "Base name 'tau_c' is not a valid BUGS variable name.",
+    ]);
+  });
+
+  it("Stan: underscores allowed, dots not, and no trailing double underscore", () => {
+    expect(nameIssues("tau_c", "stan")).toEqual([]);
+    expect(nameIssues("y_rep", "stan")).toEqual([]);
+    expect(nameIssues("tau.c", "stan").map((i) => i.message)).toEqual([
+      "Base name 'tau.c' is not a valid Stan variable name.",
+    ]);
+    expect(nameIssues("lp__", "stan")).toHaveLength(1);
+  });
+
+  it("both reject a name that starts with a digit", () => {
+    expect(nameIssues("1x")).toHaveLength(1);
+    expect(nameIssues("1x", "stan")).toHaveLength(1);
+  });
+});
+
 const node = (n: Partial<GraphElement> & { id: string }): GraphElement =>
   ({ type: "node", ...n }) as GraphElement;
 const edge = (id: string, source: string, target: string): GraphElement => ({

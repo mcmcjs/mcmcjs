@@ -3,7 +3,9 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import type { Core, EventObject, NodeSingular, ElementDefinition } from 'cytoscape'
 import { useToast } from 'primevue/usetoast'
 import { useGraphInstance } from '../../composables/useGraphInstance'
+import { useGraphLayout } from '../../composables/useGraphLayout'
 import { useGridSnapping } from '../../composables/useGridSnapping'
+import { useGraphStore } from '../../stores/graphStore'
 import type {
   GraphElement,
   GraphNode,
@@ -52,12 +54,32 @@ const { initCytoscape, destroyCytoscape, getCyInstance, getUndoRedoInstance } = 
 const getCy = () => getCyInstance(props.graphId)
 const { enableGridSnapping, disableGridSnapping, setGridSize } = useGridSnapping(getCy)
 const uiStore = useUiStore()
+const graphStore = useGraphStore()
+const { applyLayoutWithFit } = useGraphLayout()
 
 const isGraphVisible = ref(false)
 const isGraphReady = ref(false)
 // An embedded host can size the container before the graph's elements have loaded,
 // so the initial fit runs on an empty graph; fit once when real content arrives.
 let hasFitContent = false
+
+// The first time a graph's elements are on the canvas. A document imported
+// with a layout request, or with no positions, is laid out once here and
+// layoutstop persists the result; anything else is fitted as it was saved.
+const firstRender = (core: Core) => {
+  hasFitContent = true
+  const pending = graphStore.takePendingLayout(props.graphId)
+  if (pending) {
+    applyLayoutWithFit(core, pending)
+    graphStore.updateGraphLayout(props.graphId, pending)
+    return
+  }
+  core.fit(undefined, 50)
+  if (core.zoom() > 0.8) {
+    core.zoom(0.8)
+    core.center()
+  }
+}
 
 const validNodeTypes: NodeType[] = ['stochastic', 'deterministic', 'constant', 'observed', 'plate']
 
@@ -406,12 +428,7 @@ onMounted(() => {
                 pan: props.initialViewport.pan,
               })
             } else if (props.elements.length > 0) {
-              cy.fit(undefined, 50)
-              if (cy.zoom() > 0.8) {
-                cy.zoom(0.8)
-                cy.center()
-              }
-              hasFitContent = true
+              firstRender(cy)
             }
 
             updateGridStyle()
@@ -504,14 +521,7 @@ watch(
     // Only sync if graph is ready (container sized and initialized)
     if (isGraphReady.value) {
       syncGraphWithProps(newElements, newErrors)
-      if (!hasFitContent && cy && newElements.length > 0) {
-        hasFitContent = true
-        cy.fit(undefined, 50)
-        if (cy.zoom() > 0.8) {
-          cy.zoom(0.8)
-          cy.center()
-        }
-      }
+      if (!hasFitContent && cy && newElements.length > 0) firstRender(cy)
     }
   },
   { deep: true }

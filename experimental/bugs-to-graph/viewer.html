@@ -57,7 +57,9 @@
   </section>
 </main>
 
-<script src="https://unpkg.com/doodleppl@0.10.1/dist/doodleppl.global.js" defer></script>
+<!-- The widget built from this branch (build-bundle.mjs copies it here); the
+     released package does not yet apply a layout on open or validate by language. -->
+<script src="vendor/doodleppl.global.js" defer></script>
 <script type="module">
   import * as G from './dist/graph.js'
 
@@ -151,7 +153,9 @@
       const elements = model.elements ?? []
       const layout = G.layoutGraph(elements)
       $('svg').innerHTML = G.renderGraphSvg(layout)
-      showWidget({ ...model, elements: G.applyLayout(elements, layout) })
+      // Positions from the page's dagre pass, and a request for the widget to run
+      // its own dagre on open so the two views agree.
+      showWidget({ ...model, elements: G.applyLayout(elements, layout), autoLayout: 'dagre' })
       const count = (t) => elements.filter((e) => e.type === 'node' && (t === 'plate') === (e.nodeType === 'plate')).length
       const summary = `${count('node')} nodes, ${count('plate')} plates, ${elements.filter((e) => e.type === 'edge').length} edges`
       if (warnings.length) say('warn', `${summary}\n${warnings.map((w) => (w.line ? `line ${w.line}: ` : '') + w.message).join('\n')}`)

@@ -168,6 +168,7 @@ export function useEditorActions(
     }
 
     graphStore.updateGraphLayout(newGraphMeta.id, 'preset')
+    // `layout` in a saved document is the editor's panel geometry.
     if (modelData.layout) {
       projectStore.updateGraphLayout(
         projectStore.currentProjectId,
@@ -175,6 +176,14 @@ export function useEditorActions(
         modelData.layout
       )
     }
+    graphStore.setGraphLanguage(newGraphMeta.id, modelData.language)
+
+    // A document may ask for a layout; one with no positions at all gets dagre,
+    // since a pile of nodes at the origin is never what its author meant.
+    const elements = (modelData.elements ?? modelData.graphJSON ?? []) as GraphElement[]
+    const positioned = elements.some((el) => el.type === 'node' && el.position !== undefined)
+    const autoLayout = modelData.autoLayout ?? (positioned ? undefined : 'dagre')
+    if (autoLayout) graphStore.setPendingLayout(newGraphMeta.id, autoLayout)
 
     if (sourceKey && sourceMap) {
       sourceMap.set(sourceKey, newGraphMeta.id)
