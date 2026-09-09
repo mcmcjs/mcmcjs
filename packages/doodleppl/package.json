@@ -48,6 +48,11 @@
       "import": "./dist/codegen/stan.js",
       "require": "./dist/codegen/stan.cjs"
     },
+    "./notebook": {
+      "types": "./dist/codegen/notebook.d.ts",
+      "import": "./dist/codegen/notebook.js",
+      "require": "./dist/codegen/notebook.cjs"
+    },
     "./graph.schema.json": "./dist/graph.schema.json"
   },
   "files": [

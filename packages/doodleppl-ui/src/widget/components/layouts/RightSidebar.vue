@@ -3,10 +3,12 @@ import { type StyleValue } from 'vue'
 import { storeToRefs } from 'pinia'
 import Tooltip from 'primevue/tooltip'
 import NodePropertiesPanel from '../right-sidebar/NodePropertiesPanel.vue'
-import LocalScriptPanel from '../right-sidebar/LocalScriptPanel.vue'
+import RunPanel from '../right-sidebar/RunPanel.vue'
 import BaseButton from '../ui/BaseButton.vue'
 import { useUiStore } from '../../stores/uiStore'
 import type { GraphElement, ValidationError } from '../../types'
+import type { CodeLanguage } from '../panels/CodePreviewPanel.vue'
+import type { Artifact } from '../../composables/useModelArtifacts'
 
 const props = defineProps<{
   selectedElement: GraphElement | null
@@ -15,6 +17,10 @@ const props = defineProps<{
   enableDrag?: boolean
   isFullScreen?: boolean
   showFullscreenToggle?: boolean
+  /** The backend every tab speaks about, shared with the floating code panel. */
+  language: CodeLanguage
+  graphJson: string
+  fileGroups: { title: string; files: Artifact[] }[]
 }>()
 
 const emit = defineEmits<{
@@ -22,16 +28,11 @@ const emit = defineEmits<{
   (e: 'update-element', element: GraphElement): void
   (e: 'delete-element', elementId: string): void
   (e: 'show-validation-issues'): void
-  (e: 'open-script-settings'): void
-  (e: 'download-script'): void
-  (e: 'download-stan'): void
-  (e: 'download-stan-script'): void
-  (e: 'download-stan-data'): void
-  (e: 'download-stan-inits'): void
-  (e: 'generate-script'): void
+  (e: 'update:language', language: CodeLanguage): void
+  (e: 'download', artifact: Artifact): void
+  (e: 'download-notebook'): void
   (e: 'share'): void
   (e: 'open-export-modal', format: 'png' | 'jpg' | 'svg'): void
-  (e: 'export-json'): void
   (e: 'header-drag-start', event: MouseEvent | TouchEvent): void
   (e: 'toggle-fullscreen'): void
 }>()
@@ -172,10 +173,10 @@ const handleHeaderClick = () => {
         Props
       </button>
       <button
-        :class="{ 'db-active': activeRightTab === 'script' }"
-        @click="uiStore.setActiveRightTab('script')"
+        :class="{ 'db-active': activeRightTab === 'run' }"
+        @click="uiStore.setActiveRightTab('run')"
       >
-        Script
+        Run
       </button>
       <button
         :class="{ 'db-active': activeRightTab === 'export' }"
@@ -194,45 +195,41 @@ const handleHeaderClick = () => {
         @delete-element="$emit('delete-element', $event)"
       />
 
-      <LocalScriptPanel
-        v-show="activeRightTab === 'script'"
-        :is-active="activeRightTab === 'script'"
-        @open-settings="$emit('open-script-settings')"
-        @download="$emit('download-script')"
-        @download-stan-script="$emit('download-stan-script')"
-        @download-stan-data="$emit('download-stan-data')"
-        @download-stan-inits="$emit('download-stan-inits')"
-        @generate="$emit('generate-script')"
+      <RunPanel
+        v-show="activeRightTab === 'run'"
+        :target="language === 'stan' ? 'stan' : 'juliabugs'"
+        :graph-json="graphJson"
+        @update:target="$emit('update:language', $event === 'stan' ? 'stan' : 'bugs')"
+        @download-notebook="$emit('download-notebook')"
       />
 
       <div v-show="activeRightTab === 'export'" class="db-export-panel">
         <div class="db-menu-panel flex-col gap-3">
-          <h5 class="db-section-title">Image Export</h5>
+          <h5 class="db-section-title">Image</h5>
           <BaseButton type="ghost" class="db-menu-btn" @click="$emit('open-export-modal', 'png')"
-            ><i class="fas fa-image"></i> PNG Image</BaseButton
+            ><i class="fas fa-image"></i> PNG</BaseButton
           >
           <BaseButton type="ghost" class="db-menu-btn" @click="$emit('open-export-modal', 'jpg')"
-            ><i class="fas fa-file-image"></i> JPG Image</BaseButton
+            ><i class="fas fa-image"></i> JPG</BaseButton
           >
           <BaseButton type="ghost" class="db-menu-btn" @click="$emit('open-export-modal', 'svg')"
-            ><i class="fas fa-draw-polygon"></i> SVG Vector</BaseButton
+            ><i class="fas fa-draw-polygon"></i> SVG</BaseButton
           >
 
           <div class="db-divider"></div>
 
-          <h5 class="db-section-title">Model Export</h5>
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('export-json')"
-            ><i class="fas fa-file-code"></i>Export Graph, Data & Inits as JSON</BaseButton
-          >
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download-stan')"
-            ><i class="fas fa-file-alt"></i>Download Stan Model (.stan)</BaseButton
-          >
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download-stan-data')"
-            ><i class="fas fa-database"></i>Download Stan Data (data.json)</BaseButton
-          >
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download-stan-inits')"
-            ><i class="fas fa-play-circle"></i>Download Stan Inits (inits.json)</BaseButton
-          >
+          <template v-for="group in fileGroups" :key="group.title">
+            <h5 class="db-section-title">{{ group.title }}</h5>
+            <BaseButton
+              v-for="file in group.files"
+              :key="file.filename"
+              type="ghost"
+              class="db-menu-btn db-file-btn"
+              @click="$emit('download', file)"
+            >
+              {{ file.filename }}
+            </BaseButton>
+          </template>
         </div>
       </div>
     </div>
@@ -240,6 +237,26 @@ const handleHeaderClick = () => {
 </template>
 
 <style scoped>
+/* Rows sit tight under their heading, so a group reads as one block. */
+.db-export-panel .db-menu-panel {
+  gap: 0 !important;
+}
+.db-export-panel .db-section-title {
+  margin: 16px 0 4px 4px;
+}
+.db-export-panel .db-section-title:first-child {
+  margin-top: 0;
+}
+.db-export-panel .db-file-btn {
+  text-align: left;
+  /* Beats the 10px on .db-menu-btn, which is !important and declared later. */
+  padding: 6px 8px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--theme-text-secondary);
+  overflow-wrap: anywhere;
+}
+
 .db-floating-sidebar {
   position: absolute;
   top: 16px;

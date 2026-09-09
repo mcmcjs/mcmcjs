@@ -5,7 +5,6 @@ import { useProjectStore } from '../stores/projectStore'
 import { useGraphStore } from '../stores/graphStore'
 import { useUiStore } from '../stores/uiStore'
 import { useDataStore } from '../stores/dataStore'
-import { useScriptStore } from '../stores/scriptStore'
 import { shareBaseUrl, useShareExport } from './useShareExport'
 import { useImportExport } from './useImportExport'
 import { usePersistence } from './usePersistence'
@@ -25,17 +24,11 @@ const RESPONSIVE_BREAKPOINT = 768
 const NODE_FOCUS_PADDING = 50
 const NODE_FOCUS_DURATION = 500
 
-export function useEditorActions(
-  elements: Ref<GraphElement[]>,
-  generatedCode: Ref<string>,
-  persistencePrefix?: string,
-  stanCode?: Ref<string>
-) {
+export function useEditorActions(elements: Ref<GraphElement[]>, persistencePrefix?: string) {
   const projectStore = useProjectStore()
   const graphStore = useGraphStore()
   const uiStore = useUiStore()
   const dataStore = useDataStore()
-  const scriptStore = useScriptStore()
   const toast = useToast()
 
   const {
@@ -53,19 +46,10 @@ export function useEditorActions(
   const {
     showExportModal,
     currentExportType,
-    getScriptContent,
-    getStanScriptContent,
-    handleDownloadBugs,
-    handleDownloadStan,
-    handleDownloadScript,
-    handleGenerateStanScript,
-    handleDownloadStanScript,
-    handleDownloadStanData,
-    handleDownloadStanInits,
+    downloadArtifact,
     openExportModal,
     handleConfirmExport,
-    handleExportJson,
-  } = useFileExport(generatedCode, stanCode)
+  } = useFileExport()
 
   const { shareUrl, minifyGraph, expandGraph, generateShareLink, decodeAndDecompress } =
     useShareExport()
@@ -83,7 +67,6 @@ export function useEditorActions(
   const showAboutModal = ref(false)
   const showFaqModal = ref(false)
   const showValidationModal = ref(false)
-  const showScriptSettingsModal = ref(false)
   const showStyleModal = ref(false)
   const showShareModal = ref(false)
   const graphImportInput = ref<HTMLInputElement | null>(null)
@@ -232,13 +215,6 @@ export function useEditorActions(
       })
       throw error
     }
-  }
-
-  const handleGenerateStandalone = () => {
-    scriptStore.standaloneScript = getScriptContent()
-    scriptStore.standaloneStanScript = getStanScriptContent()
-    uiStore.setActiveRightTab('script')
-    uiStore.isRightSidebarOpen = true
   }
 
   const handleElementSelected = (element: GraphElement | null, isEditMode = true) => {
@@ -497,7 +473,6 @@ export function useEditorActions(
     showAboutModal,
     showFaqModal,
     showValidationModal,
-    showScriptSettingsModal,
     showExportModal,
     showStyleModal,
     showShareModal,
@@ -524,18 +499,9 @@ export function useEditorActions(
     handleGraphLayout,
     loadModelData,
     handleLoadExample,
-    getScriptContent,
-    handleGenerateStandalone,
-    handleDownloadBugs,
-    handleDownloadStan,
-    handleDownloadScript,
-    handleGenerateStanScript,
-    handleDownloadStanScript,
-    handleDownloadStanData,
-    handleDownloadStanInits,
+    downloadArtifact,
     openExportModal,
     handleConfirmExport,
-    handleExportJson,
     handleElementSelected,
     handleSelectNodeFromModal,
     handleShare,
