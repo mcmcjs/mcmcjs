@@ -103,13 +103,20 @@ export function generateNotebook(input: NotebookInput): string {
     markdown(
       "## The graph\n\n" +
         "The model as it was drawn, with its data and initial values. Everything below is " +
-        "derived from this one document, so editing it here changes the whole notebook.",
+        "derived from this one document.\n\n" +
+        "**To run your own model instead:** in the editor's Run tab press **Copy graph**, then " +
+        "replace the JSON below with what you copied. Nothing else in the notebook changes.",
     ),
     code(
-      `graph = r${pyBlock(JSON.stringify(input.graph, null, 2))}\n` +
+      "# Replace this with your own graph: editor -> Run tab -> Copy graph.\n" +
+        `graph = r${pyBlock(JSON.stringify(input.graph, null, 2))}\n` +
         "\n" +
         'with open("model.json", "w") as f:\n' +
-        "    f.write(graph)",
+        "    f.write(graph)\n" +
+        "\n" +
+        "import json\n" +
+        "\n" +
+        'print(json.loads(graph).get("name", "model"), "written to model.json")',
     ),
 
     markdown(

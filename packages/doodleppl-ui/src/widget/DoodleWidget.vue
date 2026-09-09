@@ -394,6 +394,7 @@ const modelTarget = computed<ModelTarget>(() =>
   codePanelLanguage.value === 'stan' ? 'stan' : 'juliabugs'
 )
 const {
+  graphDocument,
   notebook,
   modelArtifact,
   scriptArtifact,
@@ -401,6 +402,10 @@ const {
   dataArtifact,
   initsArtifact,
 } = useModelArtifacts(generatedBugsCode, generatedStanCode)
+
+// What the Run tab's Copy graph button puts on the clipboard: the same JSON the
+// notebook's first cell holds, so pasting it over that cell just works.
+const graphJsonForNotebook = computed(() => JSON.stringify(graphDocument.value, null, 2))
 
 const handleCodeDownload = () => downloadArtifact(modelArtifact(modelTarget.value))
 const handleDownloadNotebook = () => downloadArtifact(notebookArtifact(modelTarget.value))
@@ -1370,6 +1375,7 @@ watch(showNewGraphModal, (val) => {
             @show-validation-issues="showValidationModal = true"
             :language="codePanelLanguage"
             :notebook="notebook(modelTarget)"
+            :graph-json="graphJsonForNotebook"
             :model-artifact="modelArtifact(modelTarget)"
             :script-artifact="scriptArtifact(modelTarget)"
             :data-artifact="dataArtifact()"

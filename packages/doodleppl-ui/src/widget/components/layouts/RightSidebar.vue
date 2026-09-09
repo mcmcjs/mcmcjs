@@ -21,6 +21,7 @@ const props = defineProps<{
   /** The backend every tab speaks about, shared with the floating code panel. */
   language: CodeLanguage
   notebook: string
+  graphJson: string
   modelArtifact: Artifact
   scriptArtifact: Artifact
   dataArtifact: Artifact
@@ -228,6 +229,7 @@ const handleHeaderClick = () => {
         v-show="activeRightTab === 'run'"
         :target="language === 'stan' ? 'stan' : 'juliabugs'"
         :notebook="notebook"
+        :graph-json="graphJson"
         :script="scriptArtifact"
         @download="$emit('download', $event)"
         @download-notebook="$emit('download-notebook')"

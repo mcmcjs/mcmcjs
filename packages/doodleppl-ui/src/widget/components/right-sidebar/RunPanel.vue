@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { colabUrl } from '@mcmcjs/doodleppl/notebook'
 import { useScriptStore } from '../../stores/scriptStore'
@@ -13,6 +13,8 @@ const props = defineProps<{
   notebook: string
   /** The runnable script behind it, offered as a plain file too. */
   script: Artifact
+  /** The graph document, for pasting into a notebook opened in Colab. */
+  graphJson: string
 }>()
 
 // The ref the build came from, so the Colab links point at a branch that
@@ -27,6 +29,47 @@ const emit = defineEmits<{
 
 const scriptStore = useScriptStore()
 const { samplerSettings } = storeToRefs(scriptStore)
+
+const copied = ref(false)
+const copyFailed = ref(false)
+
+/**
+ * The clipboard API needs a focused document and a secure context, and is
+ * refused outright in some embeddings, so a hidden textarea is the fallback.
+ * A failure has to show: the paste route is useless if the copy quietly did
+ * not happen.
+ */
+const copyGraph = async () => {
+  const done = (ok: boolean) => {
+    copied.value = ok
+    copyFailed.value = !ok
+    setTimeout(() => {
+      copied.value = false
+      copyFailed.value = false
+    }, 2000)
+  }
+  try {
+    await navigator.clipboard.writeText(props.graphJson)
+    done(true)
+    return
+  } catch {
+    // Fall through to the textarea.
+  }
+  const area = document.createElement('textarea')
+  area.value = props.graphJson
+  area.style.position = 'fixed'
+  area.style.opacity = '0'
+  document.body.appendChild(area)
+  area.focus()
+  area.select()
+  try {
+    done(document.execCommand('copy'))
+  } catch {
+    done(false)
+  } finally {
+    document.body.removeChild(area)
+  }
+}
 
 interface PreviewCell {
   kind: 'markdown' | 'code'
@@ -79,11 +122,22 @@ const runtimeNote = computed(() =>
       >
         <i class="fas fa-external-link-alt"></i> {{ example.label }}
       </a>
+      <button type="button" class="db-run-colab" @click="copyGraph">
+        <i
+          :class="
+            copied ? 'fas fa-check' : copyFailed ? 'fas fa-exclamation-triangle' : 'fas fa-copy'
+          "
+        ></i>
+        {{ copied ? 'Graph copied' : copyFailed ? 'Copy failed, use Download' : 'Copy graph' }}
+      </button>
       <p class="db-run-note">
         The notebook runs the whole workflow with the <code>mcmc</code> CLI: fit, convergence
-        checks, plots, and a run bundle for the report app. Colab can only open notebooks from
-        GitHub, so these open a ready-made example; download yours and upload it to run your own
-        model.
+        checks, plots, and a run bundle for the report app.
+      </p>
+      <p class="db-run-note">
+        Colab only opens notebooks from GitHub, never from this page, so there are two ways to run
+        <em>this</em> graph there. Download the notebook and upload it to Colab, or open one above
+        and paste your graph into its first cell.
       </p>
       <p class="db-run-note">{{ runtimeNote }}</p>
     </div>
