@@ -1,21 +1,17 @@
 import { ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useGraphStore } from '../stores/graphStore'
-import { useProjectStore } from '../stores/projectStore'
-import { useDataStore } from '../stores/dataStore'
 import { useGraphInstance } from './useGraphInstance'
 import type { Artifact } from './useModelArtifacts'
 import { downloadBlob } from '../utils/downloadBlob'
 
 /**
- * Saving things to disk: images of the canvas, the graph document, and whatever
- * artifact a panel hands over. The artifacts themselves are derived in
- * `useModelArtifacts`, so nothing is generated or cached here.
+ * Saving things to disk: pictures of the canvas, and whatever artifact a panel
+ * hands over. The artifacts are derived in `useModelArtifacts`, so nothing is
+ * generated or cached here.
  */
 export function useFileExport() {
   const graphStore = useGraphStore()
-  const projectStore = useProjectStore()
-  const dataStore = useDataStore()
   const toast = useToast()
   const { getCyInstance } = useGraphInstance()
 
@@ -66,28 +62,11 @@ export function useFileExport() {
     }
   }
 
-  const handleExportJson = () => {
-    if (!graphStore.currentGraphId || !projectStore.currentProject) return
-    const graphMeta = projectStore.currentProject.graphs.find(
-      (g) => g.id === graphStore.currentGraphId
-    )
-    if (!graphMeta) return
-    const exportData = {
-      name: graphMeta.name,
-      elements: graphStore.currentGraphElements,
-      dataContent: dataStore.dataContent,
-      version: 1,
-    }
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
-    downloadBlob(blob, `${graphMeta.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`)
-  }
-
   return {
     showExportModal,
     currentExportType,
     downloadArtifact,
     openExportModal,
     handleConfirmExport,
-    handleExportJson,
   }
 }

@@ -369,7 +369,6 @@ const {
   downloadArtifact,
   openExportModal,
   handleConfirmExport,
-  handleExportJson,
   handleElementSelected,
   handleSelectNodeFromModal,
   handleShare,
@@ -394,23 +393,14 @@ const codePanelTitle = computed(() =>
 const modelTarget = computed<ModelTarget>(() =>
   codePanelLanguage.value === 'stan' ? 'stan' : 'juliabugs'
 )
-const {
-  graphDocument,
-  modelArtifact,
-  scriptArtifact,
-  notebookArtifact,
-  dataArtifact,
-  initsArtifact,
-} = useModelArtifacts(generatedBugsCode, generatedStanCode)
+const { graphDocument, exportFiles, modelArtifact, notebookArtifact } = useModelArtifacts(
+  generatedBugsCode,
+  generatedStanCode
+)
 
 // What the Run tab's Copy graph button puts on the clipboard: encoded exactly
 // as the notebook's paste slot needs, so pasting it in just works.
 const graphJsonForNotebook = computed(() => graphJsonForPython(graphDocument.value))
-
-// Matches the name handleExportJson writes, so the Export tab can show it.
-const graphArtifactName = computed(
-  () => `${(graphDocument.value.name || 'model').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`
-)
 
 // The Run tab talks about the model without showing it, so the code panel
 // comes along when that tab is opened.
@@ -1389,17 +1379,12 @@ watch(showNewGraphModal, (val) => {
             @show-validation-issues="showValidationModal = true"
             :language="codePanelLanguage"
             :graph-json="graphJsonForNotebook"
-            :graph-artifact-name="graphArtifactName"
-            :model-artifact="modelArtifact(modelTarget)"
-            :script-artifact="scriptArtifact(modelTarget)"
-            :data-artifact="dataArtifact()"
-            :inits-artifact="initsArtifact()"
+            :files="exportFiles"
             @update:language="codePanelLanguage = $event"
             @download="downloadArtifact"
             @download-notebook="handleDownloadNotebook"
             @share="handleShare"
             @open-export-modal="openExportModal"
-            @export-json="handleExportJson"
             @toggle-fullscreen="toggleFullScreen"
           />
         </div>

@@ -129,6 +129,37 @@ export function useModelArtifacts(bugsCode: Ref<string>, stanCode: Ref<string>) 
     mime: 'application/json',
   })
 
+  /** A filename from the model's name: `Rats: A Model` -> `rats_a_model.json`. */
+  const slug = computed(
+    () =>
+      modelName.value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'model'
+  )
+
+  /** The whole graph, which is what the editor reopens and `mcmc` reads. */
+  const graphArtifact = (): Artifact => ({
+    filename: `${slug.value}.json`,
+    content: JSON.stringify(graphDocument.value, null, 2),
+    mime: 'application/json',
+  })
+
+  /**
+   * Every file the Export tab offers, named for what it is. The list covers
+   * both backends rather than following the Run tab's selection, because a
+   * download list that changes with a control on another tab cannot be read.
+   */
+  const exportFiles = computed<{ label: string; artifact: Artifact }[]>(() => [
+    { label: 'Graph, data and initial values', artifact: graphArtifact() },
+    { label: 'BUGS model', artifact: modelArtifact('juliabugs') },
+    { label: 'JuliaBUGS script', artifact: scriptArtifact('juliabugs') },
+    { label: 'Stan model', artifact: modelArtifact('stan') },
+    { label: 'Stan script', artifact: scriptArtifact('stan') },
+    { label: 'Stan data', artifact: dataArtifact() },
+    { label: 'Stan initial values', artifact: initsArtifact() },
+  ])
+
   return {
     modelName,
     graphDocument,
@@ -137,6 +168,8 @@ export function useModelArtifacts(bugsCode: Ref<string>, stanCode: Ref<string>) 
     stanDataJson,
     stanInitsJson,
     notebook,
+    exportFiles,
+    graphArtifact,
     modelArtifact,
     scriptArtifact,
     notebookArtifact,

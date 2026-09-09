@@ -20,11 +20,7 @@ const props = defineProps<{
   /** The backend every tab speaks about, shared with the floating code panel. */
   language: CodeLanguage
   graphJson: string
-  graphArtifactName: string
-  modelArtifact: Artifact
-  scriptArtifact: Artifact
-  dataArtifact: Artifact
-  initsArtifact: Artifact
+  files: { label: string; artifact: Artifact }[]
 }>()
 
 const emit = defineEmits<{
@@ -37,7 +33,6 @@ const emit = defineEmits<{
   (e: 'download-notebook'): void
   (e: 'share'): void
   (e: 'open-export-modal', format: 'png' | 'jpg' | 'svg'): void
-  (e: 'export-json'): void
   (e: 'header-drag-start', event: MouseEvent | TouchEvent): void
   (e: 'toggle-fullscreen'): void
 }>()
@@ -224,30 +219,15 @@ const handleHeaderClick = () => {
           <div class="db-divider"></div>
 
           <h5 class="db-section-title">Files</h5>
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('export-json')">
-            <i class="fas fa-project-diagram"></i>
-            <span class="db-file-label">Graph, data and initial values</span>
-            <span class="db-file-name">{{ graphArtifactName }}</span>
-          </BaseButton>
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', modelArtifact)">
-            <i class="fas fa-file-alt"></i>
-            <span class="db-file-label">Model</span>
-            <span class="db-file-name">{{ modelArtifact.filename }}</span>
-          </BaseButton>
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', scriptArtifact)">
-            <i class="fas fa-scroll"></i>
-            <span class="db-file-label">Script that fits it</span>
-            <span class="db-file-name">{{ scriptArtifact.filename }}</span>
-          </BaseButton>
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', dataArtifact)">
-            <i class="fas fa-database"></i>
-            <span class="db-file-label">Data</span>
-            <span class="db-file-name">{{ dataArtifact.filename }}</span>
-          </BaseButton>
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', initsArtifact)">
-            <i class="fas fa-play-circle"></i>
-            <span class="db-file-label">Initial values</span>
-            <span class="db-file-name">{{ initsArtifact.filename }}</span>
+          <BaseButton
+            v-for="file in files"
+            :key="file.artifact.filename"
+            type="ghost"
+            class="db-menu-btn db-file-btn"
+            @click="$emit('download', file.artifact)"
+          >
+            <span class="db-file-label">{{ file.label }}</span>
+            <span class="db-file-name">{{ file.artifact.filename }}</span>
           </BaseButton>
         </div>
       </div>
@@ -256,16 +236,22 @@ const handleHeaderClick = () => {
 </template>
 
 <style scoped>
-.db-file-label {
-  flex: 1;
+.db-file-btn {
+  /* Label over filename, so a long name wraps instead of squeezing the label. */
+  flex-direction: column;
+  align-items: flex-start !important;
+  gap: 2px !important;
+}
+.db-file-label,
+.db-file-name {
   text-align: left;
 }
 .db-file-name {
   font-size: 0.72rem;
-  color: var(--db-text-muted, #777);
+  color: var(--theme-text-secondary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
 }
-
 
 .db-floating-sidebar {
   position: absolute;
