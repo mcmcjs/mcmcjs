@@ -1,11 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { storeToRefs } from 'pinia'
 import { colabUrl } from '@mcmcjs/doodleppl/notebook'
-import { useScriptStore } from '../../stores/scriptStore'
 import type { ModelTarget } from '../../composables/useModelArtifacts'
 import BaseButton from '../ui/BaseButton.vue'
-import BaseInput from '../ui/BaseInput.vue'
 
 const props = defineProps<{
   /** The backend every generated file targets, shared with the code panel. */
@@ -23,9 +20,6 @@ const emit = defineEmits<{
 // carries notebooks/: a PR preview at its own branch, a release at main.
 declare const __DOODLEPPL_REF__: string
 const buildRef = typeof __DOODLEPPL_REF__ === 'string' ? __DOODLEPPL_REF__ : 'main'
-
-const scriptStore = useScriptStore()
-const { samplerSettings } = storeToRefs(scriptStore)
 
 const backends: { id: ModelTarget; label: string }[] = [
   { id: 'juliabugs', label: 'JuliaBUGS' },
@@ -103,24 +97,10 @@ const runtimeNote = computed(() =>
     </div>
 
     <div class="db-run-block">
-      <h5 class="db-run-title">Sampler</h5>
-      <div class="db-run-grid">
-        <label for="db-run-samples">Samples</label>
-        <BaseInput id="db-run-samples" type="number" v-model.number="samplerSettings.n_samples" />
-        <label for="db-run-adapts">Adaptation</label>
-        <BaseInput id="db-run-adapts" type="number" v-model.number="samplerSettings.n_adapts" />
-        <label for="db-run-chains">Chains</label>
-        <BaseInput id="db-run-chains" type="number" v-model.number="samplerSettings.n_chains" />
-        <label for="db-run-seed">Seed</label>
-        <BaseInput id="db-run-seed" type="number" v-model.number="samplerSettings.seed" />
-      </div>
-    </div>
-
-    <div class="db-run-block">
       <h5 class="db-run-title">Run it in a notebook</h5>
       <p class="db-run-note">
         Fits the model, checks convergence, draws the posterior and packages the run for the report
-        app.
+        app. Chains, draws and the seed are set in the notebook.
       </p>
       <BaseButton type="primary" class="db-run-btn" @click="emit('download-notebook')">
         <i class="fas fa-download"></i> Download notebook (.ipynb)

@@ -407,6 +407,20 @@ const {
 // as the notebook's paste slot needs, so pasting it in just works.
 const graphJsonForNotebook = computed(() => graphJsonForPython(graphDocument.value))
 
+// Matches the name handleExportJson writes, so the Export tab can show it.
+const graphArtifactName = computed(
+  () => `${(graphDocument.value.name || 'model').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`
+)
+
+// The Run tab talks about the model without showing it, so the code panel
+// comes along when that tab is opened.
+watch(
+  () => uiStore.activeRightTab,
+  (tab) => {
+    if (tab === 'run' && !isCodePanelOpen.value) toggleCodePanel()
+  }
+)
+
 const handleCodeDownload = () => downloadArtifact(modelArtifact(modelTarget.value))
 const handleDownloadNotebook = () => downloadArtifact(notebookArtifact(modelTarget.value))
 
@@ -1375,6 +1389,7 @@ watch(showNewGraphModal, (val) => {
             @show-validation-issues="showValidationModal = true"
             :language="codePanelLanguage"
             :graph-json="graphJsonForNotebook"
+            :graph-artifact-name="graphArtifactName"
             :model-artifact="modelArtifact(modelTarget)"
             :script-artifact="scriptArtifact(modelTarget)"
             :data-artifact="dataArtifact()"

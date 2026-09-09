@@ -110,23 +110,10 @@ describe("generateNotebook", () => {
     expect(sourceOf(parse(input()))).not.toContain("--stan");
   });
 
-  it("passes the sampler settings to the run", () => {
-    const text = sourceOf(parse(input()));
-    expect(text).toContain("--chains 2");
-    expect(text).toContain("--draws 500");
-    expect(text).toContain("--warmup 250");
-    expect(text).toContain("--seed 42");
-  });
-
-  it("omits the seed when there is none, rather than writing null", () => {
-    const text = sourceOf(parse(input({ settings: { n_samples: 10, n_adapts: 5, n_chains: 1 } })));
-    expect(text).not.toContain("--seed");
-  });
-
   // The embedded graph is a Python raw string, so what Python reads back must
   // be byte-for-byte the JSON that went in. Getting this wrong is silent in the
   // notebook file and only fails when a cell runs, so it is checked directly.
-  const embedded = (text: string, name: "graph" | "EXAMPLE") => {
+  const embedded = (text: string, name: "GRAPH") => {
     const quote = "'".repeat(3);
     const start = text.indexOf(`${name} = r${quote}\n`);
     expect(start, `${name} raw block`).toBeGreaterThanOrEqual(0);
@@ -136,7 +123,7 @@ describe("generateNotebook", () => {
 
   it("the embedded graph parses back as the graph that went in", () => {
     const text = sourceOf(parse(input()));
-    expect(JSON.parse(embedded(text, "graph"))).toEqual(JSON.parse(JSON.stringify(GRAPH)));
+    expect(JSON.parse(embedded(text, "GRAPH"))).toEqual(JSON.parse(JSON.stringify(GRAPH)));
   });
 
   it("a graph carrying quotes, newlines and backslashes survives the round trip", () => {
@@ -149,18 +136,13 @@ describe("generateNotebook", () => {
       dataContent: JSON.stringify({ data: { note: 'a \\ backslash, a "quote", a\nnewline' } }),
     };
     const text = sourceOf(parse(input({ graph })));
-    expect(text).not.toContain(`r${quote}\n{\n  "name": "odd ${quote}`);
-    const back = JSON.parse(embedded(text, "graph")) as UnifiedModelData;
+    expect(text).not.toContain(`"name": "odd ${quote}`);
+    const back = JSON.parse(embedded(text, "GRAPH")) as UnifiedModelData;
     expect(back.name).toBe(graph.name);
     // The inner JSON is still parseable, which is what the notebook relies on.
     expect(JSON.parse(back.dataContent as string)).toEqual({
       data: { note: 'a \\ backslash, a "quote", a\nnewline' },
     });
-  });
-
-  it("a template's example graph parses back too", () => {
-    const text = sourceOf(parse(input({ graph: undefined, exampleGraph: GRAPH })));
-    expect(JSON.parse(embedded(text, "EXAMPLE"))).toEqual(JSON.parse(JSON.stringify(GRAPH)));
   });
 
   it("graphJsonForPython emits JSON with no single quote to close a raw block", () => {
@@ -173,13 +155,34 @@ describe("generateNotebook", () => {
     expect(() => generateNotebook(input({ graph: { name: "empty", elements: [] } }))).not.toThrow();
   });
 
-  it("a template has a paste slot and an example to fall back on", () => {
+  it("a template is an empty paste slot that refuses to run empty", () => {
     const quote = "'".repeat(3);
-    const text = sourceOf(parse(input({ graph: undefined, exampleGraph: GRAPH })));
-    expect(text).toContain(`PASTED = r${quote}`);
-    expect(text).toContain("graph = PASTED.strip() or EXAMPLE");
-    // A template is not about one model, so its title does not claim one.
+    const text = sourceOf(parse(input({ graph: undefined })));
+    expect(text).toContain(`GRAPH = r${quote}\n\n${quote}`);
+    expect(text).toContain("Paste your graph above");
+    // A template carries no model of its own, and does not claim one.
     expect(text).not.toContain("# Rats: growth");
+    expect(text).not.toContain("nodeType");
+  });
+
+  it("the settings the notebook opens with drive the run", () => {
+    const text = sourceOf(parse(input()));
+    expect(text).toContain("CHAINS = 2");
+    expect(text).toContain("DRAWS = 500");
+    expect(text).toContain("WARMUP = 250");
+    expect(text).toContain("SEED = 42");
+    // The run reads the variables rather than baking the numbers in again.
+    expect(text).toContain(
+      "!mcmc run model.toml --chains {CHAINS} --draws {DRAWS} --warmup {WARMUP}{seed_flag}",
+    );
+  });
+
+  it("no seed becomes None, which the run turns into no flag", () => {
+    const text = sourceOf(
+      parse(input({ settings: { n_samples: 10, n_adapts: 5, n_chains: 1, seed: null } })),
+    );
+    expect(text).toContain("SEED = None");
+    expect(text).toContain('f" --seed {SEED}" if SEED is not None else ""');
   });
 });
 

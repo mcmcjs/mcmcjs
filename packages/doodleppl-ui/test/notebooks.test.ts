@@ -33,12 +33,14 @@ describe("the notebooks the Colab links open", () => {
       expect(nb.nbformat).toBe(4);
       expect(nb.cells.length).toBeGreaterThan(3);
       const text = nb.cells.map((c) => c.source.join("")).join("\n");
-      // A paste slot, a fallback so it runs unpasted, and the CLI workflow.
-      expect(text).toContain("PASTED = r");
-      expect(text).toContain("EXAMPLE = r");
-      expect(text).toContain("graph = PASTED.strip() or EXAMPLE");
+      // An empty paste slot, editable settings, and the CLI workflow.
+      expect(text).toContain("GRAPH = r");
+      expect(text).toContain("Paste your graph above");
+      expect(text).toContain("CHAINS = ");
       expect(text).toContain("https://mcmcjs.github.io/install.sh");
       expect(text).toContain("mcmc run model.toml");
+      // A template carries no model of its own.
+      expect(text).not.toContain("nodeType");
     });
   }
 });

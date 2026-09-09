@@ -20,6 +20,7 @@ const props = defineProps<{
   /** The backend every tab speaks about, shared with the floating code panel. */
   language: CodeLanguage
   graphJson: string
+  graphArtifactName: string
   modelArtifact: Artifact
   scriptArtifact: Artifact
   dataArtifact: Artifact
@@ -209,35 +210,45 @@ const handleHeaderClick = () => {
 
       <div v-show="activeRightTab === 'export'" class="db-export-panel">
         <div class="db-menu-panel flex-col gap-3">
-          <h5 class="db-section-title">Image Export</h5>
+          <h5 class="db-section-title">Picture of the graph</h5>
           <BaseButton type="ghost" class="db-menu-btn" @click="$emit('open-export-modal', 'png')"
-            ><i class="fas fa-image"></i> PNG Image</BaseButton
+            ><i class="fas fa-image"></i> PNG</BaseButton
           >
           <BaseButton type="ghost" class="db-menu-btn" @click="$emit('open-export-modal', 'jpg')"
-            ><i class="fas fa-file-image"></i> JPG Image</BaseButton
+            ><i class="fas fa-image"></i> JPG</BaseButton
           >
           <BaseButton type="ghost" class="db-menu-btn" @click="$emit('open-export-modal', 'svg')"
-            ><i class="fas fa-draw-polygon"></i> SVG Vector</BaseButton
+            ><i class="fas fa-draw-polygon"></i> SVG</BaseButton
           >
 
           <div class="db-divider"></div>
 
-          <h5 class="db-section-title">Model Export</h5>
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('export-json')"
-            ><i class="fas fa-file-code"></i>Export Graph, Data & Inits as JSON</BaseButton
-          >
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', modelArtifact)"
-            ><i class="fas fa-file-alt"></i>Model ({{ modelArtifact.filename }})</BaseButton
-          >
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', scriptArtifact)"
-            ><i class="fas fa-scroll"></i>Run script ({{ scriptArtifact.filename }})</BaseButton
-          >
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', dataArtifact)"
-            ><i class="fas fa-database"></i>Data (data.json)</BaseButton
-          >
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', initsArtifact)"
-            ><i class="fas fa-play-circle"></i>Initial values (inits.json)</BaseButton
-          >
+          <h5 class="db-section-title">Files</h5>
+          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('export-json')">
+            <i class="fas fa-project-diagram"></i>
+            <span class="db-file-label">Graph, data and initial values</span>
+            <span class="db-file-name">{{ graphArtifactName }}</span>
+          </BaseButton>
+          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', modelArtifact)">
+            <i class="fas fa-file-alt"></i>
+            <span class="db-file-label">Model</span>
+            <span class="db-file-name">{{ modelArtifact.filename }}</span>
+          </BaseButton>
+          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', scriptArtifact)">
+            <i class="fas fa-scroll"></i>
+            <span class="db-file-label">Script that fits it</span>
+            <span class="db-file-name">{{ scriptArtifact.filename }}</span>
+          </BaseButton>
+          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', dataArtifact)">
+            <i class="fas fa-database"></i>
+            <span class="db-file-label">Data</span>
+            <span class="db-file-name">{{ dataArtifact.filename }}</span>
+          </BaseButton>
+          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', initsArtifact)">
+            <i class="fas fa-play-circle"></i>
+            <span class="db-file-label">Initial values</span>
+            <span class="db-file-name">{{ initsArtifact.filename }}</span>
+          </BaseButton>
         </div>
       </div>
     </div>
@@ -245,6 +256,16 @@ const handleHeaderClick = () => {
 </template>
 
 <style scoped>
+.db-file-label {
+  flex: 1;
+  text-align: left;
+}
+.db-file-name {
+  font-size: 0.72rem;
+  color: var(--db-text-muted, #777);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 
 .db-floating-sidebar {
   position: absolute;
