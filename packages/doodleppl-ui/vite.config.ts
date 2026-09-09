@@ -40,7 +40,14 @@ export default defineConfig(({ mode }) => {
     // The npm build keeps process.env.NODE_ENV for consumer bundlers to define
     // (the same convention as Vue's esm-bundler builds); a script tag has no
     // bundler, so the IIFE must bake it in.
-    define: cdn ? { "process.env.NODE_ENV": JSON.stringify("production") } : undefined,
+    define: {
+      // The git ref this build came from, so the editor's Colab links point at a
+      // branch that carries notebooks/. CI sets GITHUB_HEAD_REF on a pull request.
+      __DOODLEPPL_REF__: JSON.stringify(
+        process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || "main",
+      ),
+      ...(cdn ? { "process.env.NODE_ENV": JSON.stringify("production") } : {}),
+    },
     build: {
       outDir: "dist",
       emptyOutDir: !cdn,

@@ -30,9 +30,10 @@ describe("the notebooks the Colab links open", () => {
       expect(nb.nbformat).toBe(4);
       expect(nb.cells.length).toBeGreaterThan(3);
       const text = nb.cells.map((c) => c.source.join("")).join("\n");
-      // The real model, not a placeholder.
+      // The real graph, and the CLI workflow rather than a placeholder.
       expect(text).toContain("alpha");
-      expect(text).toContain("%pip install");
+      expect(text).toContain("https://mcmcjs.github.io/install.sh");
+      expect(text).toContain("mcmc run model.toml");
     });
   }
 });

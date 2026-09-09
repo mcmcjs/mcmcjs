@@ -1,18 +1,16 @@
 // A runnable Jupyter notebook for a graph, in the flavour Google Colab opens.
 //
-// Both targets use the Python kernel, because that is the runtime Colab gives
-// you: Stan through cmdstanpy, and JuliaBUGS through juliacall, which installs
-// Julia on first use. The JuliaBUGS notebook writes the same script the Script
-// download produces and includes it, so there is one Julia code path, not two.
+// The notebook's input is the graph document itself, and every step is the
+// mcmc CLI: convert, run, summary, diagnose, plot, export. That is one code
+// path for both backends rather than a hand-written cmdstanpy script beside a
+// hand-written Julia one, and it is the same workflow the CLI gives you
+// locally, so the notebook cannot drift from the tool it demonstrates.
+//
+// Cells run on the Python kernel, which is what Colab provides; the CLI is a
+// self-contained binary, so nothing needs Node.
 
-import type { GraphElement } from "../core/types";
-import { generateStandaloneScript, type StandaloneGeneratorSettings } from "./bugs-script";
-import {
-  type CensoredField,
-  extractCensoredFields,
-  generateStanDataJson,
-  generateStanInitsJson,
-} from "./stan";
+import type { UnifiedModelData } from "../core/types";
+import type { StandaloneGeneratorSettings } from "./bugs-script";
 
 export type NotebookTarget = "juliabugs" | "stan";
 
@@ -20,12 +18,8 @@ export interface NotebookInput {
   target: NotebookTarget;
   /** The graph's name, used for the title and the suggested filename. */
   name: string;
-  /** BUGS model code for `juliabugs`, a Stan program for `stan`. */
-  modelCode: string;
-  data: Record<string, unknown>;
-  inits: Record<string, unknown>;
-  /** Needed by the Stan target to shape its data and inits. */
-  elements?: GraphElement[];
+  /** The graph document the notebook fits: the notebook's only input. */
+  graph: UnifiedModelData;
   settings: StandaloneGeneratorSettings;
 }
 
@@ -57,9 +51,8 @@ const code = (text: string): Cell => ({
   source: lines(text),
 });
 
-/** A Python triple-quoted raw string that cannot be closed early by its content. */
+/** A Python triple-quoted raw string that its own content cannot close early. */
 function pyBlock(text: string): string {
-  // A raw string cannot end in a backslash, and `'''` would close it early.
   return `'''\n${text.replace(/\\/g, "\\\\").replace(/'''/g, "\\'\\'\\'")}\n'''`;
 }
 
@@ -73,106 +66,111 @@ export function notebookFilename(name: string, target: NotebookTarget): string {
   return `${slug}_${target}.ipynb`;
 }
 
-function juliaCells(input: NotebookInput): Cell[] {
-  const script = generateStandaloneScript({
-    modelCode: input.modelCode,
-    data: input.data,
-    inits: input.inits,
-    settings: input.settings,
-  });
-  return [
-    markdown(
-      `# ${input.name}\n\n` +
-        "JuliaBUGS, run from Python through [juliacall](https://juliapy.github.io/PythonCall.jl/).\n\n" +
-        "The first cell installs Julia and the model packages. On a fresh Colab runtime that " +
-        "takes several minutes; it is cached for the rest of the session.",
-    ),
-    code(
-      "%pip install -q juliacall\n" +
-        "\n" +
-        "from juliacall import Main as jl\n" +
-        "\n" +
-        'jl.seval("""\n' +
-        "import Pkg\n" +
-        'Pkg.add(["JuliaBUGS", "AbstractMCMC", "AdvancedHMC", "ADTypes", "Mooncake", "FlexiChains"])\n' +
-        '""")',
-    ),
-    markdown("## The model\n\nThe graph as a JuliaBUGS script: data, inits, model, sampler."),
-    code(
-      `script = r${pyBlock(script)}\n\nwith open("run.jl", "w") as f:\n    f.write(script)\n\nprint(script)`,
-    ),
-    markdown("## Sample\n\nThis runs the script and prints the posterior summary."),
-    code('jl.include("run.jl")'),
-  ];
-}
+const LABEL: Record<NotebookTarget, string> = { juliabugs: "JuliaBUGS", stan: "Stan" };
+const ENGINE: Record<NotebookTarget, string> = { juliabugs: "julia", stan: "stan" };
 
-function stanCells(input: NotebookInput): Cell[] {
-  const censored: CensoredField[] = extractCensoredFields(input.elements ?? []);
-  const dataJson = generateStanDataJson(input.data, censored);
-  const initsJson = generateStanInitsJson(input.inits, input.elements ?? []);
-  const { n_samples, n_adapts, n_chains, seed } = input.settings;
-  return [
-    markdown(
-      `# ${input.name}\n\n` +
-        "Stan, run with [CmdStanPy](https://mc-stan.org/cmdstanpy/).\n\n" +
-        "The first cell installs CmdStan, which compiles a toolchain and takes " +
-        "several minutes on a fresh Colab runtime.",
-    ),
-    code(
-      "%pip install -q cmdstanpy\n" +
-        "\n" +
-        "import cmdstanpy\n" +
-        "cmdstanpy.install_cmdstan(progress=True)",
-    ),
-    markdown("## The model"),
-    code(
-      `model_code = ${pyBlock(input.modelCode)}\n` +
-        "\n" +
-        'with open("model.stan", "w") as f:\n' +
-        "    f.write(model_code)\n" +
-        "\n" +
-        "print(model_code)",
-    ),
-    markdown("## Data and initial values"),
-    code(
-      "import json\n" +
-        "\n" +
-        `data = json.loads(r${pyBlock(dataJson)})\n` +
-        `inits = json.loads(r${pyBlock(initsJson)})\n` +
-        "\n" +
-        'with open("data.json", "w") as f:\n' +
-        "    json.dump(data, f)\n" +
-        'with open("inits.json", "w") as f:\n' +
-        "    json.dump(inits, f)\n" +
-        "\n" +
-        "data",
-    ),
-    markdown("## Sample"),
-    code(
-      'model = cmdstanpy.CmdStanModel(stan_file="model.stan")\n' +
-        "fit = model.sample(\n" +
-        '    data="data.json",\n' +
-        '    inits="inits.json",\n' +
-        `    chains=${n_chains},\n` +
-        `    iter_warmup=${n_adapts},\n` +
-        `    iter_sampling=${n_samples},\n` +
-        (seed === undefined || seed === null ? "" : `    seed=${seed},\n`) +
-        ")",
-    ),
-    markdown("## Results"),
-    code("print(fit.summary())\nprint(fit.diagnose())"),
-  ];
-}
+/** The plots the notebook draws, chosen to cover convergence and shape. */
+const PLOT_KINDS = ["trace", "density", "forest", "rank"];
 
-/** A complete `.ipynb` document, as the JSON text a notebook file holds. */
 export function generateNotebook(input: NotebookInput): string {
-  const cells = input.target === "stan" ? stanCells(input) : juliaCells(input);
+  const { target, name, settings } = input;
+  const label = LABEL[target];
+  const convertFlag = target === "stan" ? " --stan" : "";
+  const seedFlag =
+    settings.seed === undefined || settings.seed === null ? "" : ` --seed ${settings.seed}`;
+
+  const cells: Cell[] = [
+    markdown(
+      `# ${name}\n\n` +
+        `Fitting this model with **${label}**, through the \`mcmc\` command line tool.\n\n` +
+        "Every step below is one command: convert the graph to a model, fit it, check that it " +
+        "converged, draw the posterior, and package the run so it can be opened in the report app. " +
+        "Run the cells in order.",
+    ),
+
+    markdown(
+      "## Install\n\n" +
+        `\`mcmc\` is a self-contained binary. \`mcmc setup\` then installs the ${label} toolchain, ` +
+        "which on a fresh Colab runtime takes several minutes.",
+    ),
+    code(
+      "!curl -fsSL https://mcmcjs.github.io/install.sh | sh\n" +
+        'import os\n\nos.environ["PATH"] = os.path.expanduser("~/.local/bin") + ":" + os.environ["PATH"]\n' +
+        "!mcmc --version",
+    ),
+    code(`!mcmc setup --engine ${ENGINE[target]}`),
+
+    markdown(
+      "## The graph\n\n" +
+        "The model as it was drawn, with its data and initial values. Everything below is " +
+        "derived from this one document, so editing it here changes the whole notebook.",
+    ),
+    code(
+      `graph = r${pyBlock(JSON.stringify(input.graph, null, 2))}\n` +
+        "\n" +
+        'with open("model.json", "w") as f:\n' +
+        "    f.write(graph)",
+    ),
+
+    markdown(
+      `## The ${label} model\n\nWhat the graph becomes as code, plus the spec that runs it.`,
+    ),
+    code(`!mcmc convert model.json${convertFlag}\n!cat model.${target === "stan" ? "stan" : "jl"}`),
+
+    markdown(
+      "## Fit\n\n" +
+        "`mcmc run` does the whole workflow: it samples, checks convergence, and records the run " +
+        "so the later commands can find it.",
+    ),
+    code(
+      "!mcmc run model.toml" +
+        ` --chains ${settings.n_chains}` +
+        ` --draws ${settings.n_samples}` +
+        ` --warmup ${settings.n_adapts}` +
+        seedFlag,
+    ),
+
+    markdown(
+      "## Did it converge?\n\n" +
+        "R-hat near 1 and a healthy effective sample size per parameter. `mcmc diagnose` exits " +
+        "non-zero if it did not, so this is the cell to trust before reading the posterior.",
+    ),
+    code("!mcmc summary\n!mcmc diagnose"),
+
+    markdown(
+      "## Plots\n\n" +
+        "Traces and ranks show the chains mixing; densities and the forest plot show the " +
+        "posterior itself.",
+    ),
+    code(
+      "from IPython.display import SVG, display\n" +
+        "\n" +
+        `for kind in ${JSON.stringify(PLOT_KINDS)}:\n` +
+        "    !mcmc plot --kind {kind} --format svg -o {kind}.svg\n" +
+        "    print(kind)\n" +
+        '    display(SVG(f"{kind}.svg"))',
+    ),
+
+    markdown(
+      "## Open the run in the report app\n\n" +
+        "A run bundle holds the samples, the spec and the diagnostics in one file. Download it, " +
+        "then drop it into [the report app](https://mcmcjs.github.io/report/) to explore every " +
+        "parameter interactively.",
+    ),
+    code(
+      "!mcmc export bundle -o run.mcmcrun.json\n" +
+        "\n" +
+        "from google.colab import files  # skip this line outside Colab\n" +
+        '\nfiles.download("run.mcmcrun.json")',
+    ),
+  ];
+
   const notebook = {
     cells,
     metadata: {
       kernelspec: { display_name: "Python 3", language: "python", name: "python3" },
       language_info: { name: "python" },
-      colab: { provenance: [] },
+      colab: { provenance: [], name },
     },
     nbformat: 4,
     nbformat_minor: 5,
@@ -181,11 +179,10 @@ export function generateNotebook(input: NotebookInput): string {
 }
 
 /**
- * The Colab URL for a notebook committed to GitHub. Colab can only open a
- * notebook from GitHub or Drive, never from an arbitrary URL or from memory,
- * so a graph's own notebook is downloaded and uploaded, while this opens a
- * ready-made one.
+ * The Colab URL for a notebook committed to GitHub. Colab fetches it through
+ * the GitHub API at the ref given, so the ref has to be one that carries the
+ * file: a preview build points at its own branch, a release build at main.
  */
-export function colabUrl(repoPath: string, branch = "main", repo = "mcmcjs/mcmcjs"): string {
-  return `https://colab.research.google.com/github/${repo}/blob/${branch}/${repoPath}`;
+export function colabUrl(repoPath: string, ref = "main", repo = "mcmcjs/mcmcjs"): string {
+  return `https://colab.research.google.com/github/${repo}/blob/${ref}/${repoPath}`;
 }

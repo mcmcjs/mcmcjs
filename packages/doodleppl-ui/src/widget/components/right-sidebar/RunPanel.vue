@@ -15,6 +15,11 @@ const props = defineProps<{
   script: Artifact
 }>()
 
+// The ref the build came from, so the Colab links point at a branch that
+// carries notebooks/: a PR preview at its own branch, a release at main.
+declare const __DOODLEPPL_REF__: string
+const buildRef = typeof __DOODLEPPL_REF__ === 'string' ? __DOODLEPPL_REF__ : 'main'
+
 const emit = defineEmits<{
   (e: 'download', artifact: Artifact): void
   (e: 'download-notebook'): void
@@ -44,18 +49,16 @@ const cells = computed<PreviewCell[]>(() => {
 })
 
 // Colab opens a notebook from GitHub or Drive only, never from this page, so
-// the button opens a ready-made notebook for the same backend and the model's
-// own notebook is downloaded and uploaded.
-const templateUrl = computed(() =>
-  colabUrl(
-    props.target === 'stan' ? 'notebooks/rats_stan.ipynb' : 'notebooks/rats_juliabugs.ipynb'
-  )
-)
+// these open ready-made ones and the model's own notebook is downloaded.
+const examples = [
+  { target: 'juliabugs' as ModelTarget, label: 'JuliaBUGS in Colab', path: 'notebooks/rats_juliabugs.ipynb' },
+  { target: 'stan' as ModelTarget, label: 'Stan in Colab', path: 'notebooks/rats_stan.ipynb' },
+].map((e) => ({ ...e, url: colabUrl(e.path, buildRef) }))
 
 const runtimeNote = computed(() =>
   props.target === 'stan'
-    ? 'Installs CmdStan on first run, which takes a few minutes on a fresh Colab runtime.'
-    : 'Installs Julia through juliacall on first run, which takes a few minutes on a fresh Colab runtime.'
+    ? 'Installs the CLI and CmdStan on the first run, which takes a few minutes on a fresh Colab runtime.'
+    : 'Installs the CLI and Julia on the first run, which takes a few minutes on a fresh Colab runtime.'
 )
 </script>
 
@@ -65,12 +68,22 @@ const runtimeNote = computed(() =>
       <BaseButton type="primary" class="db-run-btn" @click="emit('download-notebook')">
         <i class="fas fa-download"></i> Download notebook (.ipynb)
       </BaseButton>
-      <a class="db-run-colab" :href="templateUrl" target="_blank" rel="noopener noreferrer">
-        <i class="fas fa-external-link-alt"></i> Open an example in Colab
+      <a
+        v-for="example in examples"
+        :key="example.target"
+        class="db-run-colab"
+        :class="{ 'db-run-colab-on': example.target === target }"
+        :href="example.url"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <i class="fas fa-external-link-alt"></i> {{ example.label }}
       </a>
       <p class="db-run-note">
-        Colab can only open notebooks from GitHub or Drive. Download yours and upload it there, or
-        open the example to see the same notebook running.
+        The notebook runs the whole workflow with the <code>mcmc</code> CLI: fit, convergence
+        checks, plots, and a run bundle for the report app. Colab can only open notebooks from
+        GitHub, so these open a ready-made example; download yours and upload it to run your own
+        model.
       </p>
       <p class="db-run-note">{{ runtimeNote }}</p>
     </div>
@@ -139,6 +152,9 @@ const runtimeNote = computed(() =>
 }
 .db-run-colab:hover {
   background: var(--db-hover-bg, #f2f2f2);
+}
+.db-run-colab-on {
+  border-color: var(--db-text-color, #222);
 }
 .db-run-note {
   margin: 0;

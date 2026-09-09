@@ -5,38 +5,40 @@ import {
   type NotebookInput,
   notebookFilename,
 } from "../src/codegen/notebook";
-import type { GraphElement } from "../src/core/types";
+import type { UnifiedModelData } from "../src/core/types";
 
-const ELEMENTS: GraphElement[] = [
-  {
-    id: "mu",
-    name: "mu",
-    type: "node",
-    nodeType: "stochastic",
-    distribution: "dnorm",
-    param1: "0",
-    param2: "0.001",
-  },
-  {
-    id: "y",
-    name: "y",
-    type: "node",
-    nodeType: "observed",
-    observed: true,
-    distribution: "dnorm",
-    param1: "mu",
-    param2: "1",
-  },
-  { id: "e", type: "edge", source: "mu", target: "y" },
-];
+const GRAPH: UnifiedModelData = {
+  name: "Rats: growth",
+  version: 1,
+  elements: [
+    {
+      id: "mu",
+      name: "mu",
+      type: "node",
+      nodeType: "stochastic",
+      distribution: "dnorm",
+      param1: "0",
+      param2: "0.001",
+    },
+    {
+      id: "y",
+      name: "y",
+      type: "node",
+      nodeType: "observed",
+      observed: true,
+      distribution: "dnorm",
+      param1: "mu",
+      param2: "1",
+    },
+    { id: "e", type: "edge", source: "mu", target: "y" },
+  ],
+  dataContent: JSON.stringify({ data: { y: [1, 2, 3] }, inits: { mu: 0 } }),
+};
 
 const input = (over: Partial<NotebookInput> = {}): NotebookInput => ({
   target: "juliabugs",
   name: "Rats: growth",
-  modelCode: "model {\n  y ~ dnorm(mu, 1)\n  mu ~ dnorm(0, 0.001)\n}",
-  data: { y: [1, 2, 3], N: 3 },
-  inits: { mu: 0 },
-  elements: ELEMENTS,
+  graph: GRAPH,
   settings: { n_samples: 500, n_adapts: 250, n_chains: 2, seed: 42 },
   ...over,
 });
@@ -49,21 +51,20 @@ describe("generateNotebook", () => {
   for (const target of ["juliabugs", "stan"] as const) {
     describe(target, () => {
       const nb = parse(input({ target }));
+      const text = sourceOf(nb);
 
       it("is a valid nbformat 4 document on the Python kernel", () => {
         expect(nb.nbformat).toBe(4);
-        expect(nb.metadata.kernelspec.name).toBe("python3");
         // Colab gives a Python runtime; both targets have to work on it.
+        expect(nb.metadata.kernelspec.name).toBe("python3");
         expect(nb.metadata.language_info.name).toBe("python");
-        expect(nb.cells.length).toBeGreaterThan(3);
+        expect(nb.cells.length).toBeGreaterThan(6);
       });
 
       it("every cell has the shape nbformat requires", () => {
         for (const cell of nb.cells) {
           expect(["markdown", "code"]).toContain(cell.cell_type);
-          expect(Array.isArray(cell.source)).toBe(true);
           expect(cell.source.length).toBeGreaterThan(0);
-          // Every line but the last keeps its newline.
           for (const line of cell.source.slice(0, -1)) expect(line.endsWith("\n")).toBe(true);
           expect(cell.source.at(-1)?.endsWith("\n")).toBe(false);
           if (cell.cell_type === "code") {
@@ -73,58 +74,68 @@ describe("generateNotebook", () => {
         }
       });
 
-      it("opens with the model's name and carries the model code", () => {
+      it("opens with the model's name and carries the graph as its input", () => {
         expect(nb.cells[0].cell_type).toBe("markdown");
         expect(nb.cells[0].source.join("")).toContain("Rats: growth");
-        expect(sourceOf(nb)).toContain("dnorm(mu, 1)");
+        // The graph document itself, not pre-generated model code.
+        expect(text).toContain('"nodeType": "stochastic"');
+        expect(text).toContain('with open("model.json", "w")');
       });
 
-      it("installs what it needs and prints a summary", () => {
-        const text = sourceOf(nb);
-        expect(text).toContain("%pip install");
-        expect(text).toMatch(target === "stan" ? /cmdstanpy/ : /juliacall/);
+      it("installs the CLI without needing Node, and the right toolchain", () => {
+        expect(text).toContain("https://mcmcjs.github.io/install.sh");
+        expect(text).toContain(`mcmc setup --engine ${target === "stan" ? "stan" : "julia"}`);
+      });
+
+      it("walks the whole workflow through the CLI", () => {
+        expect(text).toContain("mcmc convert model.json");
+        expect(text).toContain("mcmc run model.toml");
+        expect(text).toContain("mcmc summary");
+        expect(text).toContain("mcmc diagnose");
+        expect(text).toContain("mcmc plot --kind");
+        expect(text).toContain("mcmc export bundle");
+      });
+
+      it("draws plots inline and links the report app", () => {
+        expect(text).toContain("from IPython.display import SVG, display");
+        for (const kind of ["trace", "density", "forest", "rank"]) expect(text).toContain(kind);
+        expect(text).toContain("https://mcmcjs.github.io/report/");
       });
     });
   }
 
-  it("the JuliaBUGS notebook runs the same script the download produces", () => {
-    const text = sourceOf(parse(input()));
-    // The script is written to a file and included, so there is one Julia path.
-    expect(text).toContain("using JuliaBUGS");
-    expect(text).toContain('with open("run.jl", "w")');
-    expect(text).toContain('jl.include("run.jl")');
+  it("converts to Stan only for the Stan target", () => {
+    expect(sourceOf(parse(input({ target: "stan" })))).toContain("mcmc convert model.json --stan");
+    expect(sourceOf(parse(input()))).not.toContain("--stan");
   });
 
-  it("the Stan notebook carries data, inits and the sampler settings", () => {
-    const text = sourceOf(parse(input({ target: "stan", modelCode: "parameters { real mu; }" })));
-    expect(text).toContain("cmdstanpy.CmdStanModel");
-    expect(text).toContain("iter_sampling=500");
-    expect(text).toContain("iter_warmup=250");
-    expect(text).toContain("chains=2");
-    expect(text).toContain("seed=42");
+  it("passes the sampler settings to the run", () => {
+    const text = sourceOf(parse(input()));
+    expect(text).toContain("--chains 2");
+    expect(text).toContain("--draws 500");
+    expect(text).toContain("--warmup 250");
+    expect(text).toContain("--seed 42");
   });
 
   it("omits the seed when there is none, rather than writing null", () => {
-    const text = sourceOf(
-      parse(input({ target: "stan", settings: { n_samples: 10, n_adapts: 5, n_chains: 1 } })),
-    );
-    expect(text).not.toContain("seed=");
+    const text = sourceOf(parse(input({ settings: { n_samples: 10, n_adapts: 5, n_chains: 1 } })));
+    expect(text).not.toContain("--seed");
   });
 
-  it("model code that would close a Python string early stays inside it", () => {
-    const nasty = "model {\n  # ''' and a \\ backslash\n}";
-    const text = sourceOf(parse(input({ target: "stan", modelCode: nasty })));
-    // The raw block is still delimited by exactly two triple quotes per cell.
-    expect(text).toContain("\\'\\'\\'");
-    expect(() =>
-      JSON.parse(generateNotebook(input({ target: "stan", modelCode: nasty }))),
-    ).not.toThrow();
+  it("a graph whose text would close a Python string early stays inside it", () => {
+    const quote = "'".repeat(3);
+    const graph: UnifiedModelData = {
+      ...GRAPH,
+      name: `odd ${quote} name`,
+      dataContent: JSON.stringify({ data: { note: "a \\ backslash" } }),
+    };
+    expect(() => JSON.parse(generateNotebook(input({ graph })))).not.toThrow();
+    // The triple quote is escaped, so it cannot end the raw block early.
+    expect(sourceOf(parse(input({ graph })))).toContain("\\'\\'\\'");
   });
 
   it("survives an empty graph", () => {
-    expect(() =>
-      generateNotebook(input({ target: "stan", elements: [], data: {}, inits: {} })),
-    ).not.toThrow();
+    expect(() => generateNotebook(input({ graph: { name: "empty", elements: [] } }))).not.toThrow();
   });
 });
 
@@ -140,9 +151,15 @@ describe("notebookFilename", () => {
 });
 
 describe("colabUrl", () => {
-  it("points at a notebook committed to GitHub", () => {
+  it("defaults to main", () => {
     expect(colabUrl("notebooks/rats_juliabugs.ipynb")).toBe(
       "https://colab.research.google.com/github/mcmcjs/mcmcjs/blob/main/notebooks/rats_juliabugs.ipynb",
+    );
+  });
+
+  it("takes the ref that carries the file, so a preview build points at its own branch", () => {
+    expect(colabUrl("notebooks/rats_stan.ipynb", "code-run-tabs")).toBe(
+      "https://colab.research.google.com/github/mcmcjs/mcmcjs/blob/code-run-tabs/notebooks/rats_stan.ipynb",
     );
   });
 });

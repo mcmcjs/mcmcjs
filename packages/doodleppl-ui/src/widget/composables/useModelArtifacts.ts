@@ -2,6 +2,7 @@ import { computed } from 'vue'
 import type { Ref } from 'vue'
 import { generateStandaloneScript } from '@mcmcjs/doodleppl'
 import { generateNotebook, notebookFilename } from '@mcmcjs/doodleppl/notebook'
+import type { UnifiedModelData } from '../types'
 import {
   extractCensoredFields,
   generateStanDataJson,
@@ -81,14 +82,19 @@ export function useModelArtifacts(bugsCode: Ref<string>, stanCode: Ref<string>) 
   const stanDataJson = computed(() => generateStanDataJson(data.value, censoredFields.value))
   const stanInitsJson = computed(() => generateStanInitsJson(inits.value, elements.value))
 
+  /** The graph as a portable document: what the notebook takes as its input. */
+  const graphDocument = computed<UnifiedModelData>(() => ({
+    name: modelName.value,
+    version: 1,
+    elements: elements.value,
+    dataContent: dataStore.dataContent,
+  }))
+
   const notebook = (target: ModelTarget): string =>
     generateNotebook({
       target,
       name: modelName.value,
-      modelCode: modelCode(target),
-      data: data.value,
-      inits: inits.value,
-      elements: elements.value,
+      graph: graphDocument.value,
       settings: settings.value,
     })
 
@@ -125,6 +131,7 @@ export function useModelArtifacts(bugsCode: Ref<string>, stanCode: Ref<string>) 
 
   return {
     modelName,
+    graphDocument,
     juliaScript,
     stanScript,
     stanDataJson,
