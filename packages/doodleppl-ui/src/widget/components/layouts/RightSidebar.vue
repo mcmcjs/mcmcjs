@@ -4,7 +4,6 @@ import { storeToRefs } from 'pinia'
 import Tooltip from 'primevue/tooltip'
 import NodePropertiesPanel from '../right-sidebar/NodePropertiesPanel.vue'
 import RunPanel from '../right-sidebar/RunPanel.vue'
-import CodePreviewPanel from '../panels/CodePreviewPanel.vue'
 import BaseButton from '../ui/BaseButton.vue'
 import { useUiStore } from '../../stores/uiStore'
 import type { GraphElement, ValidationError } from '../../types'
@@ -20,7 +19,6 @@ const props = defineProps<{
   showFullscreenToggle?: boolean
   /** The backend every tab speaks about, shared with the floating code panel. */
   language: CodeLanguage
-  notebook: string
   graphJson: string
   modelArtifact: Artifact
   scriptArtifact: Artifact
@@ -179,12 +177,6 @@ const handleHeaderClick = () => {
         Props
       </button>
       <button
-        :class="{ 'db-active': activeRightTab === 'code' }"
-        @click="uiStore.setActiveRightTab('code')"
-      >
-        Code
-      </button>
-      <button
         :class="{ 'db-active': activeRightTab === 'run' }"
         @click="uiStore.setActiveRightTab('run')"
       >
@@ -207,31 +199,11 @@ const handleHeaderClick = () => {
         @delete-element="$emit('delete-element', $event)"
       />
 
-      <div v-show="activeRightTab === 'code'" class="db-code-tab">
-        <div class="db-code-tab-head">
-          <button
-            class="db-code-tab-download"
-            type="button"
-            :title="`Download ${modelArtifact.filename}`"
-            @click="$emit('download', modelArtifact)"
-          >
-            <i class="fas fa-download"></i> {{ modelArtifact.filename }}
-          </button>
-        </div>
-        <CodePreviewPanel
-          :is-active="activeRightTab === 'code'"
-          :language="language"
-          @update:language="$emit('update:language', $event)"
-        />
-      </div>
-
       <RunPanel
         v-show="activeRightTab === 'run'"
         :target="language === 'stan' ? 'stan' : 'juliabugs'"
-        :notebook="notebook"
         :graph-json="graphJson"
-        :script="scriptArtifact"
-        @download="$emit('download', $event)"
+        @update:target="$emit('update:language', $event === 'stan' ? 'stan' : 'bugs')"
         @download-notebook="$emit('download-notebook')"
       />
 
@@ -273,31 +245,6 @@ const handleHeaderClick = () => {
 </template>
 
 <style scoped>
-.db-code-tab {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-.db-code-tab-head {
-  display: flex;
-  justify-content: flex-end;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--db-border-color, #ddd);
-}
-.db-code-tab-download {
-  background: none;
-  border: 0;
-  cursor: pointer;
-  color: var(--db-text-muted, #777);
-  font-size: 0.75rem;
-  display: inline-flex;
-  gap: 5px;
-  align-items: center;
-}
-.db-code-tab-download:hover {
-  color: var(--db-text-color, #222);
-}
 
 .db-floating-sidebar {
   position: absolute;

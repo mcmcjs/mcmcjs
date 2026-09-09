@@ -2,14 +2,12 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { nodeDefinitions, defaultEdgeStyles, type EdgeStyle } from '../config/nodeDefinitions'
 
-export type RightSidebarTab = 'properties' | 'code' | 'run' | 'export'
+export type RightSidebarTab = 'properties' | 'run' | 'export'
 
-/** A saved tab from before Script became Code and Run. */
+/** A tab saved before Script, and then Code, folded into Run. */
 export function migrateRightTab(stored: string | null): RightSidebarTab {
-  if (stored === 'script') return 'run'
-  if (stored === 'properties' || stored === 'code' || stored === 'run' || stored === 'export') {
-    return stored
-  }
+  if (stored === 'script' || stored === 'code') return 'run'
+  if (stored === 'properties' || stored === 'run' || stored === 'export') return stored
   return 'properties'
 }
 export type LeftSidebarTab =

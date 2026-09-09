@@ -396,7 +396,6 @@ const modelTarget = computed<ModelTarget>(() =>
 )
 const {
   graphDocument,
-  notebook,
   modelArtifact,
   scriptArtifact,
   notebookArtifact,
@@ -1375,7 +1374,6 @@ watch(showNewGraphModal, (val) => {
             @delete-element="deleteElement"
             @show-validation-issues="showValidationModal = true"
             :language="codePanelLanguage"
-            :notebook="notebook(modelTarget)"
             :graph-json="graphJsonForNotebook"
             :model-artifact="modelArtifact(modelTarget)"
             :script-artifact="scriptArtifact(modelTarget)"
