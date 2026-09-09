@@ -13,7 +13,10 @@ const expected: Record<string, string> = buildNotebooks();
 
 describe("the notebooks the Colab links open", () => {
   it("covers both backends", () => {
-    expect(Object.keys(expected).sort()).toEqual(["rats_juliabugs.ipynb", "rats_stan.ipynb"]);
+    expect(Object.keys(expected).sort()).toEqual([
+      "template_juliabugs.ipynb",
+      "template_stan.ipynb",
+    ]);
   });
 
   for (const [name, content] of Object.entries(expected)) {
@@ -22,7 +25,7 @@ describe("the notebooks the Colab links open", () => {
       expect(onDisk, `${name} is stale; run \`pnpm gen:notebooks\``).toBe(content);
     });
 
-    it(`${name} is a valid notebook that runs the Rats model`, () => {
+    it(`${name} is a valid template that takes a pasted graph`, () => {
       const nb = JSON.parse(content) as {
         nbformat: number;
         cells: { cell_type: string; source: string[] }[];
@@ -30,8 +33,10 @@ describe("the notebooks the Colab links open", () => {
       expect(nb.nbformat).toBe(4);
       expect(nb.cells.length).toBeGreaterThan(3);
       const text = nb.cells.map((c) => c.source.join("")).join("\n");
-      // The real graph, and the CLI workflow rather than a placeholder.
-      expect(text).toContain("alpha");
+      // A paste slot, a fallback so it runs unpasted, and the CLI workflow.
+      expect(text).toContain("PASTED = r");
+      expect(text).toContain("EXAMPLE = r");
+      expect(text).toContain("graph = PASTED.strip() or EXAMPLE");
       expect(text).toContain("https://mcmcjs.github.io/install.sh");
       expect(text).toContain("mcmc run model.toml");
     });

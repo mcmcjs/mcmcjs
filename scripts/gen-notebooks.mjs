@@ -11,7 +11,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const example = join(root, "packages/doodleppl-ui/src/widget/config/examples/rats.json");
+// Small enough to read and quick to fit: what a template runs before anything
+// is pasted into it.
+const example = join(root, "packages/doodleppl-ui/src/widget/config/examples/pumps.json");
 const outDir = join(root, "notebooks");
 
 const { generateNotebook } = await import(
@@ -19,16 +21,20 @@ const { generateNotebook } = await import(
 );
 const { parseUnifiedModel } = await import(join(root, "packages/doodleppl/dist/index.js"));
 
-/** The notebooks the Run tab's Colab links point at, keyed by target. */
+/**
+ * The notebooks the Run tab's Colab links open. They are templates: generic
+ * notebooks that fit whatever graph is pasted into their first cell, because
+ * Colab cannot be handed a notebook the editor just built.
+ */
 export function buildNotebooks() {
-  const graph = parseUnifiedModel(readFileSync(example, "utf8"));
+  const exampleGraph = parseUnifiedModel(readFileSync(example, "utf8"));
   const settings = { n_samples: 1000, n_adapts: 1000, n_chains: 2, seed: 42 };
   const out = {};
   for (const target of ["juliabugs", "stan"]) {
-    out[`rats_${target}.ipynb`] = generateNotebook({
+    out[`template_${target}.ipynb`] = generateNotebook({
       target,
-      name: graph.name,
-      graph,
+      name: `${target} template`,
+      exampleGraph,
       settings,
     });
   }

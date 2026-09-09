@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   colabUrl,
   generateNotebook,
+  graphJsonForPython,
   type NotebookInput,
   notebookFilename,
 } from "../src/codegen/notebook";
@@ -122,20 +123,63 @@ describe("generateNotebook", () => {
     expect(text).not.toContain("--seed");
   });
 
-  it("a graph whose text would close a Python string early stays inside it", () => {
+  // The embedded graph is a Python raw string, so what Python reads back must
+  // be byte-for-byte the JSON that went in. Getting this wrong is silent in the
+  // notebook file and only fails when a cell runs, so it is checked directly.
+  const embedded = (text: string, name: "graph" | "EXAMPLE") => {
+    const quote = "'".repeat(3);
+    const start = text.indexOf(`${name} = r${quote}\n`);
+    expect(start, `${name} raw block`).toBeGreaterThanOrEqual(0);
+    const from = start + `${name} = r${quote}\n`.length;
+    return text.slice(from, text.indexOf(`\n${quote}`, from));
+  };
+
+  it("the embedded graph parses back as the graph that went in", () => {
+    const text = sourceOf(parse(input()));
+    expect(JSON.parse(embedded(text, "graph"))).toEqual(JSON.parse(JSON.stringify(GRAPH)));
+  });
+
+  it("a graph carrying quotes, newlines and backslashes survives the round trip", () => {
     const quote = "'".repeat(3);
     const graph: UnifiedModelData = {
       ...GRAPH,
+      // Every character that has broken this: a triple quote (would close the
+      // block), and JSON escapes that an interpreted string would eat.
       name: `odd ${quote} name`,
-      dataContent: JSON.stringify({ data: { note: "a \\ backslash" } }),
+      dataContent: JSON.stringify({ data: { note: 'a \\ backslash, a "quote", a\nnewline' } }),
     };
-    expect(() => JSON.parse(generateNotebook(input({ graph })))).not.toThrow();
-    // The triple quote is escaped, so it cannot end the raw block early.
-    expect(sourceOf(parse(input({ graph })))).toContain("\\'\\'\\'");
+    const text = sourceOf(parse(input({ graph })));
+    expect(text).not.toContain(`r${quote}\n{\n  "name": "odd ${quote}`);
+    const back = JSON.parse(embedded(text, "graph")) as UnifiedModelData;
+    expect(back.name).toBe(graph.name);
+    // The inner JSON is still parseable, which is what the notebook relies on.
+    expect(JSON.parse(back.dataContent as string)).toEqual({
+      data: { note: 'a \\ backslash, a "quote", a\nnewline' },
+    });
+  });
+
+  it("a template's example graph parses back too", () => {
+    const text = sourceOf(parse(input({ graph: undefined, exampleGraph: GRAPH })));
+    expect(JSON.parse(embedded(text, "EXAMPLE"))).toEqual(JSON.parse(JSON.stringify(GRAPH)));
+  });
+
+  it("graphJsonForPython emits JSON with no single quote to close a raw block", () => {
+    const out = graphJsonForPython({ name: "it's a 'test'" });
+    expect(out).not.toContain("'");
+    expect(JSON.parse(out)).toEqual({ name: "it\u0027s a \u0027test\u0027" });
   });
 
   it("survives an empty graph", () => {
     expect(() => generateNotebook(input({ graph: { name: "empty", elements: [] } }))).not.toThrow();
+  });
+
+  it("a template has a paste slot and an example to fall back on", () => {
+    const quote = "'".repeat(3);
+    const text = sourceOf(parse(input({ graph: undefined, exampleGraph: GRAPH })));
+    expect(text).toContain(`PASTED = r${quote}`);
+    expect(text).toContain("graph = PASTED.strip() or EXAMPLE");
+    // A template is not about one model, so its title does not claim one.
+    expect(text).not.toContain("# Rats: growth");
   });
 });
 

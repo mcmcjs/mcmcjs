@@ -94,8 +94,12 @@ const cells = computed<PreviewCell[]>(() => {
 // Colab opens a notebook from GitHub or Drive only, never from this page, so
 // these open ready-made ones and the model's own notebook is downloaded.
 const examples = [
-  { target: 'juliabugs' as ModelTarget, label: 'JuliaBUGS in Colab', path: 'notebooks/rats_juliabugs.ipynb' },
-  { target: 'stan' as ModelTarget, label: 'Stan in Colab', path: 'notebooks/rats_stan.ipynb' },
+  {
+    target: 'juliabugs' as ModelTarget,
+    label: 'JuliaBUGS in Colab',
+    path: 'notebooks/template_juliabugs.ipynb',
+  },
+  { target: 'stan' as ModelTarget, label: 'Stan in Colab', path: 'notebooks/template_stan.ipynb' },
 ].map((e) => ({ ...e, url: colabUrl(e.path, buildRef) }))
 
 const runtimeNote = computed(() =>
@@ -135,9 +139,10 @@ const runtimeNote = computed(() =>
         checks, plots, and a run bundle for the report app.
       </p>
       <p class="db-run-note">
-        Colab only opens notebooks from GitHub, never from this page, so there are two ways to run
-        <em>this</em> graph there. Download the notebook and upload it to Colab, or open one above
-        and paste your graph into its first cell.
+        Colab only opens notebooks from GitHub, never one built on this page, so the links open a
+        generic template: press <strong>Copy graph</strong>, paste it into the template's first
+        cell, and the rest runs on your model. Downloading instead gives you a notebook with this
+        graph already in it.
       </p>
       <p class="db-run-note">{{ runtimeNote }}</p>
     </div>

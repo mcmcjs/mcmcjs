@@ -27,6 +27,7 @@ import { useGraphStore, type GraphContent } from './stores/graphStore'
 import { useUiStore } from './stores/uiStore'
 import { useDataStore } from './stores/dataStore'
 import { useScriptStore } from './stores/scriptStore'
+import { graphJsonForPython } from '@mcmcjs/doodleppl/notebook'
 import { type ModelTarget, useModelArtifacts } from './composables/useModelArtifacts'
 import { useGraphElements } from './composables/useGraphElements'
 import { useBugsCodeGenerator } from './composables/useBugsCodeGenerator'
@@ -403,9 +404,9 @@ const {
   initsArtifact,
 } = useModelArtifacts(generatedBugsCode, generatedStanCode)
 
-// What the Run tab's Copy graph button puts on the clipboard: the same JSON the
-// notebook's first cell holds, so pasting it over that cell just works.
-const graphJsonForNotebook = computed(() => JSON.stringify(graphDocument.value, null, 2))
+// What the Run tab's Copy graph button puts on the clipboard: encoded exactly
+// as the notebook's paste slot needs, so pasting it in just works.
+const graphJsonForNotebook = computed(() => graphJsonForPython(graphDocument.value))
 
 const handleCodeDownload = () => downloadArtifact(modelArtifact(modelTarget.value))
 const handleDownloadNotebook = () => downloadArtifact(notebookArtifact(modelTarget.value))

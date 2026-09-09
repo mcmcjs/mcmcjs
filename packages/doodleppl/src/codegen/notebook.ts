@@ -18,8 +18,15 @@ export interface NotebookInput {
   target: NotebookTarget;
   /** The graph's name, used for the title and the suggested filename. */
   name: string;
-  /** The graph document the notebook fits: the notebook's only input. */
-  graph: UnifiedModelData;
+  /**
+   * The graph the notebook fits, embedded in it. Leave this out for a template:
+   * a notebook that takes any graph pasted into its first cell, which is what
+   * the editor's Colab links open, since Colab cannot be handed a notebook
+   * built in the browser.
+   */
+  graph?: UnifiedModelData;
+  /** Template only: what to run when nothing has been pasted yet. */
+  exampleGraph?: UnifiedModelData;
   settings: StandaloneGeneratorSettings;
 }
 
@@ -51,9 +58,29 @@ const code = (text: string): Cell => ({
   source: lines(text),
 });
 
-/** A Python triple-quoted raw string that its own content cannot close early. */
+const QUOTE = "'".repeat(3);
+
+/**
+ * A graph as JSON that is safe inside a Python raw triple-quoted string.
+ *
+ * Raw is the only correct choice: the JSON carries `\"` and `\n` as two
+ * characters each, and any Python string that interprets escapes would turn
+ * them into real quotes and newlines, which is not the JSON any more. A raw
+ * string cannot escape its own delimiter, so single quotes go out as `'`,
+ * which JSON reads back as `'` and which cannot close the block.
+ */
+export function graphJsonForPython(graph: unknown): string {
+  return JSON.stringify(graph, null, 2).replace(/'/g, "\\u0027");
+}
+
+/** Text as a Python raw triple-quoted string; the text must carry no `'`. */
 function pyBlock(text: string): string {
-  return `'''\n${text.replace(/\\/g, "\\\\").replace(/'''/g, "\\'\\'\\'")}\n'''`;
+  return `r${QUOTE}\n${text}\n${QUOTE}`;
+}
+
+/** The empty raw block a graph is pasted into. */
+function emptyBlock(): string {
+  return `r${QUOTE}\n\n${QUOTE}`;
 }
 
 /** A slug safe as a filename, e.g. "Rats: growth" -> "rats_growth". */
@@ -64,6 +91,62 @@ export function notebookFilename(name: string, target: NotebookTarget): string {
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "") || "model";
   return `${slug}_${target}.ipynb`;
+}
+
+/**
+ * The cells that put a graph on disk as `model.json`, which is all the rest of
+ * the notebook needs. A filled notebook carries its graph; a template carries a
+ * paste slot and an example to fall back on, so it runs before anything is
+ * pasted and runs your model after.
+ */
+function graphCells(input: NotebookInput): Cell[] {
+  if (input.graph) {
+    return [
+      markdown(
+        "## The graph\n\n" +
+          "The model as it was drawn, with its data and initial values. Everything below is " +
+          "derived from this one document.\n\n" +
+          "**To run a different model:** in the editor's Run tab press **Copy graph**, then " +
+          "replace the JSON below with what you copied. Nothing else changes.",
+      ),
+      code(
+        "# Replace this with another graph: editor -> Run tab -> Copy graph.\n" +
+          `graph = ${pyBlock(graphJsonForPython(input.graph))}\n` +
+          "\n" +
+          'with open("model.json", "w") as f:\n' +
+          "    f.write(graph)\n" +
+          "\n" +
+          "import json\n" +
+          "\n" +
+          'print("model:", json.loads(graph).get("name", "model"))',
+      ),
+    ];
+  }
+  const example = graphJsonForPython(input.exampleGraph ?? { name: "empty", elements: [] });
+  return [
+    markdown(
+      "## Your graph\n\n" +
+        "1. In the editor, open the **Run** tab and press **Copy graph**.\n" +
+        "2. Paste it between the quotes below, replacing the blank line.\n\n" +
+        "Everything after this cell is generic: it reads whatever graph you paste. Run the " +
+        "notebook without pasting and it uses a small built-in example instead, so you can see " +
+        "the whole workflow first.",
+    ),
+    code(
+      `PASTED = ${emptyBlock()}\n\n` +
+        `EXAMPLE = ${pyBlock(example)}\n` +
+        "\n" +
+        "import json\n" +
+        "\n" +
+        "graph = PASTED.strip() or EXAMPLE\n" +
+        'print("using your pasted graph" if PASTED.strip() else "nothing pasted: using the built-in example")\n' +
+        "\n" +
+        'with open("model.json", "w") as f:\n' +
+        "    f.write(graph)\n" +
+        "\n" +
+        'print("model:", json.loads(graph).get("name", "model"))',
+    ),
+  ];
 }
 
 const LABEL: Record<NotebookTarget, string> = { juliabugs: "JuliaBUGS", stan: "Stan" };
@@ -81,8 +164,8 @@ export function generateNotebook(input: NotebookInput): string {
 
   const cells: Cell[] = [
     markdown(
-      `# ${name}\n\n` +
-        `Fitting this model with **${label}**, through the \`mcmc\` command line tool.\n\n` +
+      `# ${input.graph ? name : `${label} in Colab`}\n\n` +
+        `Fitting a graphical model with **${label}**, through the \`mcmc\` command line tool.\n\n` +
         "Every step below is one command: convert the graph to a model, fit it, check that it " +
         "converged, draw the posterior, and package the run so it can be opened in the report app. " +
         "Run the cells in order.",
@@ -100,24 +183,7 @@ export function generateNotebook(input: NotebookInput): string {
     ),
     code(`!mcmc setup --engine ${ENGINE[target]}`),
 
-    markdown(
-      "## The graph\n\n" +
-        "The model as it was drawn, with its data and initial values. Everything below is " +
-        "derived from this one document.\n\n" +
-        "**To run your own model instead:** in the editor's Run tab press **Copy graph**, then " +
-        "replace the JSON below with what you copied. Nothing else in the notebook changes.",
-    ),
-    code(
-      "# Replace this with your own graph: editor -> Run tab -> Copy graph.\n" +
-        `graph = r${pyBlock(JSON.stringify(input.graph, null, 2))}\n` +
-        "\n" +
-        'with open("model.json", "w") as f:\n' +
-        "    f.write(graph)\n" +
-        "\n" +
-        "import json\n" +
-        "\n" +
-        'print(json.loads(graph).get("name", "model"), "written to model.json")',
-    ),
+    ...graphCells(input),
 
     markdown(
       `## The ${label} model\n\nWhat the graph becomes as code, plus the spec that runs it.`,
