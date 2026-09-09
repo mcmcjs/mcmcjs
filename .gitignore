@@ -36,3 +36,6 @@ mcmcjs-sandbox
 # install script
 dist-bin/
 docs/public/latest.txt
+
+# The preview harness loads the built widget, copied in at build time.
+packages/doodleppl-ui/preview/doodleppl.global.js

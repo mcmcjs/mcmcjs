@@ -21,13 +21,13 @@ import DebugPanel from './components/common/DebugPanel.vue'
 import DbToast from './components/common/DbToast.vue'
 import BaseButton from './components/ui/BaseButton.vue'
 import BaseInput from './components/ui/BaseInput.vue'
-import ScriptSettingsPanel from './components/panels/ScriptSettingsPanel.vue'
 
 import { useProjectStore } from './stores/projectStore'
 import { useGraphStore, type GraphContent } from './stores/graphStore'
 import { useUiStore } from './stores/uiStore'
 import { useDataStore } from './stores/dataStore'
 import { useScriptStore } from './stores/scriptStore'
+import { type ModelTarget, useModelArtifacts } from './composables/useModelArtifacts'
 import { useGraphElements } from './composables/useGraphElements'
 import { useBugsCodeGenerator } from './composables/useBugsCodeGenerator'
 import { useStanCodeGenerator } from './composables/useStanCodeGenerator'
@@ -325,18 +325,12 @@ const { parsedGraphData } = storeToRefs(dataStore)
 const { generatedCode: generatedBugsCode } = useBugsCodeGenerator(elements)
 const { generatedStanCode } = useStanCodeGenerator(elements)
 const { validateGraph, validationErrors } = useGraphValidator(elements, parsedGraphData)
-const { standaloneScript, samplerSettings } = storeToRefs(scriptStore)
 
 const { loadUIState, saveUIState, saveLastGraphId, loadLastGraphId } = usePersistence(
   persistencePrefix.value
 )
 
-const actions = useEditorActions(
-  elements,
-  generatedBugsCode,
-  persistencePrefix.value,
-  generatedStanCode
-)
+const actions = useEditorActions(elements, persistencePrefix.value)
 const {
   currentMode,
   currentNodeType,
@@ -347,7 +341,6 @@ const {
   showAboutModal,
   showFaqModal,
   showValidationModal,
-  showScriptSettingsModal,
   showExportModal,
   showStyleModal,
   showShareModal,
@@ -372,14 +365,7 @@ const {
   handleFit,
   handleGraphLayout,
   handleLoadExample,
-  getScriptContent,
-  handleGenerateStandalone,
-  handleDownloadBugs,
-  handleDownloadStan,
-  handleDownloadScript,
-  handleDownloadStanScript,
-  handleDownloadStanData,
-  handleDownloadStanInits,
+  downloadArtifact,
   openExportModal,
   handleConfirmExport,
   handleExportJson,
@@ -404,13 +390,20 @@ const codePanelLanguage = ref<CodeLanguage>('bugs')
 const codePanelTitle = computed(() =>
   codePanelLanguage.value === 'stan' ? 'Stan Code Preview' : 'BUGS Code Preview'
 )
-const handleCodeDownload = () => {
-  if (codePanelLanguage.value === 'stan') {
-    handleDownloadStan()
-  } else {
-    handleDownloadBugs()
-  }
-}
+const modelTarget = computed<ModelTarget>(() =>
+  codePanelLanguage.value === 'stan' ? 'stan' : 'juliabugs'
+)
+const {
+  notebook,
+  modelArtifact,
+  scriptArtifact,
+  notebookArtifact,
+  dataArtifact,
+  initsArtifact,
+} = useModelArtifacts(generatedBugsCode, generatedStanCode)
+
+const handleCodeDownload = () => downloadArtifact(modelArtifact(modelTarget.value))
+const handleDownloadNotebook = () => downloadArtifact(notebookArtifact(modelTarget.value))
 
 const WIDGET_UI_STATE_KEY = `${persistencePrefix.value}-ui-state`
 const WIDGET_SOURCE_MAP_KEY = `${persistencePrefix.value}-source-map`
@@ -941,19 +934,6 @@ onUnmounted(() => {
   removeWidgetStyles()
 })
 
-watch(
-  [generatedBugsCode, parsedGraphData, samplerSettings],
-  () => {
-    if (
-      standaloneScript.value ||
-      (uiStore.activeRightTab === 'script' && uiStore.isRightSidebarOpen)
-    ) {
-      scriptStore.standaloneScript = getScriptContent()
-    }
-  },
-  { deep: true }
-)
-
 const isModelValid = computed(() => validationErrors.value.size === 0)
 
 const {
@@ -1043,11 +1023,6 @@ const handleDataImport = (event: Event) => {
     if (dataImportInput.value) dataImportInput.value.value = ''
   }
   reader.readAsText(file)
-}
-
-const handleScriptSettingsDone = () => {
-  scriptStore.standaloneScript = getScriptContent()
-  showScriptSettingsModal.value = false
 }
 
 watch(showNewGraphModal, (val) => {
@@ -1393,13 +1368,15 @@ watch(showNewGraphModal, (val) => {
             @update-element="updateElement"
             @delete-element="deleteElement"
             @show-validation-issues="showValidationModal = true"
-            @open-script-settings="showScriptSettingsModal = true"
-            @download-script="handleDownloadScript"
-            @download-stan="handleDownloadStan"
-            @download-stan-script="handleDownloadStanScript"
-            @download-stan-data="handleDownloadStanData"
-            @download-stan-inits="handleDownloadStanInits"
-            @generate-script="handleGenerateStandalone"
+            :language="codePanelLanguage"
+            :notebook="notebook(modelTarget)"
+            :model-artifact="modelArtifact(modelTarget)"
+            :script-artifact="scriptArtifact(modelTarget)"
+            :data-artifact="dataArtifact()"
+            :inits-artifact="initsArtifact()"
+            @update:language="codePanelLanguage = $event"
+            @download="downloadArtifact"
+            @download-notebook="handleDownloadNotebook"
             @share="handleShare"
             @open-export-modal="openExportModal"
             @export-json="handleExportJson"
@@ -1503,18 +1480,6 @@ watch(showNewGraphModal, (val) => {
           @close="showValidationModal = false"
           @select-node="handleSelectNodeFromModal"
         />
-        <BaseModal :is-open="showScriptSettingsModal" @close="showScriptSettingsModal = false">
-          <template #header>
-            <h3>Script Settings</h3>
-          </template>
-          <template #body>
-            <ScriptSettingsPanel />
-          </template>
-          <template #footer>
-            <BaseButton @click="handleScriptSettingsDone">Done</BaseButton>
-          </template>
-        </BaseModal>
-
         <BaseModal :is-open="showNewProjectModal" @close="showNewProjectModal = false">
           <template #header>
             <h3>Create New Project</h3>

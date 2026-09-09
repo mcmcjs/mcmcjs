@@ -2,7 +2,16 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { nodeDefinitions, defaultEdgeStyles, type EdgeStyle } from '../config/nodeDefinitions'
 
-export type RightSidebarTab = 'properties' | 'script' | 'export'
+export type RightSidebarTab = 'properties' | 'code' | 'run' | 'export'
+
+/** A saved tab from before Script became Code and Run. */
+export function migrateRightTab(stored: string | null): RightSidebarTab {
+  if (stored === 'script') return 'run'
+  if (stored === 'properties' || stored === 'code' || stored === 'run' || stored === 'export') {
+    return stored
+  }
+  return 'properties'
+}
 export type LeftSidebarTab =
   | 'project'
   | 'palette'
@@ -34,7 +43,7 @@ export const useUiStore = defineStore('ui', () => {
 
   // Initial State - Hydrate from localStorage immediately for the main app
   const activeRightTab = ref<RightSidebarTab>(
-    (localStorage.getItem(getStorageKey('activeRightTab')) as RightSidebarTab) || 'properties'
+    migrateRightTab(localStorage.getItem(getStorageKey('activeRightTab')))
   )
 
   const isRightTabPinned = ref<boolean>(
@@ -128,7 +137,7 @@ export const useUiStore = defineStore('ui', () => {
 
     // Re-hydrate state from new keys
     activeRightTab.value =
-      (localStorage.getItem(getStorageKey('activeRightTab')) as RightSidebarTab) || 'properties'
+      migrateRightTab(localStorage.getItem(getStorageKey('activeRightTab')))
     isRightTabPinned.value = localStorage.getItem(getStorageKey('isRightTabPinned')) === 'true'
     isRightSidebarOpen.value = localStorage.getItem(getStorageKey('isRightSidebarOpen')) === 'true'
     activeLeftTab.value =

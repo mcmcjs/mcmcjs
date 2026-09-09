@@ -3,10 +3,13 @@ import { type StyleValue } from 'vue'
 import { storeToRefs } from 'pinia'
 import Tooltip from 'primevue/tooltip'
 import NodePropertiesPanel from '../right-sidebar/NodePropertiesPanel.vue'
-import LocalScriptPanel from '../right-sidebar/LocalScriptPanel.vue'
+import RunPanel from '../right-sidebar/RunPanel.vue'
+import CodePreviewPanel from '../panels/CodePreviewPanel.vue'
 import BaseButton from '../ui/BaseButton.vue'
 import { useUiStore } from '../../stores/uiStore'
 import type { GraphElement, ValidationError } from '../../types'
+import type { CodeLanguage } from '../panels/CodePreviewPanel.vue'
+import type { Artifact } from '../../composables/useModelArtifacts'
 
 const props = defineProps<{
   selectedElement: GraphElement | null
@@ -15,6 +18,13 @@ const props = defineProps<{
   enableDrag?: boolean
   isFullScreen?: boolean
   showFullscreenToggle?: boolean
+  /** The backend every tab speaks about, shared with the floating code panel. */
+  language: CodeLanguage
+  notebook: string
+  modelArtifact: Artifact
+  scriptArtifact: Artifact
+  dataArtifact: Artifact
+  initsArtifact: Artifact
 }>()
 
 const emit = defineEmits<{
@@ -22,13 +32,9 @@ const emit = defineEmits<{
   (e: 'update-element', element: GraphElement): void
   (e: 'delete-element', elementId: string): void
   (e: 'show-validation-issues'): void
-  (e: 'open-script-settings'): void
-  (e: 'download-script'): void
-  (e: 'download-stan'): void
-  (e: 'download-stan-script'): void
-  (e: 'download-stan-data'): void
-  (e: 'download-stan-inits'): void
-  (e: 'generate-script'): void
+  (e: 'update:language', language: CodeLanguage): void
+  (e: 'download', artifact: Artifact): void
+  (e: 'download-notebook'): void
   (e: 'share'): void
   (e: 'open-export-modal', format: 'png' | 'jpg' | 'svg'): void
   (e: 'export-json'): void
@@ -172,10 +178,16 @@ const handleHeaderClick = () => {
         Props
       </button>
       <button
-        :class="{ 'db-active': activeRightTab === 'script' }"
-        @click="uiStore.setActiveRightTab('script')"
+        :class="{ 'db-active': activeRightTab === 'code' }"
+        @click="uiStore.setActiveRightTab('code')"
       >
-        Script
+        Code
+      </button>
+      <button
+        :class="{ 'db-active': activeRightTab === 'run' }"
+        @click="uiStore.setActiveRightTab('run')"
+      >
+        Run
       </button>
       <button
         :class="{ 'db-active': activeRightTab === 'export' }"
@@ -194,15 +206,31 @@ const handleHeaderClick = () => {
         @delete-element="$emit('delete-element', $event)"
       />
 
-      <LocalScriptPanel
-        v-show="activeRightTab === 'script'"
-        :is-active="activeRightTab === 'script'"
-        @open-settings="$emit('open-script-settings')"
-        @download="$emit('download-script')"
-        @download-stan-script="$emit('download-stan-script')"
-        @download-stan-data="$emit('download-stan-data')"
-        @download-stan-inits="$emit('download-stan-inits')"
-        @generate="$emit('generate-script')"
+      <div v-show="activeRightTab === 'code'" class="db-code-tab">
+        <div class="db-code-tab-head">
+          <button
+            class="db-code-tab-download"
+            type="button"
+            :title="`Download ${modelArtifact.filename}`"
+            @click="$emit('download', modelArtifact)"
+          >
+            <i class="fas fa-download"></i> {{ modelArtifact.filename }}
+          </button>
+        </div>
+        <CodePreviewPanel
+          :is-active="activeRightTab === 'code'"
+          :language="language"
+          @update:language="$emit('update:language', $event)"
+        />
+      </div>
+
+      <RunPanel
+        v-show="activeRightTab === 'run'"
+        :target="language === 'stan' ? 'stan' : 'juliabugs'"
+        :notebook="notebook"
+        :script="scriptArtifact"
+        @download="$emit('download', $event)"
+        @download-notebook="$emit('download-notebook')"
       />
 
       <div v-show="activeRightTab === 'export'" class="db-export-panel">
@@ -224,14 +252,17 @@ const handleHeaderClick = () => {
           <BaseButton type="ghost" class="db-menu-btn" @click="$emit('export-json')"
             ><i class="fas fa-file-code"></i>Export Graph, Data & Inits as JSON</BaseButton
           >
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download-stan')"
-            ><i class="fas fa-file-alt"></i>Download Stan Model (.stan)</BaseButton
+          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', modelArtifact)"
+            ><i class="fas fa-file-alt"></i>Model ({{ modelArtifact.filename }})</BaseButton
           >
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download-stan-data')"
-            ><i class="fas fa-database"></i>Download Stan Data (data.json)</BaseButton
+          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', scriptArtifact)"
+            ><i class="fas fa-scroll"></i>Run script ({{ scriptArtifact.filename }})</BaseButton
           >
-          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download-stan-inits')"
-            ><i class="fas fa-play-circle"></i>Download Stan Inits (inits.json)</BaseButton
+          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', dataArtifact)"
+            ><i class="fas fa-database"></i>Data (data.json)</BaseButton
+          >
+          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('download', initsArtifact)"
+            ><i class="fas fa-play-circle"></i>Initial values (inits.json)</BaseButton
           >
         </div>
       </div>
@@ -240,6 +271,32 @@ const handleHeaderClick = () => {
 </template>
 
 <style scoped>
+.db-code-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.db-code-tab-head {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--db-border-color, #ddd);
+}
+.db-code-tab-download {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: var(--db-text-muted, #777);
+  font-size: 0.75rem;
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+.db-code-tab-download:hover {
+  color: var(--db-text-color, #222);
+}
+
 .db-floating-sidebar {
   position: absolute;
   top: 16px;
