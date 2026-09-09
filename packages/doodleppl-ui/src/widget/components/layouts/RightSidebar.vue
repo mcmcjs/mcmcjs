@@ -20,7 +20,7 @@ const props = defineProps<{
   /** The backend every tab speaks about, shared with the floating code panel. */
   language: CodeLanguage
   graphJson: string
-  files: { label: string; artifact: Artifact }[]
+  fileGroups: { title: string; files: Artifact[] }[]
 }>()
 
 const emit = defineEmits<{
@@ -205,7 +205,7 @@ const handleHeaderClick = () => {
 
       <div v-show="activeRightTab === 'export'" class="db-export-panel">
         <div class="db-menu-panel flex-col gap-3">
-          <h5 class="db-section-title">Picture of the graph</h5>
+          <h5 class="db-section-title">Image</h5>
           <BaseButton type="ghost" class="db-menu-btn" @click="$emit('open-export-modal', 'png')"
             ><i class="fas fa-image"></i> PNG</BaseButton
           >
@@ -218,17 +218,18 @@ const handleHeaderClick = () => {
 
           <div class="db-divider"></div>
 
-          <h5 class="db-section-title">Files</h5>
-          <BaseButton
-            v-for="file in files"
-            :key="file.artifact.filename"
-            type="ghost"
-            class="db-menu-btn db-file-btn"
-            @click="$emit('download', file.artifact)"
-          >
-            <span class="db-file-label">{{ file.label }}</span>
-            <span class="db-file-name">{{ file.artifact.filename }}</span>
-          </BaseButton>
+          <template v-for="group in fileGroups" :key="group.title">
+            <h5 class="db-section-title">{{ group.title }}</h5>
+            <BaseButton
+              v-for="file in group.files"
+              :key="file.filename"
+              type="ghost"
+              class="db-menu-btn db-file-btn"
+              @click="$emit('download', file)"
+            >
+              {{ file.filename }}
+            </BaseButton>
+          </template>
         </div>
       </div>
     </div>
@@ -236,20 +237,23 @@ const handleHeaderClick = () => {
 </template>
 
 <style scoped>
-.db-file-btn {
-  /* Label over filename, so a long name wraps instead of squeezing the label. */
-  flex-direction: column;
-  align-items: flex-start !important;
-  gap: 2px !important;
+/* Rows sit tight under their heading, so a group reads as one block. */
+.db-export-panel .db-menu-panel {
+  gap: 0 !important;
 }
-.db-file-label,
-.db-file-name {
+.db-export-panel .db-section-title {
+  margin: 16px 0 4px 4px;
+}
+.db-export-panel .db-section-title:first-child {
+  margin-top: 0;
+}
+.db-export-panel .db-file-btn {
   text-align: left;
-}
-.db-file-name {
-  font-size: 0.72rem;
-  color: var(--theme-text-secondary);
+  /* Beats the 10px on .db-menu-btn, which is !important and declared later. */
+  padding: 6px 8px !important;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--theme-text-secondary);
   overflow-wrap: anywhere;
 }
 

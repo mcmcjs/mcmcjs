@@ -393,7 +393,7 @@ const codePanelTitle = computed(() =>
 const modelTarget = computed<ModelTarget>(() =>
   codePanelLanguage.value === 'stan' ? 'stan' : 'juliabugs'
 )
-const { graphDocument, exportFiles, modelArtifact, notebookArtifact } = useModelArtifacts(
+const { graphDocument, exportGroups, modelArtifact, notebookArtifact } = useModelArtifacts(
   generatedBugsCode,
   generatedStanCode
 )
@@ -1379,7 +1379,7 @@ watch(showNewGraphModal, (val) => {
             @show-validation-issues="showValidationModal = true"
             :language="codePanelLanguage"
             :graph-json="graphJsonForNotebook"
-            :files="exportFiles"
+            :file-groups="exportGroups"
             @update:language="codePanelLanguage = $event"
             @download="downloadArtifact"
             @download-notebook="handleDownloadNotebook"

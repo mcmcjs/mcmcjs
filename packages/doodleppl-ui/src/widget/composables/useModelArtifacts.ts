@@ -146,18 +146,21 @@ export function useModelArtifacts(bugsCode: Ref<string>, stanCode: Ref<string>) 
   })
 
   /**
-   * Every file the Export tab offers, named for what it is. The list covers
-   * both backends rather than following the Run tab's selection, because a
-   * download list that changes with a control on another tab cannot be read.
+   * Every file the Export tab offers, grouped by what runs it. Both backends
+   * are always listed, rather than following the Run tab's selection, because
+   * a download list that changes with a control on another tab cannot be read.
+   *
+   * Only Stan has data and inits files: `mcmc run` hands them to CmdStan, which
+   * reads its inputs from disk, while the Julia script carries the same values
+   * inline.
    */
-  const exportFiles = computed<{ label: string; artifact: Artifact }[]>(() => [
-    { label: 'Graph, data and initial values', artifact: graphArtifact() },
-    { label: 'BUGS model', artifact: modelArtifact('juliabugs') },
-    { label: 'JuliaBUGS script', artifact: scriptArtifact('juliabugs') },
-    { label: 'Stan model', artifact: modelArtifact('stan') },
-    { label: 'Stan script', artifact: scriptArtifact('stan') },
-    { label: 'Stan data', artifact: dataArtifact() },
-    { label: 'Stan initial values', artifact: initsArtifact() },
+  const exportGroups = computed<{ title: string; files: Artifact[] }[]>(() => [
+    { title: 'Graph', files: [graphArtifact()] },
+    { title: 'JuliaBUGS', files: [modelArtifact('juliabugs'), scriptArtifact('juliabugs')] },
+    {
+      title: 'Stan',
+      files: [modelArtifact('stan'), scriptArtifact('stan'), dataArtifact(), initsArtifact()],
+    },
   ])
 
   return {
@@ -168,7 +171,7 @@ export function useModelArtifacts(bugsCode: Ref<string>, stanCode: Ref<string>) 
     stanDataJson,
     stanInitsJson,
     notebook,
-    exportFiles,
+    exportGroups,
     graphArtifact,
     modelArtifact,
     scriptArtifact,

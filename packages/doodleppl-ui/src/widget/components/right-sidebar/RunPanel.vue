@@ -2,7 +2,6 @@
 import { computed, ref } from 'vue'
 import { colabUrl } from '@mcmcjs/doodleppl/notebook'
 import type { ModelTarget } from '../../composables/useModelArtifacts'
-import BaseButton from '../ui/BaseButton.vue'
 
 const props = defineProps<{
   /** The backend every generated file targets, shared with the code panel. */
@@ -26,10 +25,8 @@ const backends: { id: ModelTarget; label: string }[] = [
   { id: 'stan', label: 'Stan' },
 ]
 
-const templates = backends.map((b) => ({
-  ...b,
-  url: colabUrl(`notebooks/template_${b.id}.ipynb`, buildRef),
-}))
+const label = computed(() => (props.target === 'stan' ? 'Stan' : 'JuliaBUGS'))
+const colabHref = computed(() => colabUrl(`notebooks/template_${props.target}.ipynb`, buildRef))
 
 const copied = ref(false)
 const copyFailed = ref(false)
@@ -72,65 +69,64 @@ const copyGraph = async () => {
   }
 }
 
-const runtimeNote = computed(() =>
-  props.target === 'stan'
-    ? 'The notebook installs the CLI and CmdStan on its first run, which takes a few minutes on a fresh Colab runtime.'
-    : 'The notebook installs the CLI and Julia on its first run, which takes a few minutes on a fresh Colab runtime.'
-)
+const copyIcon = computed(() => {
+  if (copied.value) return 'fas fa-check'
+  return copyFailed.value ? 'fas fa-triangle-exclamation' : 'far fa-copy'
+})
+const copyLabel = computed(() => {
+  if (copied.value) return 'Copied'
+  return copyFailed.value ? 'Copy failed' : 'Copy graph'
+})
 </script>
 
 <template>
   <div class="db-run-panel">
-    <div class="db-run-block">
+    <section class="db-run-block">
       <h5 class="db-run-title">Backend</h5>
-      <div class="db-run-seg">
+      <div class="db-seg">
         <button
           v-for="backend in backends"
           :key="backend.id"
           type="button"
-          :class="{ 'db-active': backend.id === target }"
+          :class="{ 'db-on': backend.id === target }"
+          :aria-pressed="backend.id === target"
           @click="emit('update:target', backend.id)"
         >
           {{ backend.label }}
         </button>
       </div>
-    </div>
+    </section>
 
-    <div class="db-run-block">
-      <h5 class="db-run-title">Run it in a notebook</h5>
-      <p class="db-run-note">
-        Fits the model, checks convergence, draws the posterior and packages the run for the report
-        app. Chains, draws and the seed are set in the notebook.
-      </p>
-      <BaseButton type="primary" class="db-run-btn" @click="emit('download-notebook')">
-        <i class="fas fa-download"></i> Download notebook (.ipynb)
-      </BaseButton>
-      <a
-        v-for="template in templates"
-        :key="template.id"
-        class="db-run-link"
-        :class="{ 'db-run-link-on': template.id === target }"
-        :href="template.url"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <i class="fas fa-external-link-alt"></i> {{ template.label }} in Colab
+    <section class="db-run-block">
+      <h5 class="db-run-title">Run</h5>
+      <a class="db-run-primary" :href="colabHref" target="_blank" rel="noopener noreferrer">
+        <i class="fas fa-play"></i> Open in Colab
       </a>
-      <button type="button" class="db-run-link" @click="copyGraph">
-        <i
-          :class="
-            copied ? 'fas fa-check' : copyFailed ? 'fas fa-exclamation-triangle' : 'fas fa-copy'
-          "
-        ></i>
-        {{ copied ? 'Graph copied' : copyFailed ? 'Copy failed, use Download' : 'Copy graph' }}
-      </button>
-      <p class="db-run-note">
-        Colab cannot open a notebook built on this page, so the links open a blank template: press
-        <strong>Copy graph</strong> and paste it into the template's first cell. Downloading gives
-        you a notebook with this graph already in it.
-      </p>
-      <p class="db-run-note">{{ runtimeNote }}</p>
-    </div>
+      <p class="db-run-hint">The template opens empty. Paste the graph into its first cell.</p>
+      <div class="db-run-actions">
+        <button
+          type="button"
+          class="db-run-action"
+          :class="{ 'db-warn': copyFailed }"
+          @click="copyGraph"
+        >
+          <i :class="copyIcon"></i> {{ copyLabel }}
+        </button>
+        <button type="button" class="db-run-action" @click="emit('download-notebook')">
+          <i class="fas fa-download"></i> Notebook (.ipynb)
+        </button>
+      </div>
+    </section>
+
+    <details class="db-run-help">
+      <summary><i class="fas fa-chevron-right"></i> How this works</summary>
+      <ul>
+        <li>Downloading gives you the same notebook with this graph already in it, so there is nothing to paste.</li>
+        <li>The notebook fits the model, checks convergence, plots the posterior and writes a run bundle for the report app.</li>
+        <li>Chains, draws and the seed sit at the top of the notebook.</li>
+        <li>The first run installs the CLI and {{ label }}, which takes a few minutes on a fresh Colab runtime.</li>
+      </ul>
+    </details>
   </div>
 </template>
 
@@ -138,8 +134,8 @@ const runtimeNote = computed(() =>
 .db-run-panel {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 12px;
+  gap: 20px;
+  padding: 14px 12px;
   overflow-y: auto;
   height: 100%;
 }
@@ -150,70 +146,147 @@ const runtimeNote = computed(() =>
 }
 .db-run-title {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: var(--font-size-xs);
   font-weight: 600;
-  color: var(--db-text-muted, #777);
+  color: var(--theme-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
-.db-run-seg {
-  display: inline-flex;
-  border: 1px solid var(--db-border-color, #ccc);
-  border-radius: 4px;
-  overflow: hidden;
+
+/* A recessed track with a raised thumb, so the choice reads at a glance. */
+.db-seg {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 2px;
+  padding: 2px;
+  background: var(--theme-bg-canvas);
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-sm);
 }
-.db-run-seg button {
-  flex: 1;
+.db-seg button {
   border: 0;
   background: none;
-  padding: 6px 10px;
+  border-radius: 4px;
+  padding: 6px 8px;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--theme-text-secondary);
   cursor: pointer;
-  color: var(--db-text-color, #222);
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    box-shadow 0.15s;
 }
-.db-run-seg button.db-active {
-  background: var(--db-text-color, #222);
-  color: var(--db-bg-color, #fff);
+.db-seg button:hover:not(.db-on) {
+  color: var(--theme-text-primary);
 }
-.db-run-btn {
-  width: 100%;
+.db-seg button.db-on {
+  background: var(--theme-bg-panel);
+  color: var(--theme-text-primary);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
 }
-.db-run-link {
-  display: inline-flex;
+
+.db-run-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--theme-primary);
+  color: #fff;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 0.15s;
+}
+.db-run-primary:hover {
+  background: var(--theme-primary-hover);
+}
+.db-run-primary i {
+  font-size: 0.7em;
+}
+
+.db-run-hint {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  color: var(--theme-text-muted);
+}
+
+.db-run-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 2px;
+}
+.db-run-action {
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 7px 10px;
-  border: 1px solid var(--db-border-color, #ccc);
-  border-radius: 4px;
-  background: none;
-  color: var(--db-text-color, #222);
-  text-decoration: none;
+  padding: 7px 8px;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-sm);
+  background: var(--theme-bg-panel);
+  color: var(--theme-text-secondary);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
   cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s;
 }
-.db-run-link:hover {
-  background: var(--db-hover-bg, #f2f2f2);
+.db-run-action:hover {
+  background: var(--theme-bg-hover);
+  border-color: var(--theme-border-hover);
+  color: var(--theme-text-primary);
 }
-.db-run-link-on {
-  border-color: var(--db-text-color, #222);
+.db-run-action.db-warn {
+  color: var(--theme-danger);
+  border-color: var(--theme-danger);
 }
-.db-run-note {
-  margin: 0;
-  font-size: 0.75rem;
-  line-height: 1.45;
-  color: var(--db-text-muted, #777);
+
+.db-run-help {
+  border-top: 1px solid var(--theme-border);
+  padding-top: 12px;
 }
-.db-run-grid {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px 10px;
-  align-items: center;
+.db-run-help summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--font-size-sm);
+  color: var(--theme-text-secondary);
 }
-.db-run-grid label {
-  font-size: 0.8rem;
-  color: var(--db-text-color, #222);
+.db-run-help summary::-webkit-details-marker {
+  display: none;
+}
+.db-run-help summary i {
+  display: inline-block;
+  width: 10px;
+  font-size: 0.7em;
+  color: var(--theme-text-muted);
+  transition: transform 0.15s;
+}
+.db-run-help[open] summary i {
+  transform: rotate(90deg);
+}
+.db-run-help summary:hover {
+  color: var(--theme-text-primary);
+}
+.db-run-help ul {
+  margin: 10px 0 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.db-run-help li {
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  color: var(--theme-text-muted);
 }
 </style>
