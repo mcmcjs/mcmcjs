@@ -63,10 +63,15 @@ Pinned packages provision into their own managed environment, so different pins 
 | `path` | string | required | path to the model file, resolved relative to the spec's directory |
 | `entry` | string | `"build_model"` | the model entry function (Julia backends; ignored for Stan) |
 | `evaluation_mode` | `"graph"`, `"generated"`, `"marginalized"` | the model file's own choice | how a JuliaBUGS model evaluates its log density; juliabugs only |
+| `monitor` | array of strings | all of them | deterministic quantities to store with the parameters, by base name; juliabugs only |
 
 `evaluation_mode` overrides whatever the model file selected: `"graph"` walks the node graph, `"generated"` compiles a specialised log-density function (which mutates arrays in place, so it needs `adtype = "mooncake"`), and `"marginalized"` sums the discrete latents out of the log density exactly, so a gradient sampler never sees them.
 The marginalized latents still appear in the chain, drawn from their conditional posterior once sampling is done.
 It does not combine with `MH` or `Gibbs`, which propose the discrete latents themselves.
+
+`monitor` limits which deterministic quantities the run stores.
+The model's parameters are always stored, so `monitor = ["sigma", "alpha0"]` keeps those two derived quantities and drops every other one, and `monitor = []` keeps the parameters alone.
+A model that computes large deterministic arrays at every draw needs this to keep its run at a size the report app can load.
 
 ### `[sampler]`
 

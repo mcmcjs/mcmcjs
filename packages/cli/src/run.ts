@@ -132,6 +132,7 @@ export interface RunCliOptions {
   backend?: string;
   entry?: string;
   evaluationMode?: string;
+  monitor?: string[];
   refit?: boolean;
   report?: boolean;
   store?: string;
@@ -200,6 +201,7 @@ function applyOverrides(spec: Spec, opts: RunCliOptions): Spec {
       ...spec.model,
       ...(opts.entry ? { entry: opts.entry } : {}),
       ...(opts.evaluationMode ? { evaluation_mode: opts.evaluationMode } : {}),
+      ...(opts.monitor?.length ? { monitor: opts.monitor } : {}),
     },
     sampler: {
       ...spec.sampler,
@@ -339,6 +341,7 @@ export function buildRunConfig(inputPath: string, opts: RunCliOptions): RunConfi
       path: `./${basename(modelPath)}`,
       ...(opts.entry ? { entry: opts.entry } : {}),
       ...(opts.evaluationMode ? { evaluation_mode: opts.evaluationMode } : {}),
+      ...(opts.monitor?.length ? { monitor: opts.monitor } : {}),
     },
     sampler: {
       algorithm: opts.prior ? "Prior" : (opts.algorithm ?? "NUTS"),
@@ -520,6 +523,12 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .option(
       "--evaluation-mode <mode>",
       "JuliaBUGS log-density evaluation: graph | generated | marginalized (default: the model file's own choice)",
+    )
+    .option(
+      "--monitor <name>",
+      "JuliaBUGS deterministic quantity to store with the parameters (repeatable; default: all of them)",
+      (value, prev: string[]) => [...prev, value],
+      [] as string[],
     )
     .option("--refit", "fit even when nothing changed since the last run")
     .option("--report", "open the finished run in the report web app (or set MCMC_REPORT_OPEN=1)")

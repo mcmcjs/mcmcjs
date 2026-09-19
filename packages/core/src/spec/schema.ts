@@ -218,6 +218,13 @@ const ModelFile = z.object({
    * discrete latents out exactly. Unset leaves the model file's own choice.
    */
   evaluation_mode: z.enum(["graph", "generated", "marginalized"]).optional(),
+  /**
+   * Deterministic model quantities to store alongside the parameters, by base
+   * name. Unset stores every quantity the model computes; an empty list stores
+   * the parameters alone. A model whose deterministic arrays dwarf its
+   * parameters needs this to keep a run bundle small.
+   */
+  monitor: z.array(z.string().min(1)).optional(),
 });
 
 const Output = z
@@ -329,6 +336,12 @@ export const SpecSchema = z
         issue(
           ["model", "evaluation_mode"],
           `evaluation_mode is a JuliaBUGS concern; the ${s.backend.id} backend has no equivalent`,
+        );
+      }
+      if (s.model.monitor !== undefined) {
+        issue(
+          ["model", "monitor"],
+          `monitor selects JuliaBUGS deterministic quantities; the ${s.backend.id} backend stores parameters only`,
         );
       }
       // Whole or per block, SliceSampling is reachable on turing only as an

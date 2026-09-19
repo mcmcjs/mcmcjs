@@ -171,6 +171,21 @@ describe("buildRunConfig: model file with no spec", () => {
     expect(() => buildRunConfig(model, { algorithm: "Gibbs" })).toThrow();
   });
 
+  it("stores only the monitored quantities when --monitor is given", () => {
+    const dir = tmp();
+    const model = writeModel(dir, "model.bugs.jl");
+    const config = buildRunConfig(model, { backend: "juliabugs", monitor: ["sigma", "alpha0"] });
+    expect(config.spec.model.monitor).toEqual(["sigma", "alpha0"]);
+    expect(buildRunConfig(model, { backend: "juliabugs" }).spec.model.monitor).toBeUndefined();
+    // The flag's empty default must not turn into "store the parameters alone".
+    expect(
+      buildRunConfig(model, { backend: "juliabugs", monitor: [] }).spec.model.monitor,
+    ).toBeUndefined();
+    expect(() => buildRunConfig(model, { backend: "turing", monitor: ["sigma"] })).toThrow(
+      /stores parameters only/,
+    );
+  });
+
   it("sets the JuliaBUGS evaluation mode from a flag, and only for that backend", () => {
     const dir = tmp();
     const model = writeModel(dir, "model.bugs.jl");

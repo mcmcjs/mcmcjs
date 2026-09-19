@@ -292,6 +292,18 @@ describe("SpecSchema", () => {
     ).toThrow(/JuliaBUGS concern/);
   });
 
+  it("accepts a monitor list, empty included, for juliabugs only", () => {
+    const bugs = { ...VALID, backend: { id: "juliabugs" } };
+    const withMonitor = (monitor: string[]) =>
+      SpecSchema.parse({ ...bugs, model: { ...VALID.model, monitor } }).model.monitor;
+    expect(withMonitor(["sigma", "alpha0"])).toEqual(["sigma", "alpha0"]);
+    expect(withMonitor([])).toEqual([]);
+    expect(SpecSchema.parse(bugs).model.monitor).toBeUndefined();
+    expect(() =>
+      SpecSchema.parse({ ...VALID, model: { ...VALID.model, monitor: ["sigma"] } }),
+    ).toThrow(/stores parameters only/);
+  });
+
   it("limits the stan backend to plain NUTS", () => {
     const stan = {
       ...VALID,
