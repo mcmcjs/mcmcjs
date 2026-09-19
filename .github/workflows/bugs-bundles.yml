@@ -9,7 +9,7 @@ on:
         default: volume_1
         options: [volume_1, volume_2, volume_3, all]
       example:
-        description: "A single example key, e.g. rats. Overrides the volume choice."
+        description: "Example keys to fit, comma separated, e.g. rats,pumps. Overrides the volume choice."
         type: string
         default: ""
       juliabugs_ref:

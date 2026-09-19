@@ -38,21 +38,23 @@ const KEEP = 1000
 const TIMEOUT_MINUTES = 60
 
 length(ARGS) >= 1 ||
-    error("usage: emit.jl <out-dir> [volume_1|volume_2|volume_3|all|<example-key>]")
+    error("usage: emit.jl <out-dir> [volume_1|volume_2|volume_3|all|<key>[,<key>...]]")
 const OUT = abspath(ARGS[1])
 
-# The second argument selects either a whole volume or a single example. Fitting
-# everything takes hours, so a volume at a time is the usual way to run this.
-const SELECT = length(ARGS) >= 2 && !isempty(ARGS[2]) ? Symbol(ARGS[2]) : :all
+# The second argument selects a whole volume or a comma-separated list of examples.
+# Fitting everything takes hours, so a volume at a time is the usual way to run this,
+# and a list is how a few examples get refitted without the rest.
+const SELECT = length(ARGS) >= 2 && !isempty(ARGS[2]) ? ARGS[2] : "all"
 const VOLUMES = (:volume_1, :volume_2, :volume_3)
-const WANT_VOL = if SELECT === :all
+const WANT_VOL = if SELECT == "all"
     VOLUMES
-elseif SELECT in VOLUMES
-    (SELECT,)
+elseif Symbol(SELECT) in VOLUMES
+    (Symbol(SELECT),)
 else
     VOLUMES
 end
-const WANT_KEY = SELECT === :all || SELECT in VOLUMES ? nothing : SELECT
+const WANT_KEYS = SELECT == "all" || Symbol(SELECT) in VOLUMES ? nothing :
+    Set(Symbol(strip(k)) for k in split(SELECT, ','))
 
 """
 The driver rebuilds matrices with `stack(elems; dims = 1)`, so every inner JSON array
@@ -210,7 +212,7 @@ function main()
 
     for (vol, examples) in pairs(BE.volumes()), (key, ex) in pairs(examples)
         vol in WANT_VOL || continue
-        WANT_KEY === nothing || key === WANT_KEY || continue
+        WANT_KEYS === nothing || key in WANT_KEYS || continue
         p = plan(ex)
         if p === nothing
             println("skipping $key: nothing to sample")
