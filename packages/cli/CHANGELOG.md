@@ -1,5 +1,20 @@
 # mcmcjs
 
+## 0.34.0
+
+### Minor Changes
+
+- 8486d73: `mcmc run` takes `--monitor <name>` to store only the named deterministic quantities alongside the parameters, and `--timeout <minutes>` to give a long fit more than the default 30 minutes.
+
+### Patch Changes
+
+- Updated dependencies [8486d73]
+- Updated dependencies [8486d73]
+  - @mcmcjs/julia@0.18.0
+  - @mcmcjs/core@0.14.0
+  - @mcmcjs/plots@0.8.6
+  - @mcmcjs/stan@0.1.9
+
 ## 0.33.1
 
 ### Patch Changes
