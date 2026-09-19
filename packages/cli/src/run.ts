@@ -133,6 +133,7 @@ export interface RunCliOptions {
   entry?: string;
   evaluationMode?: string;
   monitor?: string[];
+  timeout?: number;
   refit?: boolean;
   report?: boolean;
   store?: string;
@@ -530,6 +531,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       (value, prev: string[]) => [...prev, value],
       [] as string[],
     )
+    .option("--timeout <minutes>", "give up on a fit after this long (default 30)", parseIntOption)
     .option("--refit", "fit even when nothing changed since the last run")
     .option("--report", "open the finished run in the report web app (or set MCMC_REPORT_OPEN=1)")
     .option(
@@ -819,7 +821,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
               dataSha256: resolvedData.dataSha256,
             })
           : await runFitAuto(resolvedSpec, resolved as NonNullable<typeof resolved>, {
-              spawn: createFitRunner(),
+              spawn: createFitRunner(opts.timeout ? opts.timeout * 60_000 : undefined),
               projectDir: projectDir as string,
               outPath: join(dir, "samples.json"),
               recordPath: join(dir, "run.json"),
