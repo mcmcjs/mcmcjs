@@ -25,7 +25,7 @@ concurrency: bugs-bundles
 jobs:
   fit:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v6
         with:
@@ -91,11 +91,15 @@ jobs:
           mcmc setup --engine julia
           sh run.sh || echo "$? example(s) failed to fit" >> "$GITHUB_STEP_SUMMARY"
 
+      # The published index keeps listing the bundles this run did not refit, so the
+      # volumes can be fitted one run at a time.
       - name: Trim and index
         working-directory: emitted/bundles
         run: |
           ls ./*.json >/dev/null 2>&1 || { echo "nothing to publish"; exit 1; }
-          node "$GITHUB_WORKSPACE/scripts/trim-bundles.mjs" .
+          curl -fsSL https://mcmcjs.github.io/bugs-examples/index.json -o "$RUNNER_TEMP/index.json" \
+            || echo '{"runs":[]}' > "$RUNNER_TEMP/index.json"
+          node "$GITHUB_WORKSPACE/scripts/trim-bundles.mjs" . --merge "$RUNNER_TEMP/index.json"
 
       - name: Publish
         if: steps.key.outputs.present == 'true'
@@ -106,7 +110,7 @@ jobs:
           branch: deploy
           folder: emitted/bundles
           target-folder: bugs-examples
-          clean: true
+          clean: false
           commit-message: "publish BUGS example bundles from ${{ github.sha }}"
 
       - name: Summary
