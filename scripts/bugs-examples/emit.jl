@@ -236,25 +236,34 @@ function main()
         println(io, "# A model that fails is reported and skipped rather than stopping the")
         println(io, "# sweep, because losing an hour of finished fits to one bad model is")
         println(io, "# worse than an incomplete set. The exit status counts the failures.")
+        println(io, "#")
+        println(io, "# mcmc run exits 2 when it sampled but did not converge. Such a run is")
+        println(io, "# still exported: its bundle carries the verdict, and seeing the chains")
+        println(io, "# is how the model gets fixed.")
         println(io, "cd \"\$(dirname \"\$0\")\"")
         println(io, "failed=0")
         println(io)
         for (key, vars) in written
             shown = isempty(vars) ? "" : " --var " * join(("'$v'" for v in vars), " ")
             println(io, "echo \"== $key\"")
-            println(io, "mcmc run $key.json --timeout $TIMEOUT_MINUTES \\")
-            println(io, "  && mcmc export bundle -o bundles/$key.json --force \\")
+            println(io, "mcmc run $key.json --timeout $TIMEOUT_MINUTES")
+            println(io, "status=\$?")
+            println(io, "if [ \"\$status\" -eq 0 ] || [ \"\$status\" -eq 2 ]; then")
+            println(io, "  mcmc export bundle -o bundles/$key.json --force \\")
             println(
                 io,
-                "  && mcmc plot --kind trace$shown --format svg",
+                "    && mcmc plot --kind trace$shown --format svg",
                 " -o bundles/$key-trace.svg \\",
             )
             println(
                 io,
-                "  && mcmc plot --kind density$shown --format svg",
+                "    && mcmc plot --kind density$shown --format svg",
                 " -o bundles/$key-density.svg \\",
             )
-            println(io, "  || { echo \"   $key FAILED\"; failed=\$((failed + 1)); }")
+            println(io, "    || { echo \"   $key FAILED\"; failed=\$((failed + 1)); }")
+            println(io, "else")
+            println(io, "  echo \"   $key FAILED\"; failed=\$((failed + 1))")
+            println(io, "fi")
             println(io)
         end
         println(io, "echo \"\$failed example(s) failed\"")
