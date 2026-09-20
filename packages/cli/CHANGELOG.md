@@ -1,5 +1,16 @@
 # mcmcjs
 
+## 0.35.0
+
+### Minor Changes
+
+- 6bc169b: `mcmc run` takes a program in BUGS syntax as a `.bugs` file, or a BUGS example folder as the JuliaBUGS repository keeps them, picking up its `data.json`, published initial values, and published quantities; `--inits <file>` supplies starting values for any model.
+
+### Patch Changes
+
+- Updated dependencies [6bc169b]
+  - @mcmcjs/julia@0.19.0
+
 ## 0.34.0
 
 ### Minor Changes
