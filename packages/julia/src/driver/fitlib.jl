@@ -549,6 +549,20 @@ function initialize_bugs_model(model, sampler)
     return Base.invokelatest(JuliaBUGS.initialize!, model, bugs_namedtuple(inits))
 end
 
+# With no evaluation mode chosen, a gradient sampler gets the discrete finite
+# latents summed out of the log density, since it cannot move them itself. A model
+# that is discrete throughout has nothing left for it to sample.
+function marginalize_if_discrete(base)
+    base.evaluation_mode isa JuliaBUGS.UseGraph || return base
+    marginalized = set_bugs_mode(base, "marginalized")
+    cache = marginalized.marginalization_cache
+    (cache === nothing || cache.n_discrete_finite == 0) && return base
+    Base.invokelatest(JuliaBUGS.LogDensityProblems.dimension, marginalized) == 0 && error(
+        "every parameter of this model is discrete, which a gradient sampler cannot move; use the MH sampler",
+    )
+    return marginalized
+end
+
 # An environment-based sampler starts from the model's evaluation environment and
 # accepts on `logp_proposed - logp_current`, which is NaN when both are -Inf: from
 # an impossible starting point the chain can never move. Say so, with the fix,
@@ -579,7 +593,7 @@ function prepare_bugs_model(model, sampler, mode_name)
         base = initialize_bugs_model(set_bugs_mode(base, "graph"), sampler)
         return check_bugs_start(base, sampler)
     end
-    mode_name === nothing || (base = set_bugs_mode(base, mode_name))
+    base = mode_name === nothing ? marginalize_if_discrete(base) : set_bugs_mode(base, mode_name)
     base = initialize_bugs_model(base, sampler)
     # A derivative-free sampler wants the plain model: preparing a gradient it
     # never calls costs a compile, which for Mooncake runs into minutes.
