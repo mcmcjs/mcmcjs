@@ -530,21 +530,37 @@ function set_bugs_mode(model, name)
     )
 end
 
-# Named starting values, in constrained space, as the spec records them.
-# `initialize!` ignores a name it does not recognise, so an unknown one is an
-# error here rather than a silent no-op.
+# Named starting values, in constrained space, as the spec records them. A name
+# the model does not have at all is an error, since `initialize!` would ignore it
+# silently. A name that is a variable but not a parameter, an observed node or a
+# deterministic one, is left out, as BUGS does with such initial values; the
+# published inits of the classic examples carry them.
 function initialize_bugs_model(model, sampler)
     haskey(sampler, "initial_params") || return model
-    known = Set(
-        String(JuliaBUGS.AbstractPPL.getsym(vn)) for vn in JuliaBUGS.model_parameters(model)
-    )
-    for name in keys(sampler["initial_params"])
-        name in known ||
-            error("initial_params names $name, which is not a parameter of this model")
+    gd = base_bugs(model).graph_evaluation_data
+    name(vn) = String(JuliaBUGS.AbstractPPL.getsym(vn))
+    parameters = Set(name.(gd.model_parameters))
+    known = Set(name.(gd.sorted_nodes))
+    for k in keys(sampler["initial_params"])
+        k in known || error("initial_params names $k, which is not a variable of this model")
     end
-    return Base.invokelatest(
-        JuliaBUGS.initialize!, model, bugs_namedtuple(sampler["initial_params"]),
+    inits = Dict(k => v for (k, v) in sampler["initial_params"] if k in parameters)
+    isempty(inits) && return model
+    return Base.invokelatest(JuliaBUGS.initialize!, model, bugs_namedtuple(inits))
+end
+
+# With no evaluation mode chosen, a gradient sampler gets the discrete finite
+# latents summed out of the log density, since it cannot move them itself. A model
+# that is discrete throughout has nothing left for it to sample.
+function marginalize_if_discrete(base)
+    base.evaluation_mode isa JuliaBUGS.UseGraph || return base
+    marginalized = set_bugs_mode(base, "marginalized")
+    cache = marginalized.marginalization_cache
+    (cache === nothing || cache.n_discrete_finite == 0) && return base
+    Base.invokelatest(JuliaBUGS.LogDensityProblems.dimension, marginalized) == 0 && error(
+        "every parameter of this model is discrete, which a gradient sampler cannot move; use the MH sampler",
     )
+    return marginalized
 end
 
 # An environment-based sampler starts from the model's evaluation environment and
@@ -577,7 +593,7 @@ function prepare_bugs_model(model, sampler, mode_name)
         base = initialize_bugs_model(set_bugs_mode(base, "graph"), sampler)
         return check_bugs_start(base, sampler)
     end
-    mode_name === nothing || (base = set_bugs_mode(base, mode_name))
+    base = mode_name === nothing ? marginalize_if_discrete(base) : set_bugs_mode(base, mode_name)
     base = initialize_bugs_model(base, sampler)
     # A derivative-free sampler wants the plain model: preparing a gradient it
     # never calls costs a compile, which for Mooncake runs into minutes.
@@ -957,7 +973,16 @@ end
 # defining `const model_def`), and confines the model's globals to their own scope.
 function load_model_module(path)
     mod = Module(gensym(:UserModel))
-    Base.include(mod, abspath(path))
+    if endswith(lowercase(path), ".bugs")
+        # A bare BUGS program, parsed as the string form of `@bugs` parses it with
+        # dotted names kept, and given the entry a Julia model file would define.
+        model_def = JuliaBUGS.Parser._bugs_string_input(read(abspath(path), String), false)
+        Core.eval(mod, :(using JuliaBUGS))
+        Core.eval(mod, :(const model_def = $(Meta.quot(model_def))))
+        Core.eval(mod, :(build_model(data) = JuliaBUGS.compile(model_def, data)))
+    else
+        Base.include(mod, abspath(path))
+    end
     return mod
 end
 

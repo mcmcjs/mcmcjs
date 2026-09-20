@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
@@ -92,12 +93,18 @@ export function detectBackend(source: string): "turing" | "juliabugs" | undefine
   return undefined;
 }
 
-type InputKind = "spec" | "model" | "graph";
+type InputKind = "spec" | "model" | "graph" | "example";
 
 function classifyInput(path: string): InputKind {
+  if (existsSync(path) && statSync(path).isDirectory()) {
+    if (existsSync(join(path, "model.bugs"))) return "example";
+    throw new Error(
+      `${path} is a directory without a model.bugs; a BUGS example folder holds model.bugs, data.json, and inits.json`,
+    );
+  }
   const ext = extname(path).toLowerCase();
   if (ext === ".toml") return "spec";
-  if (ext === ".jl" || ext === ".stan") return "model";
+  if (ext === ".jl" || ext === ".stan" || ext === ".bugs") return "model";
   if (ext === ".json") {
     let doc: unknown;
     try {
@@ -111,7 +118,7 @@ function classifyInput(path: string): InputKind {
     return "spec";
   }
   throw new Error(
-    `unsupported input (expected a .toml/.json spec, .jl/.stan model, or graph): ${path}`,
+    `unsupported input (expected a .toml/.json spec, .jl/.stan/.bugs model, graph, or BUGS example folder): ${path}`,
   );
 }
 
@@ -133,6 +140,7 @@ export interface RunCliOptions {
   entry?: string;
   evaluationMode?: string;
   monitor?: string[];
+  inits?: string;
   timeout?: number;
   refit?: boolean;
   report?: boolean;
@@ -224,6 +232,39 @@ function dataFileFor(opts: RunCliOptions, specDataFile?: string): string | undef
   return opts.data ? resolve(opts.data) : specDataFile;
 }
 
+/**
+ * Named starting values from a JSON object. An entry holding a null anywhere is
+ * left out: the store keeps the spec as TOML, which has no null, and a partly
+ * missing array starts from the prior just as well as no array at all.
+ */
+export function readInits(path: string): { params: Record<string, unknown>; dropped: string[] } {
+  let doc: unknown;
+  try {
+    doc = JSON.parse(readFileSync(path, "utf8"));
+  } catch (err) {
+    throw new Error(`invalid JSON in ${path}: ${err instanceof Error ? err.message : err}`);
+  }
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+    throw new Error(`${path} must hold a JSON object of starting values by variable name`);
+  }
+  const hasNull = (v: unknown): boolean =>
+    v === null || (Array.isArray(v) && v.some((x) => hasNull(x)));
+  const params: Record<string, unknown> = {};
+  const dropped: string[] = [];
+  for (const [name, value] of Object.entries(doc)) {
+    if (hasNull(value)) dropped.push(name);
+    else params[name] = value;
+  }
+  return { params, dropped };
+}
+
+/** Base names of the quantities a BUGS example published summaries for, from its reference.json. */
+export function publishedQuantities(path: string): string[] {
+  if (!existsSync(path)) return [];
+  const doc = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  return [...new Set(Object.keys(doc).map((k) => k.split("[")[0] ?? k))];
+}
+
 /** A sibling data file conventionally paired with a bare model, when one exists. */
 export function autoDetectDataFile(modelPath: string): string | undefined {
   const dir = dirname(modelPath);
@@ -245,6 +286,11 @@ export interface RunConfig {
   dataFile?: string;
   specSource: "input" | "sibling" | "defaults";
   notes: string[];
+  /**
+   * A path whose directory anchors the run store, when the model's own directory
+   * should not: a BUGS example folder may sit inside a read-only artifact.
+   */
+  storeAnchor?: string;
 }
 
 /**
@@ -252,8 +298,100 @@ export interface RunConfig {
  * or a sibling `<model>.toml` the user authored), then flags. Never scaffolds.
  */
 export function buildRunConfig(inputPath: string, opts: RunCliOptions): RunConfig {
+  const config = buildRunConfigWithoutInits(inputPath, opts);
+  if (!opts.inits) return config;
+  const { params, dropped } = readInits(resolve(opts.inits));
+  const notes = [
+    ...config.notes,
+    `starting from the values in ${displayPath(resolve(opts.inits))}`,
+  ];
+  if (dropped.length > 0) {
+    notes.push(`${dropped.join(", ")} left out of the starting values: they hold missing entries`);
+  }
+  const spec = validated({
+    ...config.spec,
+    sampler: { ...config.spec.sampler, initial_params: params },
+  });
+  return { ...config, spec, notes };
+}
+
+/**
+ * A folder holding a BUGS example as the JuliaBUGS repository keeps them:
+ * `model.bugs`, and beside it `data.json`, `inits.json`, and `reference.json`
+ * where the example has them. The published initial values start the chains
+ * unless --inits says otherwise, and the run stores the parameters plus the
+ * quantities the example published summaries for unless --monitor says otherwise.
+ */
+function fromExampleFolder(dir: string, opts: RunCliOptions): RunConfig {
+  if (opts.backend && opts.backend !== "juliabugs") {
+    throw new Error(`a BUGS example runs on the juliabugs backend, not --backend ${opts.backend}`);
+  }
+  const modelPath = join(dir, "model.bugs");
+  const notes = [`running the BUGS example in ${displayPath(dir)}`];
+  const monitor = opts.monitor?.length
+    ? opts.monitor
+    : publishedQuantities(join(dir, "reference.json"));
+  if (!opts.monitor?.length) {
+    notes.push(
+      monitor.length > 0
+        ? `storing the parameters and the published quantities ${monitor.join(", ")} (pass --monitor to change)`
+        : "storing the parameters alone (pass --monitor to keep derived quantities)",
+    );
+  }
+  const sampler: Record<string, unknown> = {
+    algorithm: opts.prior ? "Prior" : (opts.algorithm ?? "NUTS"),
+    ...(opts.thin !== undefined ? { thin: opts.thin } : {}),
+    ...(opts.adtype ? { adtype: opts.adtype } : {}),
+    ...(opts.parallel ? { parallel: opts.parallel } : {}),
+    draws: opts.draws ?? 1000,
+    warmup: opts.warmup ?? 1000,
+    chains: opts.chains ?? 4,
+    ...(opts.adaptDelta !== undefined ? { adapt_delta: opts.adaptDelta } : {}),
+  };
+  const initsPath = join(dir, "inits.json");
+  if (!opts.inits && !opts.prior && existsSync(initsPath)) {
+    const { params, dropped } = readInits(initsPath);
+    if (Object.keys(params).length > 0) sampler.initial_params = params;
+    notes.push("starting from the example's published initial values (pass --inits to override)");
+    if (dropped.length > 0) {
+      notes.push(
+        `${dropped.join(", ")} left out of the starting values: they hold missing entries`,
+      );
+    }
+  }
+  const spec = validated({
+    schema_version: "0",
+    seed: opts.seed ?? randomInt(0, MAX_SEED),
+    backend: { id: "juliabugs" },
+    model: {
+      kind: "file",
+      path: "./model.bugs",
+      monitor,
+      ...(opts.evaluationMode ? { evaluation_mode: opts.evaluationMode } : {}),
+    },
+    sampler,
+  });
+  let dataFile = dataFileFor(opts);
+  if (!dataFile && existsSync(join(dir, "data.json"))) {
+    dataFile = join(dir, "data.json");
+    notes.push("using the example's data.json (pass --data to override)");
+  }
+  return {
+    spec,
+    modelPath,
+    channel: opts.juliaVersion ?? spec.backend.version,
+    dataFile,
+    specSource: "defaults",
+    notes,
+    storeAnchor: join(process.cwd(), "run"),
+  };
+}
+
+function buildRunConfigWithoutInits(inputPath: string, opts: RunCliOptions): RunConfig {
   const kind = classifyInput(inputPath);
   const notes: string[] = [];
+
+  if (kind === "example") return fromExampleFolder(resolve(inputPath), opts);
 
   if (kind === "graph") {
     for (const flag of ["data", "backend", "entry"] as const) {
@@ -321,13 +459,21 @@ export function buildRunConfig(inputPath: string, opts: RunCliOptions): RunConfi
 
   const source = readFileSync(modelPath, "utf8");
   const isStanFile = extname(modelPath).toLowerCase() === ".stan";
+  const isBugsFile = extname(modelPath).toLowerCase() === ".bugs";
   if (isStanFile && opts.backend && opts.backend !== "stan") {
     throw new Error(`a .stan model runs on the stan backend, not --backend ${opts.backend}`);
+  }
+  if (isBugsFile && opts.backend && opts.backend !== "juliabugs") {
+    throw new Error(`a .bugs program runs on the juliabugs backend, not --backend ${opts.backend}`);
   }
   if (!isStanFile && opts.backend === "stan") {
     throw new Error("--backend stan expects a .stan model file");
   }
-  const backend = isStanFile ? "stan" : (opts.backend ?? detectBackend(source));
+  const backend = isStanFile
+    ? "stan"
+    : isBugsFile
+      ? "juliabugs"
+      : (opts.backend ?? detectBackend(source));
   if (!backend) {
     throw new Error(
       `could not detect the backend from ${inputPath}; pass --backend turing|juliabugs`,
@@ -491,7 +637,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .helpGroup("Run inference:")
     .argument(
       "[input]",
-      "model file (.jl/.stan), spec file (.toml/.json), or DoodleBUGS graph (.json); omit to pick one",
+      "model file (.jl/.stan/.bugs), spec file (.toml/.json), DoodleBUGS graph (.json), or BUGS example folder; omit to pick one",
     )
     .description("Run the whole workflow: fit, diagnose, and record the run in the project store")
     .option("--data <file>", "data file (.json object or .csv columns)")
@@ -530,6 +676,10 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       "JuliaBUGS deterministic quantity to store with the parameters (repeatable; default: all of them)",
       (value, prev: string[]) => [...prev, value],
       [] as string[],
+    )
+    .option(
+      "--inits <file>",
+      "JSON object of starting values by variable name, used by every chain",
     )
     .option("--timeout <minutes>", "give up on a fit after this long (default 30)", parseIntOption)
     .option("--refit", "fit even when nothing changed since the last run")
@@ -617,7 +767,10 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       const refusal = missingDataRefusal(config.spec.backend.id, resolvedData.data);
       if (refusal) throw new Error(refusal);
 
-      const storeDir = storeDirFor(config.modelPath, opts.store ?? process.env.MCMC_STORE);
+      const storeDir = storeDirFor(
+        config.storeAnchor ?? config.modelPath,
+        opts.store ?? process.env.MCMC_STORE,
+      );
       ensureStore(storeDir);
 
       const modelSource = readFileSync(config.modelPath, "utf8");
