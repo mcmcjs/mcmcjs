@@ -957,7 +957,16 @@ end
 # defining `const model_def`), and confines the model's globals to their own scope.
 function load_model_module(path)
     mod = Module(gensym(:UserModel))
-    Base.include(mod, abspath(path))
+    if endswith(lowercase(path), ".bugs")
+        # A bare BUGS program, parsed as the string form of `@bugs` parses it with
+        # dotted names kept, and given the entry a Julia model file would define.
+        model_def = JuliaBUGS.Parser._bugs_string_input(read(abspath(path), String), false)
+        Core.eval(mod, :(using JuliaBUGS))
+        Core.eval(mod, :(const model_def = $(Meta.quot(model_def))))
+        Core.eval(mod, :(build_model(data) = JuliaBUGS.compile(model_def, data)))
+    else
+        Base.include(mod, abspath(path))
+    end
     return mod
 end
 
