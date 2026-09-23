@@ -5,7 +5,14 @@
  * far as needed so no nodes, plates or labels overlap.
  */
 
-export { type Label, type LabelPart, labelTex, labelText, nodeLabel } from "./label";
+export {
+  type Label,
+  type LabelPart,
+  labelSize,
+  labelTex,
+  labelText,
+  nodeLabel,
+} from "./label";
 export {
   type FigureEdge,
   type FigureLayout,
@@ -16,5 +23,5 @@ export {
   figureLayout,
   type PlateLabelSide,
 } from "./layout";
-export { figureSvg, layoutToSvg } from "./svg";
+export { figureSvg, type LabelSvgOptions, labelSvg, layoutToSvg, mathSvg } from "./svg";
 export { figureTikz, layoutToTikz, type TikzOptions } from "./tikz";

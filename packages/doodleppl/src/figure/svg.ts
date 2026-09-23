@@ -2,7 +2,7 @@
 // output so the same figure can go on a web page or into a document.
 
 import type { GraphElement, UnifiedModelData } from "../core/types";
-import { labelText } from "./label";
+import { type Label, labelSize, labelText } from "./label";
 import {
   type FigureLayout,
   type FigureNode,
@@ -65,10 +65,52 @@ function nodeSvg(node: FigureNode): string {
   return `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="${fill}" ${stroke}/>`;
 }
 
-function nodeLabelSvg(node: FigureNode): string {
-  const { base, subscript } = labelText(node.label);
+/** The label's text content: the base symbol, then its subscript set small and lowered. */
+function labelContent(label: Label): string {
+  const { base, subscript } = labelText(label);
   const sub = subscript ? `<tspan dy="0.3em" font-size="70%">${mathText(subscript)}</tspan>` : "";
-  return `<text x="${f(node.x * PX)}" y="${f(node.y * PX)}" dy="0.35em" text-anchor="middle">${mathText(base)}${sub}</text>`;
+  return `${mathText(base)}${sub}`;
+}
+
+function nodeLabelSvg(node: FigureNode): string {
+  return `<text x="${f(node.x * PX)}" y="${f(node.y * PX)}" dy="0.35em" text-anchor="middle">${labelContent(node.label)}</text>`;
+}
+
+export interface LabelSvgOptions {
+  /** Font size in px. */
+  fontSize?: number;
+  color?: string;
+  /** Draw the image this many times larger than its size, so it stays sharp when zoomed. */
+  pixelRatio?: number;
+}
+
+/**
+ * A name typeset on its own as a small SVG, the way the figure writes it, for use as
+ * an image, e.g. on a canvas. `width` and `height` are its size in px.
+ */
+export function labelSvg(
+  label: Label,
+  options: LabelSvgOptions = {},
+): { svg: string; width: number; height: number } {
+  const fontSize = options.fontSize ?? FONT_SIZE;
+  const ratio = options.pixelRatio ?? 1;
+  // labelSize measures in cm at a 10pt body, which is 40/3 px.
+  const width = Math.ceil(labelSize(label).width * PX * (fontSize / (40 / 3)) + fontSize * 0.6);
+  const height = Math.ceil(fontSize * 1.8);
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width * ratio}" height="${height * ratio}" viewBox="0 0 ${width} ${height}" font-family="${esc(FONT)}" font-size="${fontSize}" fill="${esc(options.color ?? "#000")}">`,
+    `<text x="${f(width / 2)}" y="${f(height / 2)}" dy="0.35em" text-anchor="middle">${labelContent(label)}</text>`,
+    "</svg>",
+  ].join("");
+  return { svg, width, height };
+}
+
+/** A line of maths, such as a plate's `i = 1, …, N`, typeset on its own as a small SVG. */
+export function mathSvg(
+  text: string,
+  options: LabelSvgOptions = {},
+): { svg: string; width: number; height: number } {
+  return labelSvg({ base: { text, greek: false }, subscript: [] }, options);
 }
 
 /** Render an already computed layout. */

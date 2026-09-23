@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { nodeLabel } from "../../src/figure/label";
 import { figureLayout } from "../../src/figure/layout";
-import { figureSvg, layoutToSvg } from "../../src/figure/svg";
+import { figureSvg, labelSvg, layoutToSvg, mathSvg } from "../../src/figure/svg";
 import { at, edge, hospitals } from "./helpers";
 
 const PX = 96 / 2.54;
@@ -103,6 +104,25 @@ describe("figureSvg", () => {
     const out = layoutToSvg(crowded);
     expect(out).not.toContain("<line ");
     expect(out.match(/<path d="M [^"]* C /g)).toHaveLength(2);
+  });
+
+  it("typesets a name on its own, larger when asked for a sharper image", () => {
+    const one = labelSvg(nodeLabel("mu", "i,j"), { fontSize: 20, color: "#eee" });
+    expect(one.svg).toContain('<tspan font-style="italic">μ</tspan>');
+    expect(one.svg).toContain('font-size="70%"');
+    expect(one.svg).toContain('fill="#eee"');
+    const two = labelSvg(nodeLabel("mu", "i,j"), { fontSize: 20, pixelRatio: 2 });
+    const open = (s: string) => attrs(s.slice(0, s.indexOf(">")));
+    expect(Number(open(two.svg).width)).toBe(2 * one.width);
+    expect(open(two.svg).viewBox).toBe(open(one.svg).viewBox);
+    expect(labelSvg(nodeLabel("population")).width).toBeGreaterThan(labelSvg(nodeLabel("x")).width);
+  });
+
+  it("typesets a plate's loop with letters in italics and numbers upright", () => {
+    const { svg: out } = mathSvg("i = 1, …, N");
+    expect(out).toContain(
+      '<tspan font-style="italic">i</tspan> = 1, …, <tspan font-style="italic">N</tspan>',
+    );
   });
 
   it("escapes the graph name", () => {
