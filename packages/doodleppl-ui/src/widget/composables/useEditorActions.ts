@@ -65,6 +65,7 @@ export function useEditorActions(
     openExportModal,
     handleConfirmExport,
     handleExportJson,
+    handleExportFigure,
   } = useFileExport(generatedCode, stanCode)
 
   const { shareUrl, minifyGraph, expandGraph, generateShareLink, decodeAndDecompress } =
@@ -536,6 +537,7 @@ export function useEditorActions(
     openExportModal,
     handleConfirmExport,
     handleExportJson,
+    handleExportFigure,
     handleElementSelected,
     handleSelectNodeFromModal,
     handleShare,
