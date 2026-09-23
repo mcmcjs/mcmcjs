@@ -23,8 +23,9 @@ function rangeTex(plate: FigurePlate): string {
 
 /** Render an already computed layout. */
 export function layoutToTikz(layout: FigureLayout, options: { standalone?: boolean } = {}): string {
-  const size = Math.round(layout.nodeSize * 10);
-  const square = Math.round(layout.nodeSize * 0.85 * 10);
+  const mm = (cm: number) => `${Number((cm * 10).toFixed(1))}mm`;
+  const size = mm(layout.nodeSize);
+  const square = mm(layout.nodeSize * 0.85);
   // TikZ reads a dot in a node name as an anchor, so nodes get plain generated names.
   const names = new Map(layout.nodes.map((node, i) => [node.id, `n${i + 1}`]));
   const title = layout.name.replace(/[\r\n]+/g, " ");
@@ -33,18 +34,20 @@ export function layoutToTikz(layout: FigureLayout, options: { standalone?: boole
     `% "${title}", drawn by DoodlePPL.`,
     "% Needs \\usepackage{tikz} and \\usetikzlibrary{arrows.meta}.",
     "\\begin{tikzpicture}[",
-    `  stochastic/.style={circle, draw, thick, minimum size=${size}mm, inner sep=0pt},`,
+    `  stochastic/.style={circle, draw, thick, minimum size=${size}, inner sep=2pt},`,
     "  observed/.style={stochastic, fill=black!20},",
     "  deterministic/.style={stochastic, double, double distance=1pt},",
-    `  constant/.style={rectangle, draw, thick, minimum size=${square}mm, inner sep=2pt},`,
+    `  constant/.style={rectangle, draw, thick, minimum size=${square}, inner sep=2pt},`,
     "  plate/.style={draw, rounded corners=3pt, black!60},",
-    "  platelabel/.style={font=\\scriptsize, text=black!60, anchor=south east, inner sep=2pt},",
+    "  platelabel/.style={font=\\scriptsize, text=black!60, inner sep=2pt},",
     "  edge/.style={-{Stealth[length=1.8mm]}, thick}]",
   ];
   for (const plate of layout.plates) {
     lines.push(
       `\\draw[plate] (${n(plate.x0)},${n(-plate.y0)}) rectangle (${n(plate.x1)},${n(-plate.y1)});`,
-      `\\node[platelabel] at (${n(plate.x1)},${n(-plate.y1)}) {$${rangeTex(plate)}$};`,
+      plate.labelSide === "right"
+        ? `\\node[platelabel, anchor=south east] at (${n(plate.x1)},${n(-plate.y1)}) {$${rangeTex(plate)}$};`
+        : `\\node[platelabel, anchor=south west] at (${n(plate.x0)},${n(-plate.y1)}) {$${rangeTex(plate)}$};`,
     );
   }
   for (const node of layout.nodes) {
@@ -52,8 +55,18 @@ export function layoutToTikz(layout: FigureLayout, options: { standalone?: boole
       `\\node[${node.kind}] (${names.get(node.id)}) at (${n(node.x)},${n(-node.y)}) {$${labelTex(node.label)}$};`,
     );
   }
+  // TikZ angles turn anticlockwise with y up, so a page angle (y down) changes sign.
+  const tikzAngle = (angle: number) => (((-angle % 360) + 360) % 360).toString();
   for (const edge of layout.edges) {
-    lines.push(`\\draw[edge] (${names.get(edge.from)}) -- (${names.get(edge.to)});`);
+    let path: string;
+    if (edge.out !== undefined && edge.in !== undefined) {
+      path = `to[out=${tikzAngle(edge.out)}, in=${tikzAngle(edge.in)}]`;
+    } else if (edge.bend !== 0) {
+      path = `to[bend ${edge.bend > 0 ? "left" : "right"}=${Math.abs(edge.bend)}]`;
+    } else {
+      path = "--";
+    }
+    lines.push(`\\draw[edge] (${names.get(edge.from)}) ${path} (${names.get(edge.to)});`);
   }
   lines.push("\\end{tikzpicture}");
 

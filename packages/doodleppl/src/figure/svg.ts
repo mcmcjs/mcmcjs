@@ -9,13 +9,17 @@ import {
   type FigureOptions,
   type FigurePlate,
   figureLayout,
+  nodeShape,
 } from "./layout";
+import { routeCurve } from "./route";
 
 /** SVG user units per centimetre, at the CSS 96 dpi. */
 const PX = 96 / 2.54;
 const STROKE = 1.2;
 const FONT_SIZE = 14;
 const FONT = "'Latin Modern Roman', 'CMU Serif', 'STIX Two Text', 'Times New Roman', serif";
+/** Gap between the two rings of a deterministic node, either side of its outline, in px. */
+const RING = 1.5;
 
 const f = (v: number) => (Math.round(v * 100) / 100).toString();
 const esc = (s: string) =>
@@ -41,48 +45,23 @@ function rangeText(plate: FigurePlate): string {
   return `${plate.variable} = ${plate.range[0]}, …, ${plate.range[1]}`;
 }
 
-/** A rough label width in px, so an outline can grow to fit a long name as TikZ does. */
-function labelWidth(node: FigureNode): number {
-  const { base, subscript } = labelText(node.label);
-  return (base.length + subscript.length * 0.7) * FONT_SIZE * 0.55;
-}
-
-/** Half-width and half-height of a constant's box, or the radius twice for a circle. */
-function extent(node: FigureNode, size: number): [number, number] {
-  const width = labelWidth(node);
-  if (node.kind === "constant") {
-    const half = (size * 0.85 * PX) / 2;
-    return [Math.max(half, width / 2 + 4), half];
-  }
-  const r = Math.max((size * PX) / 2, width / 2 + 3);
-  return [r, r];
-}
-
-/** Distance from a node's centre to its outline along a unit direction. */
-function reach(node: FigureNode, ux: number, uy: number, size: number): number {
-  const [hw, hh] = extent(node, size);
-  if (node.kind === "constant") {
-    return Math.min(hw / Math.abs(ux || 1e-9), hh / Math.abs(uy || 1e-9));
-  }
-  return hw + (node.kind === "deterministic" ? 1.5 : 0);
-}
-
-function nodeShape(node: FigureNode, size: number): string {
+function nodeSvg(node: FigureNode): string {
   const cx = node.x * PX;
   const cy = node.y * PX;
-  const [hw, hh] = extent(node, size);
   const stroke = `stroke="#000" stroke-width="${STROKE}"`;
   if (node.kind === "constant") {
-    return `<rect x="${f(cx - hw)}" y="${f(cy - hh)}" width="${f(2 * hw)}" height="${f(2 * hh)}" fill="#fff" ${stroke}/>`;
+    const w = node.width * PX;
+    const h = node.height * PX;
+    return `<rect x="${f(cx - w / 2)}" y="${f(cy - h / 2)}" width="${f(w)}" height="${f(h)}" fill="#fff" ${stroke}/>`;
   }
-  const r = hw;
-  const fill = node.kind === "observed" ? "#ccc" : "#fff";
+  const r = (node.width * PX) / 2;
   if (node.kind === "deterministic") {
     return [
-      `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r + 1.5)}" fill="#fff" ${stroke}/>`,
-      `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r - 1.5)}" fill="none" ${stroke}/>`,
+      `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r + RING)}" fill="#fff" ${stroke}/>`,
+      `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r - RING)}" fill="none" ${stroke}/>`,
     ].join("\n");
   }
+  const fill = node.kind === "observed" ? "#ccc" : "#fff";
   return `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="${fill}" ${stroke}/>`;
 }
 
@@ -94,51 +73,45 @@ function nodeLabelSvg(node: FigureNode): string {
 
 /** Render an already computed layout. */
 export function layoutToSvg(layout: FigureLayout): string {
-  // A name wider than the node size widens its outline, so the canvas grows to fit it.
-  let left = 0;
-  let right = layout.width * PX;
-  for (const node of layout.nodes) {
-    const [hw] = extent(node, layout.nodeSize);
-    left = Math.min(left, node.x * PX - hw - 3);
-    right = Math.max(right, node.x * PX + hw + 3);
-  }
-  const x = Math.floor(left);
-  const w = Math.ceil(right) - x;
+  const w = Math.ceil(layout.width * PX);
   const h = Math.ceil(layout.height * PX);
   const byId = new Map(layout.nodes.map((node) => [node.id, node]));
+  // An arrow stops at a deterministic node's outer ring.
+  const outlineOf = (node: FigureNode) =>
+    nodeShape(node, node.kind === "deterministic" ? RING / PX : 0);
   const out = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x} 0 ${w} ${h}" font-family="${esc(FONT)}" font-size="${FONT_SIZE}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="${esc(FONT)}" font-size="${FONT_SIZE}">`,
     `<title>${esc(layout.name)}</title>`,
     '<defs><marker id="doodleppl-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 L 3 5 z" fill="#000"/></marker></defs>',
-    `<rect x="${x}" width="${w}" height="${h}" fill="#fff"/>`,
+    `<rect width="${w}" height="${h}" fill="#fff"/>`,
   ];
   for (const plate of layout.plates) {
     const x0 = plate.x0 * PX;
     const y0 = plate.y0 * PX;
     out.push(
       `<rect x="${f(x0)}" y="${f(y0)}" width="${f((plate.x1 - plate.x0) * PX)}" height="${f((plate.y1 - plate.y0) * PX)}" rx="4" fill="none" stroke="#666" stroke-width="1"/>`,
-      `<text x="${f(plate.x1 * PX - 4)}" y="${f(plate.y1 * PX - 5)}" text-anchor="end" font-size="9" fill="#666">${mathText(rangeText(plate))}</text>`,
+      plate.labelSide === "right"
+        ? `<text x="${f(plate.x1 * PX - 4)}" y="${f(plate.y1 * PX - 5)}" text-anchor="end" font-size="9" fill="#666">${mathText(rangeText(plate))}</text>`
+        : `<text x="${f(plate.x0 * PX + 4)}" y="${f(plate.y1 * PX - 5)}" font-size="9" fill="#666">${mathText(rangeText(plate))}</text>`,
     );
   }
+  const edgeStyle = `fill="none" stroke="#000" stroke-width="${STROKE}" marker-end="url(#doodleppl-arrow)"`;
   for (const edge of layout.edges) {
     const a = byId.get(edge.from) as FigureNode;
     const b = byId.get(edge.to) as FigureNode;
-    const dx = (b.x - a.x) * PX;
-    const dy = (b.y - a.y) * PX;
-    const len = Math.hypot(dx, dy);
-    if (len === 0) continue;
-    const ux = dx / len;
-    const uy = dy / len;
-    const start = reach(a, ux, uy, layout.nodeSize);
-    const end = reach(b, -ux, -uy, layout.nodeSize);
-    if (start + end >= len) continue;
-    out.push(
-      `<line x1="${f(a.x * PX + ux * start)}" y1="${f(a.y * PX + uy * start)}" x2="${f(b.x * PX - ux * end)}" y2="${f(b.y * PX - uy * end)}" stroke="#000" stroke-width="${STROKE}" marker-end="url(#doodleppl-arrow)"/>`,
-    );
+    const { start, c1, c2, end } = routeCurve(outlineOf(a), outlineOf(b), edge);
+    const p = (q: { x: number; y: number }) => `${f(q.x * PX)} ${f(q.y * PX)}`;
+    if (edge.bend === 0 && edge.out === undefined) {
+      // Outlines that touch leave no line to draw.
+      if ((end.x - start.x) * (b.x - a.x) + (end.y - start.y) * (b.y - a.y) <= 0) continue;
+      out.push(
+        `<line x1="${f(start.x * PX)}" y1="${f(start.y * PX)}" x2="${f(end.x * PX)}" y2="${f(end.y * PX)}" ${edgeStyle}/>`,
+      );
+    } else {
+      out.push(`<path d="M ${p(start)} C ${p(c1)} ${p(c2)} ${p(end)}" ${edgeStyle}/>`);
+    }
   }
-  for (const node of layout.nodes) {
-    out.push(nodeShape(node, layout.nodeSize), nodeLabelSvg(node));
-  }
+  for (const node of layout.nodes) out.push(nodeSvg(node), nodeLabelSvg(node));
   out.push("</svg>");
   return `${out.join("\n")}\n`;
 }

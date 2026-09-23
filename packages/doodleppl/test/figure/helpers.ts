@@ -1,4 +1,4 @@
-import type { GraphElement, UnifiedModelData } from "../../src/core/types";
+import type { GraphElement, GraphNode, UnifiedModelData } from "../../src/core/types";
 
 /** Twelve hospitals sharing a population: a plate, a hierarchy, and every node kind. */
 export function hospitals(): UnifiedModelData {
@@ -75,6 +75,32 @@ export function hospitals(): UnifiedModelData {
   ];
   return { name: "Surgical", elements };
 }
+
+type Spot = { x: number; y: number };
+
+/** A stochastic node at a spot, with any overrides. */
+export function at(id: string, position: Spot, extra: Partial<GraphNode> = {}): GraphNode {
+  return { id, name: id, type: "node", nodeType: "stochastic", position, ...extra };
+}
+
+export function plate(id: string, variable: string, range: string, parent?: string): GraphNode {
+  return {
+    id,
+    name: `Plate.${variable}`,
+    type: "node",
+    nodeType: "plate",
+    loopVariable: variable,
+    loopRange: range,
+    ...(parent ? { parent } : {}),
+  };
+}
+
+export const edge = (source: string, target: string): GraphElement => ({
+  id: `${source}-${target}`,
+  type: "edge",
+  source,
+  target,
+});
 
 /** Two nested plates, with a node named like a TikZ anchor. */
 export function nested(): GraphElement[] {

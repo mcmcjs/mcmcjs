@@ -96,3 +96,22 @@ export function labelText(label: Label): { base: string; subscript: string } {
   const text = (p: LabelPart) => (p.greek ? (GREEK[p.text] as string) : p.text);
   return { base: text(label.base), subscript: label.subscript.map(text).join(",") };
 }
+
+/** Width of one character of 10pt maths italic in centimetres, measured with pdflatex. */
+function charWidth(c: string): number {
+  if (/[ijlt,.fr]/.test(c)) return 0.12;
+  if (/[mwMW]/.test(c)) return 0.28;
+  if (/[A-Z]/.test(c)) return 0.24;
+  if (/\d/.test(c)) return 0.176;
+  if (/[Ͱ-Ͽ]/.test(c)) return 0.22;
+  return 0.19;
+}
+
+const textWidth = (s: string) => [...s].reduce((sum, c) => sum + charWidth(c), 0);
+
+/** A close estimate of the typeset label's size in centimetres, at a 10pt body size. */
+export function labelSize(label: Label): { width: number; height: number } {
+  const { base, subscript } = labelText(label);
+  if (!subscript) return { width: textWidth(base), height: 0.25 };
+  return { width: textWidth(base) + 0.7 * textWidth(subscript) + 0.03, height: 0.34 };
+}

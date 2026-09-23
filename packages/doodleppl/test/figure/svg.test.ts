@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { figureLayout } from "../../src/figure/layout";
 import { figureSvg, layoutToSvg } from "../../src/figure/svg";
-import { hospitals } from "./helpers";
+import { at, edge, hospitals } from "./helpers";
 
 const PX = 96 / 2.54;
 
@@ -71,6 +71,38 @@ describe("figureSvg", () => {
     expect(Number(long.x) + Number(long.width)).toBeLessThanOrEqual(
       (vx as number) + (vw as number),
     );
+  });
+
+  it("draws a bent edge as a curve that ends on its target's outline", () => {
+    const doc = [
+      at("a", { x: 0, y: 0 }),
+      at("b", { x: 100, y: 0 }),
+      at("c", { x: 200, y: 0 }),
+      edge("a", "b"),
+      edge("a", "c"),
+    ];
+    const bent = figureLayout(doc);
+    const out = layoutToSvg(bent);
+    expect(out.match(/<line /g)).toHaveLength(1);
+    const d = attrs(out.match(/<path d="M [^"]* C [^"]*"/)?.[0] ?? "").d ?? "";
+    const [x, y] = d.trim().split(/\s+/).slice(-2).map(Number);
+    const c = bent.nodes.find((n) => n.id === "c") as (typeof bent.nodes)[number];
+    const r = (c.width * PX) / 2;
+    expect(Math.hypot((x as number) - c.x * PX, (y as number) - c.y * PX)).toBeCloseTo(r, 1);
+  });
+
+  it("draws an edge with turned ends as a curve, not a line", () => {
+    const crowded = figureLayout([
+      at("p1", { x: 0, y: 0 }),
+      at("p2", { x: 40, y: 0 }),
+      at("t", { x: 20, y: 600 }),
+      edge("p1", "t"),
+      edge("p2", "t"),
+    ]);
+    expect(crowded.edges.every((e) => e.out !== undefined)).toBe(true);
+    const out = layoutToSvg(crowded);
+    expect(out).not.toContain("<line ");
+    expect(out.match(/<path d="M [^"]* C /g)).toHaveLength(2);
   });
 
   it("escapes the graph name", () => {

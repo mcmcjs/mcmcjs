@@ -50,6 +50,7 @@ You can also hand the graph directly to `mcmc run model.json`, which converts an
 ## Draw it as a figure
 
 `mcmc figure <graph>` draws the same graph as a black-and-white figure for a paper, keeping the node positions saved in the graph.
+Nodes and plates move only as far as needed so nothing overlaps, and an edge curves around any node or label in its way.
 Stochastic nodes are circles, observed nodes are shaded, deterministic nodes are double circles, constants are squares, and plates are boxes labelled with their loop.
 Greek names and indices are typeset as maths, so `mu[i]` is drawn as μ with subscript i.
 

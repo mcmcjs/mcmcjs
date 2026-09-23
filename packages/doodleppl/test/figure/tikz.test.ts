@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { figureTikz } from "../../src/figure/tikz";
-import { hospitals, nested } from "./helpers";
+import { at, edge, hospitals, nested } from "./helpers";
 
 describe("figureTikz", () => {
   const tikz = figureTikz(hospitals());
@@ -15,6 +15,35 @@ describe("figureTikz", () => {
   it("draws one arrow per edge between the generated node names", () => {
     const arrows = tikz.match(/\\draw\[edge\] \(n\d+\) -- \(n\d+\);/g) ?? [];
     expect(arrows).toHaveLength(5);
+  });
+
+  it("bends an edge that would run through a node", () => {
+    const out = figureTikz([
+      at("a", { x: 0, y: 0 }),
+      at("b", { x: 100, y: 0 }),
+      at("c", { x: 200, y: 0 }),
+      edge("a", "b"),
+      edge("a", "c"),
+    ]);
+    expect(out).toContain("\\draw[edge] (n1) -- (n2);");
+    expect(out).toMatch(/\\draw\[edge\] \(n1\) to\[bend (left|right)=\d+\] \(n3\);/);
+  });
+
+  it("turns crowded arrows apart with out and in angles, in TikZ's anticlockwise sense", () => {
+    const out = figureTikz([
+      at("p1", { x: 0, y: 0 }),
+      at("p2", { x: 40, y: 0 }),
+      at("p3", { x: 80, y: 0 }),
+      at("t", { x: 40, y: 600 }),
+      edge("p1", "t"),
+      edge("p2", "t"),
+      edge("p3", "t"),
+    ]);
+    // The middle arrow stays put. The left one arrives from about page angle -110,
+    // which TikZ writes as in=110.
+    expect(out).toContain("\\draw[edge] (n2) -- (n4);");
+    expect(out).toMatch(/\\draw\[edge\] \(n1\) to\[out=\d+, in=1[01]\d\] \(n4\);/);
+    expect(out).toMatch(/\\draw\[edge\] \(n3\) to\[out=\d+, in=[67]\d\] \(n4\);/);
   });
 
   it("labels a plate with its loop", () => {
