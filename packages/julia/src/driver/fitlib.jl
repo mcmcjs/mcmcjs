@@ -546,7 +546,14 @@ function initialize_bugs_model(model, sampler)
     end
     inits = Dict(k => v for (k, v) in sampler["initial_params"] if k in parameters)
     isempty(inits) && return model
-    return Base.invokelatest(JuliaBUGS.initialize!, model, bugs_namedtuple(inits))
+    # A JSON `0` arrives as an integer, and a continuous parameter initialized with it
+    # gets an integer slot that the generated log density cannot write a float into.
+    types = bugs_node_types(base_bugs(model))
+    continuous(k) = all(t == :continuous for (vn, t) in types if name(vn) == k)
+    as_float(v) = v isa AbstractArray{<:Real} || v isa Real ? float(v) : v
+    values = bugs_namedtuple(inits)
+    values = (; (k => (continuous(String(k)) ? as_float(v) : v) for (k, v) in pairs(values))...)
+    return Base.invokelatest(JuliaBUGS.initialize!, model, values)
 end
 
 # With no evaluation mode chosen, a gradient sampler gets the discrete finite
