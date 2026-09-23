@@ -16,6 +16,10 @@ on:
         description: "JuliaBUGS.jl ref holding the examples"
         type: string
         default: main
+      fit_timeout:
+        description: "Minutes each fit may take before it is given up"
+        type: string
+        default: "60"
 
 permissions:
   contents: read
@@ -76,6 +80,7 @@ jobs:
       - name: Emit the examples
         env:
           SELECT: ${{ inputs.example != '' && inputs.example || inputs.volumes }}
+          FIT_TIMEOUT_MINUTES: ${{ inputs.fit_timeout }}
         run: |
           julia --project=juliabugs/JuliaBUGS -e 'using Pkg; Pkg.instantiate()'
           julia --project=juliabugs/JuliaBUGS scripts/bugs-examples/emit.jl \

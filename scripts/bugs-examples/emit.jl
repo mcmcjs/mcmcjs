@@ -33,9 +33,9 @@ const CHAINS = 2
 const WARMUP = 1000
 const UPDATES = 10_000
 const KEEP = 1000
-# Long enough for the thousand-parameter models under ForwardDiff, short enough that a
-# volume of them still fits in one six-hour job, which only publishes at its end.
-const TIMEOUT_MINUTES = 60
+# Short enough that a volume still fits in one six-hour job, which only publishes at its
+# end. The marginalized models need longer and get their own run with a larger value.
+const TIMEOUT_MINUTES = parse(Int, get(ENV, "FIT_TIMEOUT_MINUTES", "60"))
 
 length(ARGS) >= 1 ||
     error("usage: emit.jl <out-dir> [volume_1|volume_2|volume_3|all|<key>[,<key>...]]")
