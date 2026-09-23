@@ -174,7 +174,12 @@ function write_example(dir, vol, key, ex, p)
         # `beta.c` exactly as the original program and its reference table do.
         println(io, "\"\"\", false)")
         println(io)
-        println(io, "build_model(data) = JuliaBUGS.compile(model_def, data)")
+        # Taking the starting values lets the driver compile from them rather than
+        # from prior draws, which underflow for several of these models.
+        println(
+            io,
+            "build_model(data, inits = (;)) = JuliaBUGS.compile(model_def, data, inits)",
+        )
     end
 
     open(joinpath(dir, "$(key).data.json"), "w") do io
