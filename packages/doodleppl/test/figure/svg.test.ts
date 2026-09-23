@@ -6,7 +6,7 @@ import { hospitals } from "./helpers";
 const PX = 96 / 2.54;
 
 const attrs = (tag: string) =>
-  Object.fromEntries([...tag.matchAll(/([a-z0-9-]+)="([^"]*)"/g)].map((m) => [m[1], m[2]]));
+  Object.fromEntries([...tag.matchAll(/([A-Za-z0-9-]+)="([^"]*)"/g)].map((m) => [m[1], m[2]]));
 
 describe("figureSvg", () => {
   const layout = figureLayout(hospitals());
@@ -50,6 +50,27 @@ describe("figureSvg", () => {
       if (target.kind === "deterministic") expect(d, edge.to).toBeCloseTo(radius + 1.5, 1);
       else if (target.kind !== "constant") expect(d, edge.to).toBeCloseTo(radius, 1);
     });
+  });
+
+  it("widens a box to fit a long name", () => {
+    const doc = hospitals();
+    const n = doc.elements?.find((el) => el.id === "n");
+    if (n) n.name = "population";
+    const box = (s: string) => attrs(s.match(/<rect [^>]*stroke="#000"[^>]*>/)?.[0] ?? "");
+    const wide = figureSvg(doc);
+    const short = box(svg);
+    const long = box(wide);
+    expect(short.width).toBe(short.height);
+    expect(Number(long.width)).toBeGreaterThan(Number(long.height));
+    expect(long.height).toBe(short.height);
+    // The canvas grows so the wider box is not cut off.
+    const [vx, , vw] = (attrs(wide.slice(0, wide.indexOf(">"))).viewBox ?? "")
+      .split(" ")
+      .map(Number);
+    expect(Number(long.x)).toBeGreaterThanOrEqual(vx as number);
+    expect(Number(long.x) + Number(long.width)).toBeLessThanOrEqual(
+      (vx as number) + (vw as number),
+    );
   });
 
   it("escapes the graph name", () => {

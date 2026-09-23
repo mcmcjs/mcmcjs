@@ -36,7 +36,7 @@ export function layoutToTikz(layout: FigureLayout, options: { standalone?: boole
     `  stochastic/.style={circle, draw, thick, minimum size=${size}mm, inner sep=0pt},`,
     "  observed/.style={stochastic, fill=black!20},",
     "  deterministic/.style={stochastic, double, double distance=1pt},",
-    `  constant/.style={rectangle, draw, thick, minimum size=${square}mm, inner sep=0pt},`,
+    `  constant/.style={rectangle, draw, thick, minimum size=${square}mm, inner sep=2pt},`,
     "  plate/.style={draw, rounded corners=3pt, black!60},",
     "  platelabel/.style={font=\\scriptsize, text=black!60, anchor=south east, inner sep=2pt},",
     "  edge/.style={-{Stealth[length=1.8mm]}, thick}]",
