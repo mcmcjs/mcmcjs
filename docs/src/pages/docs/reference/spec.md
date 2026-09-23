@@ -70,8 +70,8 @@ The marginalized latents still appear in the chain, drawn from their conditional
 It does not combine with `MH` or `Gibbs`, which propose the discrete latents themselves.
 
 When a JuliaBUGS spec sets neither `evaluation_mode` nor `sampler.adtype`, a gradient sampler runs on the generated log density under Mooncake, which on the classic BUGS examples takes 10 to 740 times less per gradient than ForwardDiff on the graph.
-Its gradient is checked against finite differences at the starting point first, and a model that fails the check, or that cannot be generated, runs on the graph under ForwardDiff instead.
-A model with discrete latents is marginalized as described above.
+A model with discrete latents is marginalized as described above and runs under ForwardDiff, the faster backend there, or under Mooncake where ForwardDiff's gradient is not finite.
+Whichever is chosen, its gradient is checked against finite differences at the starting point first, and a model that fails every check runs on the graph, or marginalized, under ForwardDiff as before.
 
 `monitor` limits which deterministic quantities the run stores.
 The model's parameters are always stored, so `monitor = ["sigma", "alpha0"]` keeps those two derived quantities and drops every other one, and `monitor = []` keeps the parameters alone.

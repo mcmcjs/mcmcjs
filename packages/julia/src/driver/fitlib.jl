@@ -605,9 +605,9 @@ function prepare_bugs_model(model, sampler, mode_name)
     # never calls costs a compile, which for Mooncake runs into minutes.
     get(sampler, "algorithm", "NUTS") == "Slice" && return initialize_bugs_model(base, sampler)
     if !haskey(sampler, "adtype") && !(model isa JuliaBUGS.BUGSModelWithGradient) &&
-       mode_name === nothing && base.evaluation_mode isa JuliaBUGS.UseGraph
-        fast = generated_mooncake(base, sampler)
-        fast === nothing || return fast
+       mode_name === nothing
+        checked = checked_gradient(base, sampler)
+        checked === nothing || return checked
     end
     adtype = haskey(sampler, "adtype") ? build_adtype(sampler["adtype"]) :
         model isa JuliaBUGS.BUGSModelWithGradient ? model.adtype :
@@ -616,29 +616,41 @@ function prepare_bugs_model(model, sampler, mode_name)
     return Base.invokelatest(JuliaBUGS.BUGSModelWithGradient, base, adtype)
 end
 
-# With neither an evaluation mode nor an AD backend chosen, a model on graph evaluation
-# is fitted through the generated log density under Mooncake, which on the BUGS
-# examples takes 10 to 740 times less per gradient than ForwardDiff on the graph, and
-# stays correct where ForwardDiff's Poisson derivative at rate zero is NaN. Mooncake is
-# not right everywhere (Birats is off by 6%), so its gradient at the starting point is
-# checked against central differences of the same function, and a model that fails the
-# check, or that the generator cannot handle, is fitted as before. Returns nothing then.
-function generated_mooncake(base, sampler)
-    try
-        # The generated function writes into the evaluation environment's arrays, so
-        # it gets its own copy, and a model that fails the check falls back unchanged.
-        generated = set_bugs_mode(deepcopy(base), "generated")
-        generated.evaluation_mode isa JuliaBUGS.UseGeneratedLogDensityFunction || return nothing
-        generated = initialize_bugs_model(generated, sampler)
-        wrapped = Base.invokelatest(
-            JuliaBUGS.BUGSModelWithGradient, generated, Turing.ADTypes.AutoMooncake(; config = nothing),
-        )
-        gradient_matches_differences(wrapped, Base.invokelatest(JuliaBUGS.getparams, generated)) ||
-            return nothing
-        return wrapped
-    catch
-        return nothing
+# With neither an evaluation mode nor an AD backend chosen, each candidate gradient is
+# tried fastest first, and the first whose gradient at the starting point matches central
+# differences of the same function is used. On the BUGS examples the generated log
+# density under Mooncake takes 10 to 740 times less per gradient than ForwardDiff on the
+# graph, and on marginalized models ForwardDiff is the faster by 13 to 18 times.
+# Neither is right everywhere: ForwardDiff's Poisson derivative at rate zero is NaN
+# (Leuk, Hearts) and Mooncake's Birats gradient is 6% off. Returns nothing when no
+# candidate passes, and the model is then fitted as before.
+function checked_gradient(base, sampler)
+    forwarddiff = Turing.ADTypes.AutoForwardDiff()
+    mooncake = Turing.ADTypes.AutoMooncake(; config = nothing)
+    candidates = if base.evaluation_mode isa JuliaBUGS.UseGraph
+        (("generated", mooncake),)
+    elseif base.evaluation_mode isa JuliaBUGS.UseAutoMarginalization
+        ((nothing, forwarddiff), (nothing, mooncake))
+    else
+        ()
     end
+    for (mode, adtype) in candidates
+        try
+            # The generated function writes into the evaluation environment's arrays,
+            # so each attempt gets its own copy and a failed one leaves `base` unchanged.
+            candidate = deepcopy(base)
+            if mode !== nothing
+                candidate = set_bugs_mode(candidate, mode)
+                candidate.evaluation_mode isa JuliaBUGS.UseGeneratedLogDensityFunction || continue
+            end
+            candidate = initialize_bugs_model(candidate, sampler)
+            wrapped = Base.invokelatest(JuliaBUGS.BUGSModelWithGradient, candidate, adtype)
+            x = Base.invokelatest(JuliaBUGS.getparams, candidate)
+            gradient_matches_differences(wrapped, x) && return wrapped
+        catch
+        end
+    end
+    return nothing
 end
 
 function gradient_matches_differences(wrapped, x; rtol = 1e-4)
