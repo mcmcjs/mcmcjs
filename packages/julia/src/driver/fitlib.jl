@@ -1024,6 +1024,15 @@ end
 # Load the user's model file into a throwaway module. Isolation keeps repeated
 # requests in the persistent worker from colliding on names (e.g. two models each
 # defining `const model_def`), and confines the model's globals to their own scope.
+# Compiling draws every parameter it is not given from its prior, and a draw from a
+# vague prior such as dgamma(0.001, 0.001) can underflow into a Weibull scale of zero
+# or a Poisson rate of NaN before sampling starts. An entry that takes the starting
+# values as a second argument gets them at compile time.
+function build_bugs_model(entry, data, sampler)
+    haskey(sampler, "initial_params") && applicable(entry, data, (;)) || return entry(data)
+    return entry(data, bugs_namedtuple(sampler["initial_params"]))
+end
+
 function load_model_module(path)
     mod = Module(gensym(:UserModel))
     if endswith(lowercase(path), ".bugs")
@@ -1032,7 +1041,9 @@ function load_model_module(path)
         model_def = JuliaBUGS.Parser._bugs_string_input(read(abspath(path), String), false)
         Core.eval(mod, :(using JuliaBUGS))
         Core.eval(mod, :(const model_def = $(Meta.quot(model_def))))
-        Core.eval(mod, :(build_model(data) = JuliaBUGS.compile(model_def, data)))
+        Core.eval(
+            mod, :(build_model(data, inits = (;)) = JuliaBUGS.compile(model_def, data, inits)),
+        )
     else
         Base.include(mod, abspath(path))
     end
@@ -1116,7 +1127,9 @@ function handle_request(request)
             draws = Int(request["sampler"]["draws"])
             stage = "sample"
             if backend == "juliabugs"
-                model = Base.invokelatest(entry, data)
+                stage = "compile"
+                model = Base.invokelatest(build_bugs_model, entry, data, sampler_conf)
+                stage = "sample"
                 chn = if get(sampler_conf, "algorithm", "NUTS") == "Prior"
                     Base.invokelatest(sample_bugs_prior, model, draws, chains, rng)
                 else
