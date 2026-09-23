@@ -594,14 +594,60 @@ function prepare_bugs_model(model, sampler, mode_name)
         return check_bugs_start(base, sampler)
     end
     base = mode_name === nothing ? marginalize_if_discrete(base) : set_bugs_mode(base, mode_name)
-    base = initialize_bugs_model(base, sampler)
     # A derivative-free sampler wants the plain model: preparing a gradient it
     # never calls costs a compile, which for Mooncake runs into minutes.
-    get(sampler, "algorithm", "NUTS") == "Slice" && return base
+    get(sampler, "algorithm", "NUTS") == "Slice" && return initialize_bugs_model(base, sampler)
+    if !haskey(sampler, "adtype") && !(model isa JuliaBUGS.BUGSModelWithGradient) &&
+       mode_name === nothing && base.evaluation_mode isa JuliaBUGS.UseGraph
+        fast = generated_mooncake(base, sampler)
+        fast === nothing || return fast
+    end
     adtype = haskey(sampler, "adtype") ? build_adtype(sampler["adtype"]) :
         model isa JuliaBUGS.BUGSModelWithGradient ? model.adtype :
         Turing.ADTypes.AutoForwardDiff()
+    base = initialize_bugs_model(base, sampler)
     return Base.invokelatest(JuliaBUGS.BUGSModelWithGradient, base, adtype)
+end
+
+# With neither an evaluation mode nor an AD backend chosen, a model on graph evaluation
+# is fitted through the generated log density under Mooncake, which on the BUGS
+# examples takes 10 to 740 times less per gradient than ForwardDiff on the graph, and
+# stays correct where ForwardDiff's Poisson derivative at rate zero is NaN. Mooncake is
+# not right everywhere (Birats is off by 6%), so its gradient at the starting point is
+# checked against central differences of the same function, and a model that fails the
+# check, or that the generator cannot handle, is fitted as before. Returns nothing then.
+function generated_mooncake(base, sampler)
+    try
+        # The generated function writes into the evaluation environment's arrays, so
+        # it gets its own copy, and a model that fails the check falls back unchanged.
+        generated = set_bugs_mode(deepcopy(base), "generated")
+        generated.evaluation_mode isa JuliaBUGS.UseGeneratedLogDensityFunction || return nothing
+        generated = initialize_bugs_model(generated, sampler)
+        wrapped = Base.invokelatest(
+            JuliaBUGS.BUGSModelWithGradient, generated, Turing.ADTypes.AutoMooncake(; config = nothing),
+        )
+        gradient_matches_differences(wrapped, Base.invokelatest(JuliaBUGS.getparams, generated)) ||
+            return nothing
+        return wrapped
+    catch
+        return nothing
+    end
+end
+
+function gradient_matches_differences(wrapped, x; rtol = 1e-4)
+    LDP = JuliaBUGS.LogDensityProblems
+    ld, grad = Base.invokelatest(LDP.logdensity_and_gradient, wrapped, x)
+    (isfinite(ld) && all(isfinite, grad)) || return false
+    f(z) = Base.invokelatest(LDP.logdensity, wrapped, z)
+    diffs = similar(x)
+    for i in eachindex(x)
+        h = 1e-6 * max(1.0, abs(x[i]))
+        step = zero(x)
+        step[i] = h
+        diffs[i] = (f(x .+ step) - f(x .- step)) / 2h
+    end
+    all(isfinite, diffs) || return false
+    return sqrt(sum(abs2, grad .- diffs)) <= rtol * max(sqrt(sum(abs2, diffs)), 1.0)
 end
 
 # AdvancedHMC starts from a fresh draw unless handed a starting vector, so an
