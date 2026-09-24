@@ -78,8 +78,7 @@ nothing to sample.
 The published initial values are kept only where they name a parameter, since the
 driver rejects a name it does not know and several examples initialise data-like
 nodes too, and only where they are complete, since the spec is stored as TOML, which
-has no missing value. A model with discrete parameters is sampled with NUTS on the
-marginalized log density; one that is discrete throughout has nothing left for a
+has no missing value. A model that is discrete throughout has nothing left for a
 gradient sampler and gets Metropolis-Hastings, which moves the discrete values itself.
 
 The sampler keeps the driver's default AD backend. Mooncake was tried and fitted Rats
@@ -193,11 +192,9 @@ function write_example(dir, vol, key, ex, p)
     model = Dict{String,Any}(
         "kind" => "file", "path" => "$(key).jl", "monitor" => monitored(ex, p.parameters)
     )
-    if p.continuous == 0
-        sampler["algorithm"] = "MH"
-    elseif p.discrete > 0
-        model["evaluation_mode"] = "marginalized"
-    end
+    # The driver marginalizes discrete latents and picks the gradient itself when the
+    # spec leaves the mode unset, so the mode is set only where no gradient can work.
+    p.continuous == 0 && (sampler["algorithm"] = "MH")
     spec = Dict(
         "schema_version" => "0",
         "seed" => 42,
