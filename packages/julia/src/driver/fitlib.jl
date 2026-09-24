@@ -553,7 +553,36 @@ function initialize_bugs_model(model, sampler)
     as_float(v) = v isa AbstractArray{<:Real} || v isa Real ? float(v) : v
     values = bugs_namedtuple(inits)
     values = (; (k => (continuous(String(k)) ? as_float(v) : v) for (k, v) in pairs(values))...)
-    return Base.invokelatest(JuliaBUGS.initialize!, model, values)
+    model = Base.invokelatest(JuliaBUGS.initialize!, model, values)
+    return finite_start(model, Set(String.(keys(values))))
+end
+
+# Published initial values rarely cover every parameter, and the rest come from prior
+# draws, which under vague priors put Magnesium's start at -Inf every time. A start that
+# is not finite has those uncovered parameters redrawn uniformly on (-2, 2) in
+# unconstrained space, as Stan starts, keeping the given values.
+function finite_start(model, given; attempts = 50)
+    model.transformed || return model
+    LDP = JuliaBUGS.LogDensityProblems
+    x = Base.invokelatest(JuliaBUGS.getparams, model)
+    isfinite(Base.invokelatest(LDP.logdensity, model, x)) && return model
+    vars = model.evaluation_mode isa JuliaBUGS.UseAutoMarginalization ?
+        model.marginalization_cache.continuous_model_parameters :
+        Base.invokelatest(JuliaBUGS.model_parameters, model)
+    rng = StableRNG(1)
+    for _ in 1:attempts
+        z = copy(x)
+        pos = 1
+        for vn in vars
+            len = model.transformed_var_lengths[vn]
+            String(JuliaBUGS.AbstractPPL.getsym(vn)) in given ||
+                (z[pos:(pos + len - 1)] .= 4 .* rand(rng, len) .- 2)
+            pos += len
+        end
+        isfinite(Base.invokelatest(LDP.logdensity, model, z)) &&
+            return Base.invokelatest(JuliaBUGS.initialize!, model, z)
+    end
+    return model
 end
 
 # With no evaluation mode chosen, a gradient sampler gets the discrete finite
