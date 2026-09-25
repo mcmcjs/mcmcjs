@@ -81,8 +81,8 @@ nodes too, and only where they are complete, since the spec is stored as TOML, w
 has no missing value. A model that is discrete throughout has nothing left for a
 gradient sampler and gets Metropolis-Hastings, which moves the discrete values itself.
 
-The sampler keeps the driver's default AD backend. Mooncake was tried and fitted Rats
-in 48 minutes where ForwardDiff takes 7, so the big models get a long timeout instead.
+The gradient is left to the driver, which checks each candidate against finite
+differences at the starting values and keeps the fastest one that agrees.
 """
 function plan(ex)
     model = nothing
