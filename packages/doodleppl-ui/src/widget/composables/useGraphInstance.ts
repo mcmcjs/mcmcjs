@@ -12,6 +12,7 @@ import undoRedo from 'cytoscape-undo-redo'
 import { useCompoundDragDrop } from './useCompoundDragDrop'
 import svg from 'cytoscape-svg'
 import { useUiStore } from '../stores/uiStore'
+import { paperStyles } from './paperStyle'
 
 // NOTE: Do NOT register gridGuide or contextMenus - they break iPad/mobile touch events
 cytoscape.use(dagre)
@@ -50,6 +51,173 @@ const instances = new Map<string, { cy: Core; ur: UndoRedoInstance }>()
 export function useGraphInstance() {
   const uiStore = useUiStore()
 
+  // The editor's own styles, the paper style over them when it is on, and the
+  // selection and drag feedback over both.
+  const stylesheet = (): cytoscape.StylesheetJson => [
+    {
+      selector: 'node',
+      style: {
+        // Core shape and size logic: Use global preference from uiStore
+        'background-color': (ele: NodeSingular) =>
+          uiStore.nodeStyles[ele.data('nodeType')]?.backgroundColor || '#999',
+        'background-opacity': (ele: NodeSingular) =>
+          uiStore.nodeStyles[ele.data('nodeType')]?.backgroundOpacity ?? 1,
+        'border-color': (ele: NodeSingular) =>
+          uiStore.nodeStyles[ele.data('nodeType')]?.borderColor || '#555',
+        'border-width': (ele: NodeSingular) =>
+          uiStore.nodeStyles[ele.data('nodeType')]?.borderWidth || 2,
+        'border-style': (ele: NodeSingular) =>
+          (uiStore.nodeStyles[ele.data('nodeType')]?.borderStyle || 'solid') as CyLineStyle,
+        shape: (ele: NodeSingular) =>
+          (uiStore.nodeStyles[ele.data('nodeType')]?.shape || 'ellipse') as CyNodeShape,
+        width: (ele: NodeSingular) => uiStore.nodeStyles[ele.data('nodeType')]?.width || 60,
+        height: (ele: NodeSingular) => uiStore.nodeStyles[ele.data('nodeType')]?.height || 60,
+
+        label: (ele: NodeSingular) => {
+          const name = ele.data('name') as string
+          const indices = ele.data('indices') as string | undefined
+          return indices ? `${name}[${indices}]` : name
+        },
+        color: (ele: NodeSingular) =>
+          uiStore.nodeStyles[ele.data('nodeType')]?.labelColor || '#000000',
+
+        'font-size': (ele: NodeSingular) =>
+          uiStore.nodeStyles[ele.data('nodeType')]?.labelFontSize || 10,
+
+        'text-valign': 'center',
+        'text-halign': 'center',
+        padding: '10px',
+        'text-wrap': 'wrap',
+        'text-max-width': '80px',
+        'line-height': 1.2,
+        'z-index': 10,
+      },
+    },
+    {
+      selector: 'node[nodeType="plate"]',
+      style: {
+        // Plate specific overrides - label handling primarily
+        label: (ele: NodeSingular) =>
+          `for(${ele.data('loopVariable')} in ${ele.data('loopRange')})`,
+      },
+    },
+    {
+      selector: ':parent',
+      style: { 'text-valign': 'top', 'text-halign': 'center', padding: '15px', 'z-index': 5 },
+    },
+    {
+      selector: 'edge',
+      style: {
+        width: 3,
+        'line-color': '#a0a0a0',
+        'target-arrow-color': '#a0a0a0',
+        'target-arrow-shape': 'triangle',
+        'curve-style': 'bezier',
+        'z-index': 1,
+      },
+    },
+    {
+      selector: 'edge[name]',
+      style: {
+        label: 'data(name)',
+        'font-size': (ele: EdgeSingular) =>
+          uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
+            ?.labelFontSize || 8,
+        color: (ele: EdgeSingular) =>
+          uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
+            ?.labelColor || '#000000',
+
+        'text-rotation': 'autorotate',
+        'text-background-opacity': (ele: EdgeSingular) =>
+          uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
+            ?.labelBackgroundOpacity ?? 1,
+        'text-background-color': (ele: EdgeSingular) =>
+          uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
+            ?.labelBackgroundColor || '#ffffff',
+        'text-background-padding': '3px',
+        'text-background-shape': (ele: EdgeSingular) =>
+          (uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
+            ?.labelBackgroundShape || 'rectangle') as CyTextBackgroundShape,
+
+        'text-border-width': (ele: EdgeSingular) =>
+          uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
+            ?.labelBorderWidth ?? 1,
+        'text-border-color': (ele: EdgeSingular) =>
+          uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
+            ?.labelBorderColor || '#ccc',
+        'text-border-opacity': (ele: EdgeSingular) =>
+          uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
+            ?.labelBackgroundOpacity ?? 1,
+      },
+    },
+    {
+      selector: 'edge[relationshipType="stochastic"]',
+      style: {
+        'line-color': () => uiStore.edgeStyles.stochastic.color,
+        'target-arrow-color': () => uiStore.edgeStyles.stochastic.color,
+        width: () => uiStore.edgeStyles.stochastic.width,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        'line-style': () => uiStore.edgeStyles.stochastic.lineStyle as any,
+      },
+    },
+    {
+      selector: 'edge[relationshipType="deterministic"]',
+      style: {
+        'line-color': () => uiStore.edgeStyles.deterministic.color,
+        'target-arrow-color': () => uiStore.edgeStyles.deterministic.color,
+        width: () => uiStore.edgeStyles.deterministic.width,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        'line-style': () => uiStore.edgeStyles.deterministic.lineStyle as any,
+      },
+    },
+    ...(uiStore.isPaperStyle ? paperStyles(uiStore.isDarkMode) : []),
+    {
+      selector: 'node[?hasError]',
+      style: { 'border-color': '#ffc107', 'border-width': 3, 'border-style': 'double' },
+    },
+    {
+      selector: '.cy-selected',
+      style: {
+        'border-width': 3,
+        'border-color': '#007acc',
+        'overlay-color': '#007acc',
+        'overlay-opacity': 0.2,
+      },
+    },
+    {
+      selector: '.cdnd-grabbed-node',
+      style: { 'background-color': '#f1c40f', opacity: 0.7 },
+    },
+    {
+      selector: '.cdnd-drop-target',
+      style: { 'border-color': '#f1c40f', 'border-style': 'solid' },
+    },
+    {
+      selector: '.cdnd-drag-out',
+      style: {
+        'border-color': '#e74c3c',
+        'border-style': 'dashed',
+        'border-width': 2,
+        'overlay-color': '#e74c3c',
+        'overlay-opacity': 0.3,
+        'overlay-padding': 5,
+      },
+    },
+    {
+      selector: '.cdnd-grabbed-node.cdnd-drag-out',
+      style: {
+        'border-color': '#e74c3c',
+        'border-style': 'dashed',
+        'border-width': 2,
+        'background-color': '#f1c40f',
+        opacity: 0.7,
+        'overlay-color': '#e74c3c',
+        'overlay-opacity': 0.3,
+        'overlay-padding': 5,
+      },
+    },
+  ]
+
   const initCytoscape = (
     container: HTMLElement,
     initialElements: ElementDefinition[],
@@ -65,169 +233,7 @@ export function useGraphInstance() {
     const options: cytoscape.CytoscapeOptions = {
       container: container,
       elements: initialElements,
-      style: [
-        {
-          selector: 'node',
-          style: {
-            // Core shape and size logic: Use global preference from uiStore
-            'background-color': (ele: NodeSingular) =>
-              uiStore.nodeStyles[ele.data('nodeType')]?.backgroundColor || '#999',
-            'background-opacity': (ele: NodeSingular) =>
-              uiStore.nodeStyles[ele.data('nodeType')]?.backgroundOpacity ?? 1,
-            'border-color': (ele: NodeSingular) =>
-              uiStore.nodeStyles[ele.data('nodeType')]?.borderColor || '#555',
-            'border-width': (ele: NodeSingular) =>
-              uiStore.nodeStyles[ele.data('nodeType')]?.borderWidth || 2,
-            'border-style': (ele: NodeSingular) =>
-              (uiStore.nodeStyles[ele.data('nodeType')]?.borderStyle || 'solid') as CyLineStyle,
-            shape: (ele: NodeSingular) =>
-              (uiStore.nodeStyles[ele.data('nodeType')]?.shape || 'ellipse') as CyNodeShape,
-            width: (ele: NodeSingular) => uiStore.nodeStyles[ele.data('nodeType')]?.width || 60,
-            height: (ele: NodeSingular) => uiStore.nodeStyles[ele.data('nodeType')]?.height || 60,
-
-            label: (ele: NodeSingular) => {
-              const name = ele.data('name') as string
-              const indices = ele.data('indices') as string | undefined
-              return indices ? `${name}[${indices}]` : name
-            },
-            color: (ele: NodeSingular) =>
-              uiStore.nodeStyles[ele.data('nodeType')]?.labelColor || '#000000',
-
-            'font-size': (ele: NodeSingular) =>
-              uiStore.nodeStyles[ele.data('nodeType')]?.labelFontSize || 10,
-
-            'text-valign': 'center',
-            'text-halign': 'center',
-            padding: '10px',
-            'text-wrap': 'wrap',
-            'text-max-width': '80px',
-            'line-height': 1.2,
-            'z-index': 10,
-          },
-        },
-        {
-          selector: 'node[nodeType="plate"]',
-          style: {
-            // Plate specific overrides - label handling primarily
-            label: (ele: NodeSingular) =>
-              `for(${ele.data('loopVariable')} in ${ele.data('loopRange')})`,
-          },
-        },
-        {
-          selector: ':parent',
-          style: { 'text-valign': 'top', 'text-halign': 'center', padding: '15px', 'z-index': 5 },
-        },
-        {
-          selector: 'node[?hasError]',
-          style: { 'border-color': '#ffc107', 'border-width': 3, 'border-style': 'double' },
-        },
-        {
-          selector: 'edge',
-          style: {
-            width: 3,
-            'line-color': '#a0a0a0',
-            'target-arrow-color': '#a0a0a0',
-            'target-arrow-shape': 'triangle',
-            'curve-style': 'bezier',
-            'z-index': 1,
-          },
-        },
-        {
-          selector: 'edge[name]',
-          style: {
-            label: 'data(name)',
-            'font-size': (ele: EdgeSingular) =>
-              uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
-                ?.labelFontSize || 8,
-            color: (ele: EdgeSingular) =>
-              uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
-                ?.labelColor || '#000000',
-
-            'text-rotation': 'autorotate',
-            'text-background-opacity': (ele: EdgeSingular) =>
-              uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
-                ?.labelBackgroundOpacity ?? 1,
-            'text-background-color': (ele: EdgeSingular) =>
-              uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
-                ?.labelBackgroundColor || '#ffffff',
-            'text-background-padding': '3px',
-            'text-background-shape': (ele: EdgeSingular) =>
-              (uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
-                ?.labelBackgroundShape || 'rectangle') as CyTextBackgroundShape,
-
-            'text-border-width': (ele: EdgeSingular) =>
-              uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
-                ?.labelBorderWidth ?? 1,
-            'text-border-color': (ele: EdgeSingular) =>
-              uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
-                ?.labelBorderColor || '#ccc',
-            'text-border-opacity': (ele: EdgeSingular) =>
-              uiStore.edgeStyles[ele.data('relationshipType') as 'stochastic' | 'deterministic']
-                ?.labelBackgroundOpacity ?? 1,
-          },
-        },
-        {
-          selector: 'edge[relationshipType="stochastic"]',
-          style: {
-            'line-color': () => uiStore.edgeStyles.stochastic.color,
-            'target-arrow-color': () => uiStore.edgeStyles.stochastic.color,
-            width: () => uiStore.edgeStyles.stochastic.width,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            'line-style': () => uiStore.edgeStyles.stochastic.lineStyle as any,
-          },
-        },
-        {
-          selector: 'edge[relationshipType="deterministic"]',
-          style: {
-            'line-color': () => uiStore.edgeStyles.deterministic.color,
-            'target-arrow-color': () => uiStore.edgeStyles.deterministic.color,
-            width: () => uiStore.edgeStyles.deterministic.width,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            'line-style': () => uiStore.edgeStyles.deterministic.lineStyle as any,
-          },
-        },
-        {
-          selector: '.cy-selected',
-          style: {
-            'border-width': 3,
-            'border-color': '#007acc',
-            'overlay-color': '#007acc',
-            'overlay-opacity': 0.2,
-          },
-        },
-        {
-          selector: '.cdnd-grabbed-node',
-          style: { 'background-color': '#f1c40f', opacity: 0.7 },
-        },
-        {
-          selector: '.cdnd-drop-target',
-          style: { 'border-color': '#f1c40f', 'border-style': 'solid' },
-        },
-        {
-          selector: '.cdnd-drag-out',
-          style: {
-            'border-color': '#e74c3c',
-            'border-style': 'dashed',
-            'border-width': 2,
-            'overlay-color': '#e74c3c',
-            'overlay-opacity': 0.3,
-            'overlay-padding': 5,
-          },
-        },
-        {
-          selector: '.cdnd-grabbed-node.cdnd-drag-out',
-          style: {
-            'border-color': '#e74c3c',
-            'border-style': 'dashed',
-            'border-width': 2,
-            'background-color': '#f1c40f',
-            opacity: 0.7,
-            'overlay-color': '#e74c3c',
-            'overlay-opacity': 0.3,
-            'overlay-padding': 5,
-          },
-        },
-      ],
+      style: stylesheet(),
       layout: { name: 'preset' },
       minZoom: 0.1,
       maxZoom: 7,
@@ -346,5 +352,10 @@ export function useGraphInstance() {
     return instances.get(graphId)?.ur || null
   }
 
-  return { initCytoscape, destroyCytoscape, getCyInstance, getUndoRedoInstance }
+  /** Rebuild a graph's stylesheet, e.g. after paper style is switched on or off. */
+  const restyle = (graphId: string): void => {
+    instances.get(graphId)?.cy.style(stylesheet())
+  }
+
+  return { initCytoscape, destroyCytoscape, getCyInstance, getUndoRedoInstance, restyle }
 }

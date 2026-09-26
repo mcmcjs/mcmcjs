@@ -32,6 +32,7 @@ const emit = defineEmits<{
   (e: 'share'): void
   (e: 'open-export-modal', format: 'png' | 'jpg' | 'svg'): void
   (e: 'export-json'): void
+  (e: 'export-figure', format: 'tikz' | 'svg'): void
   (e: 'header-drag-start', event: MouseEvent | TouchEvent): void
   (e: 'toggle-fullscreen'): void
 }>()
@@ -216,6 +217,16 @@ const handleHeaderClick = () => {
           >
           <BaseButton type="ghost" class="db-menu-btn" @click="$emit('open-export-modal', 'svg')"
             ><i class="fas fa-draw-polygon"></i> SVG Vector</BaseButton
+          >
+
+          <div class="db-divider"></div>
+
+          <h5 class="db-section-title">Figure for Papers</h5>
+          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('export-figure', 'tikz')"
+            ><i class="fas fa-file-alt"></i> TikZ for LaTeX (.tex)</BaseButton
+          >
+          <BaseButton type="ghost" class="db-menu-btn" @click="$emit('export-figure', 'svg')"
+            ><i class="fas fa-pen-nib"></i> Black-and-White SVG</BaseButton
           >
 
           <div class="db-divider"></div>

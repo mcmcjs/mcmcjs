@@ -9,6 +9,7 @@ export default defineConfig({
     "src/codegen/stan.ts",
     "src/parse/index.ts",
     "src/render/index.ts",
+    "src/figure/index.ts",
   ],
   format: ["esm", "cjs"],
   dts: true,

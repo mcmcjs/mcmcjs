@@ -7,6 +7,7 @@ import { registerDiagnose } from "./diagnose";
 import { registerDoctor } from "./doctor";
 import { registerEngines } from "./engines";
 import { registerExport } from "./export";
+import { registerFigure } from "./figure";
 import { registerFit } from "./fit";
 import { registerGraph } from "./graph";
 import { registerInit } from "./init";
@@ -60,6 +61,7 @@ export function registerAll(
   registerSandbox(program);
   registerConvert(program);
   registerGraph(program);
+  registerFigure(program);
   registerSetup(program);
   registerDoctor(program, registry, ctx);
   registerEngines(program, registry, ctx);

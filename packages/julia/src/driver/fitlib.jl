@@ -455,12 +455,16 @@ end
 
 # FlexiChains-native wire writer. DimArray(chn) splits array-valued parameters
 # into scalar leaves (theta -> theta[1], theta[2]) in the (iter, chain, param)
-# orientation; the sampler's statistics become the internals section.
-function vnchain_to_wire(chn)
+# orientation; the sampler's statistics become the internals section. `keep`
+# decides by leaf name which columns are written; nothing keeps them all.
+function vnchain_to_wire(chn; keep = nothing)
     da = DimensionalData.DimArray(chn)
-    pnames = string.(collect(DimensionalData.lookup(da, :param)))
+    names = string.(collect(DimensionalData.lookup(da, :param)))
     arr = parent(da)
-    nIter, nChains, nParams = size(arr)
+    nIter, nChains, _ = size(arr)
+    kept = keep === nothing ? eachindex(names) : findall(keep, names)
+    pnames = names[kept]
+    nParams = length(kept)
 
     extras = extra_columns(chn)
     enames = first.(extras)
@@ -470,8 +474,8 @@ function vnchain_to_wire(chn)
     # JSON has no Inf/NaN; a non-finite draw (e.g. 1/sqrt(tau) under a diffuse
     # prior) becomes null, which the samples parser reads back as NaN.
     cell(v) = v === missing || !isfinite(v) ? nothing : Float64(v)
-    for c in 1:nChains, p in 1:nParams, i in 1:nIter
-        flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(arr[i, c, p])
+    for c in 1:nChains, (p, src) in enumerate(kept), i in 1:nIter
+        flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(arr[i, c, src])
     end
     for (k, (_, draw)) in enumerate(extras)
         p = nParams + k
@@ -491,6 +495,20 @@ end
 # A BUGSModel carries its own `base_model` field (the unconditioned model, or
 # nothing), so unwrapping has to test the wrapper's type, not for the field.
 base_bugs(model) = model isa JuliaBUGS.BUGSModelWithGradient ? model.base_model : model
+
+# `[model].monitor` names the deterministic quantities worth storing; the model's
+# parameters are always stored. Unset keeps every column the chain carries. The
+# graph's parameter list is read rather than `model_parameters`, which in the
+# marginalized mode leaves out the discrete latents the chain still carries.
+function bugs_column_filter(request, model)
+    monitor = get(request["model"], "monitor", nothing)
+    monitor === nothing && return nothing
+    keep = Set{String}(String.(monitor))
+    for vn in base_bugs(model).graph_evaluation_data.model_parameters
+        push!(keep, String(JuliaBUGS.AbstractPPL.getsym(vn)))
+    end
+    return name -> first(split(name, '['; limit = 2)) in keep
+end
 
 # JuliaBUGS samplers that propose in the evaluation environment, so they move the
 # discrete latents themselves rather than needing them summed out.
@@ -512,21 +530,37 @@ function set_bugs_mode(model, name)
     )
 end
 
-# Named starting values, in constrained space, as the spec records them.
-# `initialize!` ignores a name it does not recognise, so an unknown one is an
-# error here rather than a silent no-op.
+# Named starting values, in constrained space, as the spec records them. A name
+# the model does not have at all is an error, since `initialize!` would ignore it
+# silently. A name that is a variable but not a parameter, an observed node or a
+# deterministic one, is left out, as BUGS does with such initial values; the
+# published inits of the classic examples carry them.
 function initialize_bugs_model(model, sampler)
     haskey(sampler, "initial_params") || return model
-    known = Set(
-        String(JuliaBUGS.AbstractPPL.getsym(vn)) for vn in JuliaBUGS.model_parameters(model)
-    )
-    for name in keys(sampler["initial_params"])
-        name in known ||
-            error("initial_params names $name, which is not a parameter of this model")
+    gd = base_bugs(model).graph_evaluation_data
+    name(vn) = String(JuliaBUGS.AbstractPPL.getsym(vn))
+    parameters = Set(name.(gd.model_parameters))
+    known = Set(name.(gd.sorted_nodes))
+    for k in keys(sampler["initial_params"])
+        k in known || error("initial_params names $k, which is not a variable of this model")
     end
-    return Base.invokelatest(
-        JuliaBUGS.initialize!, model, bugs_namedtuple(sampler["initial_params"]),
+    inits = Dict(k => v for (k, v) in sampler["initial_params"] if k in parameters)
+    isempty(inits) && return model
+    return Base.invokelatest(JuliaBUGS.initialize!, model, bugs_namedtuple(inits))
+end
+
+# With no evaluation mode chosen, a gradient sampler gets the discrete finite
+# latents summed out of the log density, since it cannot move them itself. A model
+# that is discrete throughout has nothing left for it to sample.
+function marginalize_if_discrete(base)
+    base.evaluation_mode isa JuliaBUGS.UseGraph || return base
+    marginalized = set_bugs_mode(base, "marginalized")
+    cache = marginalized.marginalization_cache
+    (cache === nothing || cache.n_discrete_finite == 0) && return base
+    Base.invokelatest(JuliaBUGS.LogDensityProblems.dimension, marginalized) == 0 && error(
+        "every parameter of this model is discrete, which a gradient sampler cannot move; use the MH sampler",
     )
+    return marginalized
 end
 
 # An environment-based sampler starts from the model's evaluation environment and
@@ -559,7 +593,7 @@ function prepare_bugs_model(model, sampler, mode_name)
         base = initialize_bugs_model(set_bugs_mode(base, "graph"), sampler)
         return check_bugs_start(base, sampler)
     end
-    mode_name === nothing || (base = set_bugs_mode(base, mode_name))
+    base = mode_name === nothing ? marginalize_if_discrete(base) : set_bugs_mode(base, mode_name)
     base = initialize_bugs_model(base, sampler)
     # A derivative-free sampler wants the plain model: preparing a gradient it
     # never calls costs a compile, which for Mooncake runs into minutes.
@@ -725,7 +759,9 @@ end
 # the model so reconstruction never perturbs the sampler's state. AbstractMCMC
 # passes the 1-based chain index as chain_number; each chain's batches carry a
 # per-chain monotonic seq.
-function bugs_draw_streamer(model, sampler, draws_per_chain::Int, batch_size::Int)
+function bugs_draw_streamer(
+    model, sampler, draws_per_chain::Int, batch_size::Int; keep = nothing,
+)
     recon = deepcopy(model)
     side_rng = StableRNG(0)
     chain = Ref(-1)
@@ -736,7 +772,7 @@ function bugs_draw_streamer(model, sampler, draws_per_chain::Int, batch_size::In
         chn = JuliaBUGS.bundle_transitions(
             FlexiChains.VNChain, recon, transitions, sampler; rng = side_rng,
         )
-        wire = vnchain_to_wire(chn)
+        wire = vnchain_to_wire(chn; keep)
         nIter, total, _ = wire["size"]
         flat = wire["value_flat"]
         params = wire["parameters"]
@@ -937,7 +973,16 @@ end
 # defining `const model_def`), and confines the model's globals to their own scope.
 function load_model_module(path)
     mod = Module(gensym(:UserModel))
-    Base.include(mod, abspath(path))
+    if endswith(lowercase(path), ".bugs")
+        # A bare BUGS program, parsed as the string form of `@bugs` parses it with
+        # dotted names kept, and given the entry a Julia model file would define.
+        model_def = JuliaBUGS.Parser._bugs_string_input(read(abspath(path), String), false)
+        Core.eval(mod, :(using JuliaBUGS))
+        Core.eval(mod, :(const model_def = $(Meta.quot(model_def))))
+        Core.eval(mod, :(build_model(data) = JuliaBUGS.compile(model_def, data)))
+    else
+        Base.include(mod, abspath(path))
+    end
     return mod
 end
 
@@ -1033,7 +1078,8 @@ function handle_request(request)
                     cb = get(request, "stream_draws", false) && !threads ?
                         bugs_draw_streamer(
                             base_bugs(model), sampler, draws,
-                            Int(get(request, "draw_batch_size", 25)),
+                            Int(get(request, "draw_batch_size", 25));
+                            keep = bugs_column_filter(request, model),
                         ) : nothing
                     Base.invokelatest(
                         sample_bugs, model, sampler, warmup, draws, chains, rng;
@@ -1043,7 +1089,7 @@ function handle_request(request)
                         ),
                     )
                 end
-                vnchain_to_wire(chn)
+                vnchain_to_wire(chn; keep = bugs_column_filter(request, model))
             else
                 sampler, warmup = build_sampler(sampler_conf, modelmod)
                 # The draw streamer assumes chains arrive one at a time; with

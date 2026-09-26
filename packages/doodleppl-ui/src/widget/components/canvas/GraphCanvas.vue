@@ -50,7 +50,8 @@ const cyInstance = ref<Core | null>(null)
 let resizeObserver: ResizeObserver | null = null
 
 const toast = useToast()
-const { initCytoscape, destroyCytoscape, getCyInstance, getUndoRedoInstance } = useGraphInstance()
+const { initCytoscape, destroyCytoscape, getCyInstance, getUndoRedoInstance, restyle } =
+  useGraphInstance()
 const getCy = () => getCyInstance(props.graphId)
 const { enableGridSnapping, disableGridSnapping, setGridSize } = useGridSnapping(getCy)
 const uiStore = useUiStore()
@@ -539,6 +540,9 @@ watch(
   },
   { deep: true }
 )
+
+// Paper style adds its own rules, drawn in the colours of the current theme.
+watch([() => uiStore.isPaperStyle, () => uiStore.isDarkMode], () => restyle(props.graphId))
 </script>
 
 <template>
