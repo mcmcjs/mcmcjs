@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import type { GraphElement } from '../types'
+import type { GraphElement, ModelLanguage } from '../types'
 import { useDataStore } from './dataStore'
 
 export interface GraphContent {
@@ -9,6 +9,10 @@ export interface GraphContent {
   lastLayout?: string
   zoom?: number
   pan?: { x: number; y: number }
+  /** The language the graph was imported from; validation applies its name rules. */
+  language?: ModelLanguage
+  /** A layout to run once, the first time the canvas renders this graph. */
+  pendingLayout?: string
 }
 
 export const useGraphStore = defineStore('graph', () => {
@@ -95,6 +99,29 @@ export const useGraphStore = defineStore('graph', () => {
     }
   }
 
+  const patchGraphContent = (graphId: string, patch: Partial<GraphContent>) => {
+    const content = graphContents.value.get(graphId)
+    if (!content) return
+    const newContent = { ...content, ...patch }
+    graphContents.value.set(graphId, newContent)
+    stateVersion.value++
+    saveGraph(graphId, newContent)
+  }
+
+  const setGraphLanguage = (graphId: string, language: ModelLanguage | undefined) =>
+    patchGraphContent(graphId, { language })
+
+  /** Queue a layout to run the first time the canvas renders this graph. */
+  const setPendingLayout = (graphId: string, layoutName: string | undefined) =>
+    patchGraphContent(graphId, { pendingLayout: layoutName })
+
+  /** The queued layout, cleared so it runs once. */
+  const takePendingLayout = (graphId: string): string | undefined => {
+    const name = graphContents.value.get(graphId)?.pendingLayout
+    if (name) patchGraphContent(graphId, { pendingLayout: undefined })
+    return name
+  }
+
   const updateGraphViewport = (graphId: string, zoom: number, pan: { x: number; y: number }) => {
     if (graphContents.value.has(graphId)) {
       const content = graphContents.value.get(graphId)!
@@ -146,6 +173,9 @@ export const useGraphStore = defineStore('graph', () => {
     createNewGraphContent,
     updateGraphElements,
     updateGraphLayout,
+    setGraphLanguage,
+    setPendingLayout,
+    takePendingLayout,
     updateGraphViewport,
     deleteGraphContent,
     saveGraph,

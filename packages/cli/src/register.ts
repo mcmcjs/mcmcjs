@@ -9,6 +9,7 @@ import { registerEngines } from "./engines";
 import { registerExport } from "./export";
 import { registerFigure } from "./figure";
 import { registerFit } from "./fit";
+import { registerGraph } from "./graph";
 import { registerInit } from "./init";
 import { registerJulia } from "./julia";
 import { registerCompare, registerLoo } from "./loo";
@@ -59,6 +60,7 @@ export function registerAll(
   registerInit(program);
   registerSandbox(program);
   registerConvert(program);
+  registerGraph(program);
   registerFigure(program);
   registerSetup(program);
   registerDoctor(program, registry, ctx);

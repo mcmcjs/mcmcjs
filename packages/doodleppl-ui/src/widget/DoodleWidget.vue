@@ -324,7 +324,17 @@ const { elements, selectedElement, updateElement, deleteElement } = useGraphElem
 const { parsedGraphData } = storeToRefs(dataStore)
 const { generatedCode: generatedBugsCode } = useBugsCodeGenerator(elements)
 const { generatedStanCode } = useStanCodeGenerator(elements)
-const { validateGraph, validationErrors } = useGraphValidator(elements, parsedGraphData)
+// The language the open graph was imported from, so validation applies its name rules.
+const graphLanguage = computed(() =>
+  graphStore.currentGraphId
+    ? graphStore.graphContents.get(graphStore.currentGraphId)?.language
+    : undefined
+)
+const { validateGraph, validationErrors } = useGraphValidator(
+  elements,
+  parsedGraphData,
+  graphLanguage
+)
 const { standaloneScript, samplerSettings } = storeToRefs(scriptStore)
 
 const { loadUIState, saveUIState, saveLastGraphId, loadLastGraphId } = usePersistence(

@@ -1,0 +1,924 @@
+[
+  {
+    "data_keys": [
+      "x",
+      "xbar",
+      "N",
+      "T",
+      "Y"
+    ],
+    "inits_keys": [
+      "alpha",
+      "beta",
+      "alpha.c",
+      "beta.c",
+      "tau.c",
+      "alpha.tau",
+      "beta.tau"
+    ],
+    "key": "rats",
+    "name": "Rats: a normal hierarchical model",
+    "program": "model{\n    for(i in 1:N) {\n        for(j in 1:T) {\n            Y[i, j] ~ dnorm(mu[i, j], tau.c)\n            mu[i, j] <- alpha[i] + beta[i] * (x[j] - xbar)\n        }\n        alpha[i] ~ dnorm(alpha.c, alpha.tau)\n        beta[i] ~ dnorm(beta.c, beta.tau)\n    }\n    tau.c ~ dgamma(0.001, 0.001)\n    sigma <- 1 / sqrt(tau.c)\n    alpha.c ~ dnorm(0.0, 1.0E-6)\n    alpha.tau ~ dgamma(0.001, 0.001)\n    beta.c ~ dnorm(0.0, 1.0E-6)\n    beta.tau ~ dgamma(0.001, 0.001)\n    alpha0 <- alpha.c - xbar * beta.c\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "t",
+      "x",
+      "N"
+    ],
+    "inits_keys": [
+      "alpha",
+      "beta"
+    ],
+    "key": "pumps",
+    "name": "Pumps: conjugate gamma-Poisson hierarchical model",
+    "program": "model{\n    for (i in 1 : N) {\n        theta[i] ~ dgamma(alpha, beta)\n        lambda[i] <- theta[i] * t[i]\n        x[i] ~ dpois(lambda[i])\n    }\n    alpha ~ dexp(1)\n    beta ~ dgamma(0.1, 1.0)\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "Dogs",
+      "Trials",
+      "Y"
+    ],
+    "inits_keys": [
+      "alpha",
+      "beta"
+    ],
+    "key": "dogs",
+    "name": "Dogs: loglinear model for binary data",
+    "program": "model {\n    for (i in 1 : Dogs) {\n        xa[i, 1] <- 0\n        xs[i, 1] <- 0 \n        p[i, 1] <- 0\n    \n        for (j in 2 : Trials) {\n            xa[i, j] <- sum(Y[i, 1 : j - 1])\n            xs[i, j] <- j - 1 - xa[i, j]\n            log(p[i, j]) <- alpha * xa[i, j] + beta * xs[i, j]\n            y[i, j] <- 1 - Y[i, j]\n            y[i, j] ~ dbern(p[i, j])\n        }\n    }\n    alpha ~ dunif(-10, -0.00001)\n    beta ~ dunif(-10, -0.00001)\n    A <- exp(alpha)\n    B <- exp(beta)\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "r",
+      "n",
+      "x1",
+      "x2",
+      "N"
+    ],
+    "inits_keys": [
+      "alpha0",
+      "alpha1",
+      "alpha2",
+      "alpha12",
+      "tau"
+    ],
+    "key": "seeds",
+    "name": "Seeds: Random effect logistic regression",
+    "program": "model {\n    for( i in 1 : N ) {\n        r[i] ~ dbin(p[i],n[i])\n        b[i] ~ dnorm(0.0,tau)\n        logit(p[i]) <- alpha0 + alpha1 * x1[i] + alpha2 * x2[i] +\n        alpha12 * x1[i] * x2[i] + b[i]\n    }\n    alpha0 ~ dnorm(0.0,1.0E-6)\n    alpha1 ~ dnorm(0.0,1.0E-6)\n    alpha2 ~ dnorm(0.0,1.0E-6)\n    alpha12 ~ dnorm(0.0,1.0E-6)\n    tau ~ dgamma(0.001,0.001)\n    sigma <- 1 / sqrt(tau)\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "n",
+      "r",
+      "N"
+    ],
+    "inits_keys": [
+      "p"
+    ],
+    "key": "surgical_simple",
+    "name": "Surgical: Institutional ranking",
+    "program": "model {\n    for( i in 1 : N ) {\n        p[i] ~ dbeta(1.0, 1.0)\n        r[i] ~ dbin(p[i], n[i])\n    }\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "n",
+      "r",
+      "N"
+    ],
+    "inits_keys": [
+      "b",
+      "tau",
+      "mu"
+    ],
+    "key": "surgical_realistic",
+    "name": "Surgical: Institutional ranking",
+    "program": "model {\n    for( i in 1 : N ) {\n        b[i] ~ dnorm(mu,tau)\n        r[i] ~ dbin(p[i],n[i])\n        p[i] <- logistic(b[i])\n    }\n    pop.mean <- exp(mu) / (1 + exp(mu))\n    mu ~ dnorm(0.0,1.0E-6)\n    sigma <- 1 / sqrt(tau)\n    tau ~ dgamma(0.001,0.001)\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "rt",
+      "nt",
+      "rc",
+      "nc"
+    ],
+    "inits_keys": [
+      "mu",
+      "tau",
+      "tau.sqrd",
+      "inv.tau.sqrd"
+    ],
+    "key": "magnesium",
+    "name": "Sensitivity to prior distributions: application to Magnesium meta-analysis",
+    "program": "model {\n    #   j indexes alternative prior distributions\n    for (j in 1:6) {\n        mu[j] ~ dunif(-10, 10)\n        odds.ratio[j] <- exp(mu[j])\n\n        # k indexes study number\n        for (k in 1:8) {\n            theta[j, k] ~ dnorm(mu[j], inv.tau.sqrd[j])\n            rtx[j, k] ~ dbin(pt[j, k], nt[k])\n            rtx[j, k] <- rt[k]\n            rcx[j, k] ~ dbin(pc[j, k], nc[k])\n            rcx[j, k] <- rc[k]\n            logit(pt[j, k]) <- theta[j, k] + phi[j, k]\n            phi[j, k] <- logit(pc[j, k])\n            pc[j, k] ~ dunif(0, 1)\n        }\n    }\n\n    # k again indexes study number\n    for (k in 1:8) {\n        # log-odds ratios:\n        y[k] <- log(((rt[k] + 0.5) / (nt[k] - rt[k] + 0.5)) / ((rc[k] + 0.5) / (nc[k] - rc[k] + 0.5)))\n        # variances & precisions:\n        sigma.sqrd[k] <- 1 / (rt[k] + 0.5) + 1 / (nt[k] - rt[k] + 0.5) + 1 / (rc[k] + 0.5) +\n                1 / (nc[k] - rc[k] + 0.5)\n        prec.sqrd[k] <- 1 / sigma.sqrd[k]\n    }\n    s0.sqrd <- 1 / mean(prec.sqrd[1:8])\n\n    # Prior 1: Gamma(0.001, 0.001) on inv.tau.sqrd\n    inv.tau.sqrd[1] ~ dgamma(0.001, 0.001)\n    tau.sqrd[1] <- 1 / inv.tau.sqrd[1]\n    tau[1] <- sqrt(tau.sqrd[1])\n\n    # Prior 2: Uniform(0, 50) on tau.sqrd\n    tau.sqrd[2] ~ dunif(0, 50)\n    tau[2] <- sqrt(tau.sqrd[2])\n    inv.tau.sqrd[2] <- 1 / tau.sqrd[2]\n\n    # Prior 3: Uniform(0, 50) on tau\n    tau[3] ~ dunif(0, 50)\n    tau.sqrd[3] <- tau[3] * tau[3]\n    inv.tau.sqrd[3] <- 1 / tau.sqrd[3]\n\n    # Prior 4: Uniform shrinkage on tau.sqrd\n    B0 ~ dunif(0, 1)\n    tau.sqrd[4] <- s0.sqrd * (1 - B0) / B0\n    tau[4] <- sqrt(tau.sqrd[4])\n    inv.tau.sqrd[4] <- 1 / tau.sqrd[4]\n\n    # Prior 5: Dumouchel on tau\n    D0 ~ dunif(0, 1)\n    tau[5] <- sqrt(s0.sqrd) * (1 - D0) / D0\n    tau.sqrd[5] <- tau[5] * tau[5]\n    inv.tau.sqrd[5] <- 1 / tau.sqrd[5]\n\n    # Prior 6: Half-Normal on tau.sqrd\n    p0 <- phi(0.75) / s0.sqrd\n    tau.sqrd[6] ~ dnorm(0, p0)T(0,)\n    tau[6] <- sqrt(tau.sqrd[6])\n    inv.tau.sqrd[6] <- 1 / tau.sqrd[6]\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "doses",
+      "plates",
+      "y",
+      "x"
+    ],
+    "inits_keys": [
+      "alpha",
+      "beta",
+      "gamma",
+      "tau"
+    ],
+    "key": "salm",
+    "name": "Salm: extra-Poisson variation in dose-response study",
+    "program": "model {\n    for( i in 1 : doses ) {\n        for( j in 1 : plates ) {\n            y[i , j] ~ dpois(mu[i , j])\n            log(mu[i , j]) <- alpha + beta * log(x[i] + 10) + gamma * x[i] + lambda[i , j]\n            lambda[i , j] ~ dnorm(0.0, tau)   \n        }\n    }\n    alpha ~ dnorm(0.0,1.0E-6)\n    beta ~ dnorm(0.0,1.0E-6)\n    gamma ~ dnorm(0.0,1.0E-6)\n    tau ~ dgamma(0.001, 0.001)\n    sigma <- 1 / sqrt(tau)\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "N",
+      "P",
+      "group",
+      "Y",
+      "sign"
+    ],
+    "inits_keys": [
+      "mu",
+      "phi",
+      "pi",
+      "tau1",
+      "tau2"
+    ],
+    "key": "equiv",
+    "name": "Equiv",
+    "program": "model {\n    for( k in 1 : P ) {\n        for( i in 1 : N ) {\n            Y[i , k] ~ dnorm(m[i , k], tau1)\n            m[i , k] <- mu + sign[T[i , k]] * phi / 2 + sign[k] * pi / 2 + delta[i]\n            T[i , k] <- group[i] * (k - 1.5) + 1.5\n        }\n    }\n    for( i in 1 : N ) {\n        delta[i] ~ dnorm(0.0, tau2)\n    }\n    tau1 ~ dgamma(0.001, 0.001) \n    sigma1 <- 1 / sqrt(tau1)\n    tau2 ~ dgamma(0.001, 0.001) \n    sigma2 <- 1 / sqrt(tau2)\n    mu ~ dnorm(0.0, 1.0E-6)\n    phi ~ dnorm(0.0, 1.0E-6)\n    pi ~ dnorm(0.0, 1.0E-6)\n    theta <- exp(phi)\n    equiv <- step(theta - 0.8) - step(theta - 1.2)\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "batches",
+      "samples",
+      "y"
+    ],
+    "inits_keys": [
+      "theta",
+      "tau.with",
+      "tau.btw"
+    ],
+    "key": "dyes",
+    "name": "Dyes: variance components model",
+    "program": "model {\n    for(i in 1 : batches) {\n        mu[i] ~ dnorm(theta, tau.btw)\n        for(j in 1 : samples) {\n            y[i , j] ~ dnorm(mu[i], tau.with)\n        }\n    }   \n    sigma2.with <- 1 / tau.with\n    sigma2.btw <- 1 / tau.btw\n    tau.with ~ dgamma(0.001, 0.001)\n    tau.btw ~ dgamma(0.001, 0.001)\n    theta ~ dnorm(0.0, 1.0E-10)\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "p",
+      "N",
+      "Y",
+      "x"
+    ],
+    "inits_keys": [
+      "beta0",
+      "beta",
+      "tau",
+      "phi"
+    ],
+    "key": "stacks",
+    "name": "Stacks: robust regression",
+    "program": "model {\n    # Standardise x's and coefficients\n    for (j in 1 : p) {\n        b[j] <- beta[j] / sd(x[ , j ])\n        for (i in 1 : N) {\n            z[i, j] <- (x[i, j] - mean(x[, j])) / sd(x[ , j])\n        }\n    }\n    b0 <- beta0 - b[1] * mean(x[, 1]) - b[2] * mean(x[, 2]) - b[3] * mean(x[, 3])\n\n    # Model\n    d <- 4; # degrees of freedom for t\n    for (i in 1 : N) {\n        Y[i] ~ dnorm(mu[i], tau)\n        # Y[i] ~ ddexp(mu[i], tau)\n        # Y[i] ~ dt(mu[i], tau, d)\n\n        mu[i] <- beta0 + beta[1] * z[i, 1] + beta[2] * z[i, 2] + beta[3] * z[i, 3]\n        stres[i] <- (Y[i] - mu[i]) / sigma\n        outlier[i] <- step(stres[i] - 2.5) + step(-(stres[i] + 2.5) )\n    }\n\n    # Priors\n    beta0 ~ dnorm(0, 0.00001)\n    for (j in 1 : p) {\n        beta[j] ~ dnorm(0, 0.00001)    # coeffs independent\n        # beta[j] ~ dnorm(0, phi) # coeffs exchangeable (ridge regression)\n    }\n    tau ~ dgamma(1.0E-3, 1.0E-3)\n    # phi ~ dgamma(1.0E-2, 1.0E-2)\n    # standard deviation of error distribution\n    sigma <- sqrt(1 / tau) # normal errors\n    # sigma <- sqrt(2) / tau # double exponential errors\n    # sigma <- sqrt(d / (tau * (d - 2))); # t errors on d degrees of freedom\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "N",
+      "T",
+      "y",
+      "Trt",
+      "Base",
+      "Age",
+      "V4"
+    ],
+    "inits_keys": [
+      "a0",
+      "alpha.Base",
+      "alpha.Trt",
+      "alpha.BT",
+      "alpha.Age",
+      "alpha.V4",
+      "tau.b1",
+      "tau.b"
+    ],
+    "key": "epil",
+    "name": "Epilepsy: repeated measures on Poisson counts",
+    "program": "model {\n    for(j in 1 : N) {\n        for(k in 1 : T) {\n            log(mu[j, k]) <- a0 + alpha.Base * (log.Base4[j] - log.Base4.bar) + alpha.Trt * (Trt[j] - Trt.bar) + alpha.BT * (BT[j] - BT.bar) + alpha.Age * (log.Age[j] - log.Age.bar) + alpha.V4 * (V4[k] - V4.bar) + b1[j] + b[j, k]\n            y[j, k] ~ dpois(mu[j, k])\n            b[j, k] ~ dnorm(0.0, tau.b) # subject*visit random effects\n        }\n        b1[j] ~ dnorm(0.0, tau.b1) # subject random effects\n        BT[j] <- Trt[j] * log.Base4[j] # interaction\n        log.Base4[j] <- log(Base[j] / 4) \n        log.Age[j] <- log(Age[j])\n    }\n    \n    # covariate means:\n    log.Age.bar <- mean(log.Age[])\n    Trt.bar <- mean(Trt[])\n    BT.bar <- mean(BT[])\n    log.Base4.bar <- mean(log.Base4[])\n    V4.bar <- mean(V4[])\n    \n    # priors:\n    a0 ~ dnorm(0.0,1.0E-4)       \n    alpha.Base ~ dnorm(0.0,1.0E-4)\n    alpha.Trt ~ dnorm(0.0,1.0E-4)\n    alpha.BT ~ dnorm(0.0,1.0E-4)\n    alpha.Age ~ dnorm(0.0,1.0E-4)\n    alpha.V4 ~ dnorm(0.0,1.0E-4)\n    tau.b1 ~ dgamma(1.0E-3,1.0E-3); sigma.b1 <- 1.0 / sqrt(tau.b1)\n    tau.b ~ dgamma(1.0E-3,1.0E-3); sigma.b <- 1.0/ sqrt(tau.b)      \n    \n    # re-calculate intercept on original scale:\n    alpha0 <- a0 - alpha.Base * log.Base4.bar - alpha.Trt * Trt.bar- alpha.BT * BT.bar - alpha.Age * log.Age.bar - alpha.V4 * V4.bar\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "rt",
+      "nt",
+      "rc",
+      "nc",
+      "Num"
+    ],
+    "inits_keys": [
+      "d",
+      "delta.new",
+      "tau",
+      "mu",
+      "delta"
+    ],
+    "key": "blockers",
+    "name": "Blockers: random effects meta-analysis of clinical trials",
+    "program": "model {\n    for( i in 1 : Num ) {\n        rc[i] ~ dbin(pc[i], nc[i])\n        rt[i] ~ dbin(pt[i], nt[i])\n        logit(pc[i]) <- mu[i]\n        logit(pt[i]) <- mu[i] + delta[i]\n        mu[i] ~ dnorm(0.0,1.0E-5)\n        delta[i] ~ dnorm(d, tau)\n    }\n    d ~ dnorm(0.0,1.0E-6)\n    tau ~ dgamma(0.001,0.001)\n    delta.new ~ dnorm(d, tau)\n    sigma <- 1 / sqrt(tau)\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "r1",
+      "n1",
+      "r0",
+      "n0",
+      "year",
+      "K"
+    ],
+    "inits_keys": [
+      "alpha",
+      "beta1",
+      "beta2",
+      "tau",
+      "mu",
+      "b"
+    ],
+    "key": "oxford",
+    "name": "Oxford: smooth fit to log-odds ratios",
+    "program": "model {\n    for (i in 1 : K) {\n        r0[i] ~ dbin(p0[i], n0[i])\n        r1[i] ~ dbin(p1[i], n1[i])\n        logit(p0[i]) <- mu[i]\n        logit(p1[i]) <- mu[i] + logPsi[i]\n        logPsi[i] <- alpha + beta1 * year[i] + beta2 * (year[i] * year[i] - 22) + b[i]\n        b[i] ~ dnorm(0, tau)\n        mu[i] ~ dnorm(0.0, 1.0E-6)\n    }\n    alpha ~ dnorm(0.0, 1.0E-6)\n    beta1 ~ dnorm(0.0, 1.0E-6)\n    beta2 ~ dnorm(0.0, 1.0E-6)\n    tau ~ dgamma(1.0E-3, 1.0E-3)\n    sigma <- 1 / sqrt(tau)\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "N",
+      "R",
+      "T",
+      "culm",
+      "response"
+    ],
+    "inits_keys": [
+      "alpha",
+      "beta"
+    ],
+    "key": "lsat",
+    "name": "LSAT: item response",
+    "program": "model {\n    # Calculate individual (binary) responses to each test from multinomial data\n    for (j in 1 : culm[1]) {\n        for (k in 1 : T) {\n            r[j, k] <- response[1, k]\n        }\n    }\n    \n    for (i in 2 : R) {\n        for (j in culm[i - 1] + 1 : culm[i]) {\n            for (k in 1 : T) {\n                r[j, k] <- response[i, k]\n            }\n        }\n    }\n    \n    # Rasch model\n    for (j in 1 : N) {\n        for (k in 1 : T) {\n            logit(p[j, k]) <- beta * theta[j] - alpha[k]\n            r[j, k] ~ dbern(p[j, k])\n        }\n        theta[j] ~ dnorm(0, 1)\n    }\n    # Priors\n    for (k in 1 : T) {\n        alpha[k] ~ dnorm(0, 0.0001)\n        a[k] <- alpha[k] - mean(alpha[])\n    }\n    beta ~ dunif(0, 1000)\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "nChild",
+      "nInd",
+      "gamma",
+      "delta",
+      "ncat",
+      "grade"
+    ],
+    "inits_keys": [
+      "theta",
+      "grade"
+    ],
+    "key": "bones",
+    "name": "Bones: latent trait model for multiple ordered categorical responses",
+    "program": "model {\n    for (i in 1 : nChild) {\n        theta[i] ~ dnorm(0.0, 0.001)\n        for (j in 1 : nInd) {\n            for (k in 1: ncat[j] - 1) {\n                logit(Q[i, j, k]) <- delta[j] * (theta[i] - gamma[j, k])\n            }\n        }\n    \n        # Probability of observing grade k given theta\n        for (j in 1 : nInd) {\n            p[i, j, 1] <- 1 - Q[i, j, 1]\n            for (k in 2 : ncat[j] - 1) {\n                p[i, j, k] <- Q[i, j, k - 1] - Q[i, j, k]\n            }\n            p[i, j, ncat[j]] <- Q[i, j, ncat[j] - 1]\n            grade[i, j] ~ dcat(p[i, j, 1 : ncat[j]])\n        }\n    }\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "t",
+      "t.cen",
+      "M",
+      "N"
+    ],
+    "inits_keys": [
+      "beta",
+      "r"
+    ],
+    "key": "mice",
+    "name": "Mice: Weibull regression",
+    "program": "model {\n    for(i in 1 : M) {\n        for(j in 1 : N) {\n            t[i, j] ~ dweib(r, mu[i])C(t.cen[i, j],)\n        }\n        mu[i] <- exp(beta[i])\n        beta[i] ~ dnorm(0.0, 0.001)\n        median[i] <- pow(log(2) * exp(-beta[i]), 1/r)\n    }\n    # r ~ dexp(0.001)\n    r ~ dunif(0.1, 10)\n    veh.control <- beta[2] - beta[1]\n    test.sub <- beta[3] - beta[1]\n    pos.control <- beta[4] - beta[1]\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "N",
+      "M",
+      "t",
+      "t.cen",
+      "age",
+      "beta.dis",
+      "sex",
+      "disease"
+    ],
+    "inits_keys": [
+      "beta.age",
+      "beta.sex",
+      "beta.dis",
+      "alpha",
+      "r",
+      "tau"
+    ],
+    "key": "kidney",
+    "name": "Kidney: Weibull regression with random efects",
+    "program": "model {\n    for (i in 1 : N) {\n        for (j in 1 : M) {\n            # Survival times bounded below by censoring times:\n            t[i,j] ~ dweib(r, mu[i,j])C(t.cen[i, j], );\n            log(mu[i,j ]) <- alpha + beta.age * age[i, j] + beta.sex *sex[i] + beta.dis[disease[i]] + b[i];\n        }\n        # Random effects:\n        b[i] ~ dnorm(0.0, tau)\n    }\n    \n    # Priors:\n    alpha ~ dnorm(0.0, 0.0001);\n    beta.age ~ dnorm(0.0, 0.0001);\n    beta.sex ~ dnorm(0.0, 0.0001);\n    # beta.dis[1] <- 0; # corner-point constraint\n    for(k in 2 : 4) {\n        beta.dis[k] ~ dnorm(0.0, 0.0001);\n    }\n    tau ~ dgamma(1.0E-3, 1.0E-3);\n    r ~ dgamma(1.0, 1.0E-3);\n    sigma <- 1 / sqrt(tau); # s.d. of random effects\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "N",
+      "T",
+      "eps",
+      "obs.t",
+      "fail",
+      "Z",
+      "t"
+    ],
+    "inits_keys": [
+      "beta",
+      "dL0"
+    ],
+    "key": "leuk",
+    "name": "Leuk: Cox regression",
+    "program": "model {\n    # Set up data\n    for(i in 1:N) {\n        for(j in 1:T) {\n            # risk set = 1 if obs.t >= t\n            Y[i,j] <- step(obs.t[i] - t[j] + eps)\n            # counting process jump = 1 if obs.t in [ t[j], t[j+1] )\n            # i.e. if t[j] <= obs.t < t[j+1]\n            dN[i, j] <- Y[i, j] * step(t[j + 1] - obs.t[i] - eps) * fail[i]\n        }\n    }\n\n    # Model\n    for(j in 1:T) {\n        for(i in 1:N) {\n            dN[i, j] ~ dpois(Idt[i, j]) # Likelihood\n            Idt[i, j] <- Y[i, j] * exp(beta * Z[i]) * dL0[j]    # Intensity\n        }\n        dL0[j] ~ dgamma(mu[j], c)\n        mu[j] <- dL0.star[j] * c # prior mean hazard\n\n        # Survivor function = exp(-Integral{l0(u)du})^exp(beta*z)\n        S.treat[j] <- pow(exp(-sum(dL0[1 : j])), exp(beta * -0.5));\n        S.placebo[j] <- pow(exp(-sum(dL0[1 : j])), exp(beta * 0.5));   \n    }\n\n    c <- 0.001\n    r <- 0.1\n    for (j in 1 : T) {\n        dL0.star[j] <- r * (t[j + 1] - t[j])\n    }\n    beta ~ dnorm(0.0,0.000001)\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "N",
+      "T",
+      "eps",
+      "Npairs",
+      "t",
+      "obs.t",
+      "pair",
+      "fail",
+      "Z"
+    ],
+    "inits_keys": [
+      "beta",
+      "dL0",
+      "tau"
+    ],
+    "key": "leukfr",
+    "name": "LeukFr: Cox regression with random effects",
+    "program": "model {\n    # Set up data\n    for(i in 1 : N) {\n        for(j in 1 : T) {\n            # risk set = 1 if obs.t >= t\n            Y[i, j] <- step(obs.t[i] - t[j] + eps)\n            \n            # counting process jump = 1 if obs.t in [ t[j], t[j+1] )\n            # i.e. if t[j] <= obs.t < t[j+1]\n            dN[i, j] <- Y[i, j ] * step(t[j+1] - obs.t[i] - eps) * fail[i]\n        }\n    }\n    \n    # Model\n    for(j in 1 : T) {\n        for(i in 1 : N) {\n            dN[i, j] ~ dpois(Idt[i, j])\n            Idt[i, j] <- Y[i, j] * exp(beta * Z[i]+b[pair[i]]) * dL0[j]\n        }\n        dL0[j] ~ dgamma(mu[j], c)\n        mu[j] <- dL0.star[j] * c # prior mean hazard\n        \n        # Survivor function = exp(-Integral{l0(u)du})^exp(beta * z)\n        S.treat[j] <- pow(exp(-sum(dL0[1 : j])), exp(beta * -0.5))\n        S.placebo[j] <- pow(exp(-sum(dL0[1 : j])), exp(beta * 0.5))   \n    }\n    for(k in 1 : Npairs) {\n        b[k] ~ dnorm(0.0, tau);\n    }\n    tau ~ dgamma(0.001, 0.001)\n    sigma <- sqrt(1 / tau)\n    c <- 0.001 \n    r <- 0.1\n    for (j in 1 : T) {\n        dL0.star[j] <- r * (t[j+1]-t[j])\n    }\n    beta ~ dnorm(0.0,0.000001)\n}\n",
+    "volume": "VOLUME_1"
+  },
+  {
+    "data_keys": [
+      "x",
+      "Y",
+      "N"
+    ],
+    "inits_keys": [
+      "alpha",
+      "beta",
+      "tau",
+      "gamma"
+    ],
+    "key": "dugongs",
+    "name": "Dugongs: nonlinear growth curve",
+    "program": "model {\n    for( i in 1 : N ) {\n        Y[i] ~ dnorm(mu[i], tau)\n        mu[i] <- alpha - beta * pow(gamma,x[i])   \n    }\n    alpha ~ dunif(0, 100)\n    beta ~ dunif(0, 100)\n    gamma ~ dunif(0.5, 1.0)\n    tau ~ dgamma(0.001, 0.001)\n    sigma <- 1 / sqrt(tau)\n    U3 <- logit(gamma)   \n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "n",
+      "K",
+      "x",
+      "Y"
+    ],
+    "inits_keys": [
+      "theta",
+      "mu",
+      "tau",
+      "tauC"
+    ],
+    "key": "orange_trees",
+    "name": "Orange Trees: Non-linear growth curve",
+    "program": "model {\n    for (i in 1:K) {\n        for (j in 1:n) {\n            Y[i, j] ~ dnorm(eta[i, j], tauC)\n            eta[i, j] <- phi[i, 1] / (1 + phi[i, 2] * exp(phi[i, 3] * x[j]))\n        }\n        phi[i, 1] <- exp(theta[i, 1])\n        phi[i, 2] <- exp(theta[i, 2]) - 1\n        phi[i, 3] <- -exp(theta[i, 3])\n        for (k in 1:3) {\n            theta[i, k] ~ dnorm(mu[k], tau[k])\n        }\n    }\n    tauC ~ dgamma(1.0E-3, 1.0E-3)\n    sigma.C <- 1 / sqrt(tauC)\n    for (k in 1:3) {\n        mu[k] ~ dnorm(0, 1.0E-4)\n        tau[k] ~ dgamma(1.0E-3, 1.0E-3)\n        sigma[k] <- 1 / sqrt(tau[k])\n    }\n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "n",
+      "K",
+      "x",
+      "Y",
+      "mean",
+      "R",
+      "prec"
+    ],
+    "inits_keys": [
+      "theta",
+      "mu",
+      "tau",
+      "tauC"
+    ],
+    "key": "orange_trees_multivariate",
+    "name": "Orange Trees: Non-linear growth curve",
+    "program": "model {\n    for (i in 1:K) {\n        for (j in 1:n) {\n            Y[i, j] ~ dnorm(eta[i, j], tauC)\n            eta[i, j] <- phi[i, 1] / (1 + phi[i, 2] * exp(phi[i, 3] * x[j]))\n        }\n        phi[i, 1] <- exp(theta[i, 1])\n        phi[i, 2] <- exp(theta[i, 2]) - 1\n        phi[i, 3] <- -exp(theta[i, 3])\n        theta[i, 1:3] ~ dmnorm(mu[1:3], tau[1:3, 1:3])\n    }\n    mu[1:3] ~ dmnorm(mean[1:3], prec[1:3, 1:3])\n    tau[1:3, 1:3] ~ dwish(R[1:3, 1:3], 3)\n    sigma2[1:3, 1:3] <- inverse(tau[1:3, 1:3]) \n    for (i in 1 : 3) {sigma[i] <- sqrt(sigma2[i, i]) }\n    tauC ~ dgamma(1.0E-3, 1.0E-3)\n    sigmaC <- 1 / sqrt(tauC)\n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "ns",
+      "error",
+      "prior",
+      "biopsies"
+    ],
+    "inits_keys": [
+      "p",
+      "error"
+    ],
+    "key": "biopsies",
+    "name": "Biopsies: discrete variable latent class model",
+    "program": "model\n{\n   for (i in 1 : ns){\n      nbiops[i] <- sum(biopsies[i, ])\n      true[i] ~ dcat(p[])\n      biopsies[i, 1 : 4] ~ dmulti(error[true[i], ], nbiops[i])\n   }\n   error[2,1 : 2] ~ ddirich(prior[1 : 2])\n   error[3,1 : 3] ~ ddirich(prior[1 : 3])\n   error[4,1 : 4] ~ ddirich(prior[1 : 4])\n   p[1 : 4] ~ ddirich(prior[]); # prior for p\n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "y",
+      "N",
+      "alpha",
+      "T"
+    ],
+    "inits_keys": [
+      "lambda",
+      "theta",
+      "tau"
+    ],
+    "key": "eyes",
+    "name": "Eyes: Normal Mixture Model",
+    "program": "model {\n    for( i in 1 : N ) {\n        y[i] ~ dnorm(mu[i], tau)\n        mu[i] <- lambda[T[i]]\n        T[i] ~ dcat(P[])\n    }   \n    P[1:2] ~ ddirich(alpha[])\n    theta ~ dunif(0.0, 1000)\n    lambda[2] <- lambda[1] + theta\n    lambda[1] ~ dnorm(0.0, 1.0E-6)\n    tau ~ dgamma(0.001, 0.001) \n    sigma <- 1 / sqrt(tau)\n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "x",
+      "y",
+      "N"
+    ],
+    "inits_keys": [
+      "delta",
+      "alpha"
+    ],
+    "key": "hearts",
+    "name": "Hearts: a mixture model for count data",
+    "program": "model\n{\n   for (i in 1 : N) {\n      y[i] ~ dbin(P[state1[i]], t[i])\n      state[i] ~ dbern(theta)\n      state1[i] <- state[i] + 1\n      t[i] <- x[i] + y[i]\n      prop[i] <- P[state1[i]]\n   }\n   P[1] <- p\n   P[2] <- 0\n   logit(p) <- alpha\n   alpha ~ dnorm(0,1.0E-4)\n   beta <- exp(alpha)\n   logit(theta) <- delta\n   delta ~ dnorm(0, 1.0E-4)\n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "J",
+      "y",
+      "n",
+      "Z",
+      "tau",
+      "alpha",
+      "beta"
+    ],
+    "inits_keys": [
+      "theta",
+      "X"
+    ],
+    "key": "air",
+    "name": "Air: Berkson measurement error",
+    "program": "model\n{\n   for(j in 1 : J) {\n      y[j] ~ dbin(p[j], n[j])\n      logit(p[j]) <- theta[1] + theta[2] * X[j]\n      X[j] ~ dnorm(mu[j], tau)\n      mu[j] <- alpha + beta * Z[j]\n   }\n   theta[1] ~ dnorm(0.0, 0.001)\n   theta[2] ~ dnorm(0.0, 0.001)\n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "N",
+      "d",
+      "x",
+      "w"
+    ],
+    "inits_keys": [
+      "beta0C",
+      "beta",
+      "q",
+      "phi"
+    ],
+    "key": "cervix",
+    "name": "Cervix: case - control study with errors in covariates",
+    "program": "model\n{\n    for (i in 1 : N) {\n        x[i] ~ dbern(q) # incidence of HSV\n        logit(p[i]) <- beta0C + beta * x[i]   # logistic model\n        d[i] ~ dbern(p[i]) # incidence of cancer\n        x1[i] <- x[i] + 1\n        d1[i] <- d[i] + 1\n        w[i] ~ dbern(phi[x1[i], d1[i]])   # incidence of w\n    }\n    q ~ dunif(0.0, 1.0) # prior distributions\n    beta0C ~ dnorm(0.0, 0.00001);\n    beta ~ dnorm(0.0, 0.00001);\n    for(j in 1 : 2) {\n        for(k in 1 : 2){\n                phi[j, k] ~ dunif(0.0, 1.0)\n        }\n    }\n    # calculate gamma1 = P(x=1|d=0) and gamma2 = P(x=1|d=1)\n    gamma1 <- 1 / (1 + (1 + exp(beta0C + beta)) / (1 + exp(beta0C)) * (1 - q) / q)\n    gamma2 <- 1 / (1 + (1 + exp(-beta0C - beta)) / (1 + exp(-beta0C)) * (1 - q) / q)\n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "M",
+      "N",
+      "Y",
+      "age",
+      "R"
+    ],
+    "inits_keys": [
+      "beta0",
+      "beta1"
+    ],
+    "key": "jaws",
+    "name": "Jaws: repeated measures analysis of variance",
+    "program": "model\n{\n    beta0 ~ dnorm(0.0, 0.001)\n    beta1 ~ dnorm(0.0, 0.001)\n    for (i in 1:N) {\n        Y[i, 1:M] ~ dmnorm(mu[], Omega[ , ])\n    }\n    for(j in 1:M) {\n        mu[j] <- beta0 + beta1* age[j]\n    }\n    Omega[1 : M , 1 : M] ~ dwish(R[ , ], 4)\n    Sigma[1 : M , 1 : M] <- inverse(Omega[ , ])\n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "x",
+      "N",
+      "T",
+      "Omega",
+      "mean",
+      "prec",
+      "Y"
+    ],
+    "inits_keys": [
+      "mu.beta",
+      "tauC",
+      "beta",
+      "R"
+    ],
+    "key": "birats",
+    "name": "Birats: a bivariate normal hierarchical model",
+    "program": "model {\n    for( i in 1 : N ) {\n        beta[i , 1 : 2] ~ dmnorm(mu.beta[], R[ , ])\n        for( j in 1 : T ) {\n            Y[i, j] ~ dnorm(mu[i , j], tauC)\n            mu[i, j] <- beta[i, 1] + beta[i, 2] * x[j]\n        }\n    }\n    \n    mu.beta[1 : 2] ~ dmnorm(mean[], prec[ , ])\n    R[1 : 2 , 1 : 2] ~ dwish(Omega[ , ], 2)\n    tauC ~ dgamma(0.001, 0.001)\n    sigma <- 1 / sqrt(tauC)\n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "N",
+      "M",
+      "mn",
+      "prec",
+      "R",
+      "school",
+      "LRT",
+      "School.gender",
+      "School.denom",
+      "Gender",
+      "VR",
+      "Y"
+    ],
+    "inits_keys": [
+      "theta",
+      "phi",
+      "gamma",
+      "beta",
+      "T",
+      "alpha"
+    ],
+    "key": "schools",
+    "name": "Schools: ranking schoolexamination results using multivariate hierarcical models",
+    "program": "model\n{\n   for(p in 1 : N) {\n      Y[p] ~ dnorm(mu[p], tau[p])\n      mu[p] <- alpha[school[p], 1] + alpha[school[p], 2] * LRT[p]\n         + alpha[school[p], 3] * VR[p, 1] + beta[1] * LRT2[p]\n         + beta[2] * VR[p, 2] + beta[3] * Gender[p]\n         + beta[4] * School.gender[p, 1] + beta[5] * School.gender[p, 2]\n         + beta[6] * School.denom[p, 1] + beta[7] * School.denom[p, 2]\n         + beta[8] * School.denom[p, 3]\n      log(tau[p]) <- theta + phi * LRT[p]\n      sigma2[p] <- 1 / tau[p]\n      LRT2[p] <- LRT[p] * LRT[p]\n   }\n   min.var <- exp(-(theta + phi * (-34.6193))) # lowest LRT score = -34.6193\n   max.var <- exp(-(theta + phi * (37.3807))) # highest LRT score = 37.3807\n\n# Priors for fixed effects:\n   for (k in 1 : 8) {\n      beta[k] ~ dnorm(0.0, 0.0001)\n   }\n   theta ~ dnorm(0.0, 0.0001)\n   phi ~ dnorm(0.0, 0.0001)\n\n# Priors for random coefficients:\n   for (j in 1 : M) {\n      alpha[j, 1 : 3] ~ dmnorm(gamma[1:3 ], T[1:3 ,1:3 ]);\n      alpha1[j] <- alpha[j,1]\n   }\n\n# Hyper-priors:\n   gamma[1 : 3] ~ dmnorm(mn[1:3 ], prec[1:3 ,1:3 ]);\n   T[1 : 3, 1 : 3 ] ~ dwish(R[1:3 ,1:3 ], 3)\n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "x",
+      "n",
+      "r",
+      "N"
+    ],
+    "inits_keys": [
+      "alpha.star",
+      "beta"
+    ],
+    "key": "beetles",
+    "name": "Beetles: choice of link function",
+    "program": "model {\n    for( i in 1 : N ) {\n        r[i] ~ dbin(p[i],n[i])\n        logit(p[i]) <- alpha.star + beta * (x[i] - mean(x[]))\n        # probit(p[i]) <- alpha.star + beta * (x[i] - mean(x[]))\n        # cexpexp(p[i]) <- alpha.star + beta * (x[i] - mean(x[]))\n        rhat[i] <- n[i] * p[i]\n    }\n    alpha <- alpha.star - beta * mean(x[])\n    beta ~ dnorm(0.0,0.001)\n    alpha.star ~ dnorm(0.0,0.001)\n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "I",
+      "J",
+      "K",
+      "X"
+    ],
+    "inits_keys": [
+      "alpha",
+      "beta",
+      "gamma",
+      "lambda"
+    ],
+    "key": "alligators",
+    "name": "Alligators: multinomial - logistic regression",
+    "program": "model {\n\n    # PRIORS\n    alpha[1] <- 0; # zero contrast for baseline food\n    for (k in 2 : K) { \n        alpha[k] ~ dnorm(0, 0.00001) # vague priors\n    } \n\n    # Loop around lakes:\n    for (k in 1 : K){  \n        beta[1, k] <- 0 # corner-point contrast with first lake \n    } \n    for (i in 2 : I) {     \n        beta[i, 1] <- 0; # zero contrast for baseline food\n        for (k in 2 : K){  \n            beta[i, k] ~ dnorm(0, 0.00001) # vague priors\n        } \n    }\n\n    # Loop around sizes:\n    for (k in 1 : K){  \n        gamma[1, k] <- 0 # corner-point contrast with first size \n    }  \n    for (j in 2 : J) {     \n        gamma[j, 1] <- 0; # zero contrast for baseline food\n        for (k in 2 : K){ \n            gamma[j, k] ~ dnorm(0, 0.00001) # vague priors\n        } \n    }\n\n    # LIKELIHOOD    \n    for (i in 1 : I) { # loop around lakes\n        for (j in 1 : J) { # loop around sizes\n\n            # Fit standard Poisson regressions relative to baseline\n            lambda[i, j] ~ dflat() # vague priors \n            for (k in 1 : K) { # loop around foods\n                X[i, j, k] ~ dpois(mu[i, j, k])\n                log(mu[i, j, k]) <- lambda[i, j] + alpha[k] + beta[i, k] + gamma[j, k]\n            }\n        }  \n    }\n\n    # TRANSFORM OUTPUT TO ENABLE COMPARISON \n    # WITH AGRESTI'S RESULTS\n    for (k in 1 : K) { # loop around foods\n        for (i in 1 : I) { # loop around lakes\n            b[i, k] <- beta[i, k] - mean(beta[, k]); # sum to zero constraint\n        }\n        for (j in 1 : J) { # loop around sizes\n            g[j, k] <- gamma[j, k] - mean(gamma[, k]); # sum to zero constraint\n        }\n    }\n}  \n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "n10",
+      "n01",
+      "n11",
+      "I",
+      "J"
+    ],
+    "inits_keys": [
+      "beta"
+    ],
+    "key": "endo",
+    "name": "Endo: conditional inference in case-control studies",
+    "program": "model {\n\t# transform collapsed data into full\n\tfor (i in 1 : I){\n\t\tY[i,1] <- 1  \n\t\tY[i,2] <- 0\n\t}\n\t# loop around strata with case exposed, control not exposed  (n10)\n\tfor (i in 1 : n10){ \n\t\test[i,1] <- 1   \n\t\test[i,2] <- 0\n\t}\n\t# loop around strata with case not exposed, control exposed  (n01)\n\tfor (i in (n10+1) : (n10+n01)){  \n\t\test[i,1] <- 0     \n\t\test[i,2] <- 1\n\t}\n\t# loop around strata with case exposed, control exposed  (n11)\n\tfor (i in (n10+n01+1) : (n10+n01+n11)){ \n\t\test[i,1] <- 1  \n\t\test[i,2] <- 1\n\t}\n\t# loop around strata with case not exposed, control not exposed  (n00)\n\tfor (i in (n10+n01+n11+1) :I ){ \n\t\test[i,1] <- 0  \n\t\test[i,2] <- 0\n\t}\n\n\t# PRIORS\n\tbeta ~ dnorm(0,1.0E-6)\n\n\t# LIKELIHOOD\n\tfor (i in 1 : I) { # loop around strata\t\n\t# METHOD 1 - logistic regression\n\t#   Y[i,1] ~ dbin( p[i,1], 1) \n\t#   logit(p[i,1]) <- beta * (est[i,1] - est[i,J]) \n\t# METHOD 2 - conditional likelihoods\n\t\tY[i, 1 : J] ~ dmulti( p[i, 1 : J],1)\n\t\tfor (j in 1:2){\n\t\t\tp[i, j] <- e[i, j] / sum(e[i, ])\n\t\t\tlog( e[i, j] ) <- beta * est[i, j] \n\t\t}         \n\t# METHOD 3 fit standard Poisson regressions relative to baseline\n\t# for (j in 1:J) {     \n\t#\t Y[i, j] ~ dpois(mu[i, j]);\n\t#\tlog(mu[i, j]) <- beta0[i] +  beta*est[i, j]; \n\t} \n\t# beta0[i] ~ dnorm(0, 1.0E-6) \n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "Y",
+      "x",
+      "N"
+    ],
+    "inits_keys": [
+      "alpha",
+      "beta",
+      "k",
+      "tau"
+    ],
+    "key": "stagnant",
+    "name": "Stagnant: a changepoint problem and an illustration of how NOT to do MCMC!)",
+    "program": "model {\n    for (i in 1:N) {\n        Y[i] ~ dnorm(mu[i], tau)\n        mu[i] <- alpha + beta[J[i]] * (x[i] - x.change)\n        J[i] <- 1 + step(x[i] - x.change)\n    }\n    tau ~ dgamma(0.001, 0.001)\n    alpha ~ dnorm(0.0, 1.0E-6)\n    for (j in 1:2) {\n        beta[j] ~ dnorm(0.0, 1.0E-6)\n    }\n    sigma <- 1 / sqrt(tau)\n    x.change ~ dunif(x[5], x[26])\n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "asia",
+      "dyspnoea",
+      "p.tuberculosis",
+      "p.bronchitis",
+      "p.smoking",
+      "p.lung.cancer",
+      "p.xray",
+      "p.dyspnoea"
+    ],
+    "inits_keys": [
+      "smoking",
+      "tuberculosis",
+      "lung.cancer",
+      "bronchitis",
+      "xray"
+    ],
+    "key": "asia",
+    "name": "Asia: expert system",
+    "program": "model {\n    smoking ~ dcat(p.smoking[1:2])\n    tuberculosis ~ dcat(p.tuberculosis[asia,1:2])\n    lung.cancer ~ dcat(p.lung.cancer[smoking,1:2])\n    bronchitis ~ dcat(p.bronchitis[smoking,1:2])\n    either <- max(tuberculosis, lung.cancer)\n    xray ~ dcat(p.xray[either,1:2])\n    dyspnoea ~ dcat(p.dyspnoea[either, bronchitis,1:2])\n}\n",
+    "volume": "VOLUME_2"
+  },
+  {
+    "data_keys": [
+      "x",
+      "N",
+      "C"
+    ],
+    "inits_keys": [],
+    "key": "eye_tracking",
+    "name": "Eye Tracking: dirichlet process prior",
+    "program": "model{   \n    for( i in 1 : N ) {\n        S[i] ~ dcat(pi[])\n        mu[i] <- theta[S[i]]\n        x[i] ~ dpois(mu[i])\n        for (j in 1 : C) {\n            SC[i, j] <- equals(j, S[i])\n        }\n    }\n\n    # Precision Parameter\n    alpha <- 1\n    # alpha~ dgamma(0.1,0.1)\n    \n    # Constructive DPP\n    p[1] <- r[1]\n    for (j in 2 : C) {\n        p[j] <- r[j] * (1 - r[j - 1]) * p[j -1 ] / r[j - 1]\n    }\n    p.sum <- sum(p[])\n    for (j in 1:C){\n        theta[j] ~ dgamma(A, B)\n        r[j] ~ dbeta(1, alpha)\n        # scaling to ensure sum to 1\n        pi[j] <- p[j] / p.sum\n    }\n    \n    # hierarchical prior on theta[i] or preset parameters\n    A ~ dexp(0.1)\n    B ~ dgamma(0.1, 0.1)\n    # A <- 1\n    # B <- 1\n    \n    # total clusters\n    K <- sum(cl[])\n    for (j in 1 : C) {\n        sumSC[j] <- sum(SC[ , j])\n        cl[j] <- step(sumSC[j] -1)\n    }\n}\n",
+    "volume": "VOLUME_3"
+  },
+  {
+    "data_keys": [],
+    "inits_keys": [
+      "x",
+      "y"
+    ],
+    "key": "circle",
+    "name": "Fun Shapes: Circle",
+    "program": "model\n{\n    x ~ dunif(-1, 1)\n    y ~ dunif(-1, 1)\n    O <- 0\n    O ~ dbern(constraint)\n    constraint <- step(x * x + y * y - 1)\n}\n",
+    "volume": "VOLUME_3"
+  },
+  {
+    "data_keys": [],
+    "inits_keys": [
+      "x",
+      "y"
+    ],
+    "key": "hollow_square",
+    "name": "Fun Shapes: Hollow Square",
+    "program": "model\n{\n   x ~ dunif(-1, 1)\n   y ~ dunif(-1, 1)\n   O <- 0\n   O ~ dbern(constraint)\n   constraint <- (step(0.5 - abs(x)) * step(0.50 - abs(y)))\n}\n",
+    "volume": "VOLUME_3"
+  },
+  {
+    "data_keys": [],
+    "inits_keys": [
+      "x",
+      "y"
+    ],
+    "key": "parallelogram",
+    "name": "Fun Shapes: Parallelogram",
+    "program": "model\n{\n   x ~ dunif(0, 1)\n   y ~ dunif(-1, 1.0)\n   O1 <- 1\n   O1 ~ dbern(constraint1)\n   constraint1 <- step(x + y)\n   O2 <- 0\n   O2 ~ dbern(constraint2)   \n   constraint2 <- step(x + y - 1)\n}\n",
+    "volume": "VOLUME_3"
+  },
+  {
+    "data_keys": [],
+    "inits_keys": [
+      "x",
+      "y"
+    ],
+    "key": "ring",
+    "name": "Fun Shapes: Ring",
+    "program": "model\n{\n   x ~ dunif(-1, 1)\n   y ~ dunif(-1, 1)\n   O1 <- 0\n   O1 ~ dbern(constraint1)\n   constraint1 <- step(x * x + y * y - 1)   \n   O2 <- 1\n   O2 ~ dbern(constraint2)\n   constraint2 <- step( x * x + y * y - 0.25)\n}\n",
+    "volume": "VOLUME_3"
+  },
+  {
+    "data_keys": [],
+    "inits_keys": [
+      "x",
+      "y"
+    ],
+    "key": "square_minus_circle",
+    "name": "Fun Shapes: Square minus Circle",
+    "program": "model\n{\n    x ~ dunif(-1, 1)\n    y ~ dunif(-1, 1)\n    O <- 1\n    O ~ dbern(constraint)\n    constraint <- step(x * x + y * y - 1)\n}\n",
+    "volume": "VOLUME_3"
+  },
+  {
+    "data_keys": [
+      "N",
+      "T",
+      "Y",
+      "t",
+      "y0"
+    ],
+    "inits_keys": [
+      "alpha0",
+      "beta0",
+      "gamma",
+      "tau_alpha",
+      "tau_beta",
+      "tau"
+    ],
+    "key": "hepatitis",
+    "name": "Hepatitis: a normal hierarchical model with measurement error (basic)",
+    "program": "model\n{\n    for( i in 1 : N ) {\n        for( j in 1 : T ) {\n            Y[i , j] ~ dnorm(mu[i , j],tau)\n            mu[i , j] <- alpha[i] + beta[i] * (t[i,j] - 6.5) + gamma * (y0[i] - mean(y0[]))\n        }\n        alpha[i] ~ dnorm(alpha0,tau.alpha)\n        beta[i] ~ dnorm(beta0,tau.beta)\n    }\n    tau ~ dgamma(0.001,0.001)\n    sigma <- 1 / sqrt(tau)\n    alpha0 ~ dnorm(0.0,1.0E-6) \n    tau.alpha ~ dgamma(0.001,0.001)\n    beta0 ~ dnorm(0.0,1.0E-6)\n    tau.beta ~ dgamma(0.001,0.001)\n    gamma ~ dnorm(0.0,1.0E-6)\n}\n",
+    "volume": "VOLUME_3"
+  },
+  {
+    "data_keys": [
+      "N",
+      "T",
+      "Y",
+      "t",
+      "y0"
+    ],
+    "inits_keys": [
+      "alpha0",
+      "beta0",
+      "gamma",
+      "tau.alpha",
+      "tau.beta",
+      "tau",
+      "theta",
+      "psi"
+    ],
+    "key": "hepatitis_me",
+    "name": "Hepatitis: a normal hierarchical model with measurement error (with measurement error)",
+    "program": "model\n{\n    tau.alpha ~ dgamma(0.001, 0.001)\n    alpha0 ~ dnorm(0.0, 1.0E-6)\n    beta0 ~ dnorm(0.0, 1.0E-6)\n    tau.beta ~ dgamma(0.001, 0.001)\n    for(i in 1:N) {\n        alpha[i] ~ dnorm(alpha0, tau.alpha)\n        beta[i] ~ dnorm(beta0, tau.beta)\n        y0[i] ~ dnorm(mu0[i], tau)\n        mu0[i] ~ dnorm(theta, psi)\n    }\n    for(j in 1:T) {\n        for(i in 1:N) {\n            Y[i, j] ~ dnorm(mu[i, j], tau)\n            mu[i, j] <- alpha[i] + beta[i] * (t[i, j] - 6.5) + \n                gamma * (mu0[i] - mean(y0[]))\n        }\n    }\n    tau ~ dgamma(0.001, 0.001)\n    sigma <- 1 / sqrt(tau)\n    gamma ~ dnorm(0.0, 1.0E-6)\n    theta ~ dnorm(0.0, 1.0E-6)\n    psi ~ dgamma(0.001, 0.001)\n}\n",
+    "volume": "VOLUME_3"
+  },
+  {
+    "data_keys": [
+      "N",
+      "K",
+      "S",
+      "rho",
+      "lambda.op",
+      "h",
+      "C0",
+      "c",
+      "bl",
+      "bq",
+      "delta.c",
+      "delta.b",
+      "p.strata",
+      "lambda"
+    ],
+    "inits_keys": [],
+    "key": "hips1",
+    "name": "Hips1: Closed form estimates for each strata",
+    "program": "model {\n    for(k in 1 : K) {    # loop over strata\n\n    # Cost and benefit equations in closed form:\n    ####################################\n\n        # Costs\n        for(t in 1 : N) {\n            ct[k, t] <- inprod(pi[k, t, ], c[]) / pow((1 + delta.c), t - 1)\n        } \n        C[k] <- C0 + sum(ct[k, ])\n\n        # Benefits - life expectancy\n        for(t in 1:N) {\n            blt[k, t] <- inprod(pi[k, t, ], bl[]) / pow((1 + delta.b), t - 1)\n        } \n        BL[k] <- sum(blt[k, ])\n\n        # Benefits - QALYs\n        for(t in 1 : N) {\n            bqt[k, t] <- inprod(pi[k,t, ], bq[]) / pow((1 + delta.b), t - 1)\n        } \n        BQ[k] <- sum(bqt[k, ])\n\n        # Markov model probabilities:\n        #######################\n\n        # Transition matrix\n        for(t in 2 : N) {\n            Lambda[k, t, 1, 1] <- 1 -  gamma[k, t] - lambda[k, t]\n            Lambda[k, t, 1, 2] <- gamma[k, t] * lambda.op\n            Lambda[k, t, 1, 3] <- gamma[k, t] * (1 - lambda.op)\n            Lambda[k, t, 1, 4] <- 0\n            Lambda[k, t, 1, 5] <- lambda[k, t] \n\n            Lambda[k, t, 2, 1] <- 0\n            Lambda[k, t, 2, 2] <- 0 \n            Lambda[k, t, 2, 3] <- 0 \n            Lambda[k, t, 2, 4] <- 0 \n            Lambda[k, t, 2, 5] <- 1 \n\n            Lambda[k, t, 3, 1] <- 0\n            Lambda[k, t, 3, 2] <- 0 \n            Lambda[k, t, 3, 3] <- 0\n            Lambda[k, t, 3, 4] <- 1 -  lambda[k, t]\n            Lambda[k, t, 3, 5] <- lambda[k, t]\n\n            Lambda[k, t, 4, 1] <- 0\n            Lambda[k, t, 4, 2] <- rho * lambda.op\n            Lambda[k, t, 4, 3] <- rho * (1 - lambda.op)\n            Lambda[k, t, 4, 4] <- 1 - rho - lambda[k, t]\n            Lambda[k, t, 4, 5] <- lambda[k,t]\n\n            Lambda[k, t, 5, 1] <- 0\n            Lambda[k, t, 5, 2] <- 0 \n            Lambda[k, t, 5, 3] <- 0\n            Lambda[k, t, 5, 4] <- 0\n            Lambda[k, t, 5, 5] <- 1\n\n            gamma[k, t] <- h[k] * (t - 1)\n        }\n\n        # Marginal probability of being in each state at time 1\n        pi[k,1,1] <- 1 - lambda.op  pi[k,1, 2]<-0     pi[k,1,3] <- 0   \n        pi[k,1, 4] <- 0   pi[k,1, 5] <- lambda.op\n\n        # Marginal probability of being in each state at time t>1\n        for(t in 2:N) {\n            for(s in 1:S) {\n                pi[k, t, s] <- inprod(pi[k, t - 1, ], Lambda[k, t, , s])\n            }\n        }\n    }\n\n    # Mean and sd of costs and benefits over strata\n    #######################################\n\n    mean.C <- inprod(p.strata[], C[])\n    for(k in 1:12) { \n        dev.C[k]  <- pow(C[k] - mean.C, 2) \n    }\n    var.C <- inprod(p.strata[], dev.C[])\n    sd.C <- sqrt(var.C)\n\n    mean.BL <- inprod(p.strata[], BL[])\n    for(k in 1:12) { \n        dev.BL[k]  <- pow(BL[k] - mean.BL, 2) \n    }\n    var.BL <- inprod(p.strata[], dev.BL[])\n    sd.BL <- sqrt(var.BL)\n\n    mean.BQ <- inprod(p.strata[], BQ[])\n    for(k in 1:12) { \n        dev.BQ[k]  <- pow(BQ[k] - mean.BQ, 2) \n    }\n    var.BQ <- inprod(p.strata[], dev.BQ[])\n    sd.BQ <- sqrt(var.BQ)\n}\n",
+    "volume": "VOLUME_3"
+  },
+  {
+    "data_keys": [
+      "N",
+      "K",
+      "S",
+      "rho",
+      "lambda.op",
+      "h",
+      "C0",
+      "c",
+      "bl",
+      "bq",
+      "delta.c",
+      "delta.b",
+      "p.strata",
+      "lambda"
+    ],
+    "inits_keys": [],
+    "key": "hips2",
+    "name": "Hips2: MC estimates for each strata",
+    "program": "model {\n\n\t\tfor(k in 1 : K) {    # loop over strata\n\n\t\t# Cost and benefit equations \n\t\t#######################\n\n\t\t# Costs\n\t\t\tfor(t in 1 : N) {\n\t\t\t\tct[k, t] <- inprod(y[k, t, ], c[]) / pow(1 + delta.c, t - 1)\n\t\t\t} \n\t\t\tC[k] <- C0 + sum(ct[k, ])\n\n\t\t\t# Benefits - life expectancy\n\t\t\tfor(t in 1 : N) {\n\t\t\t\tblt[k, t] <- inprod(y[k, t, ], bl[]) / pow(1 + delta.b, t - 1)\n\t\t\t} \n\t\t\tBL[k] <- sum(blt[k, ])\n\n\t\t\t# Benefits - QALYs\n\t\t\tfor(t in 1:N) {\n\t\t\t\tbqt[k, t] <- inprod(y[k, t, ], bq[]) / pow(1 + delta.b, t - 1)\n\t\t\t} \n\t\t\tBQ[k] <- sum(bqt[k, ])\n\n\n\t\t\t# Markov model probabilities:\n\t\t\t#######################\n\n\t\t\t# Transition matrix\n\t\t\tfor(t in 1 : N) {\n\t\t\t\tLambda[k, t, 1, 1] <- 1 -  gamma[k, t] - lambda[k, t]\n\t\t\t\tLambda[k, t, 1, 2] <- gamma[k, t] * lambda.op\n\t\t\t\tLambda[k, t, 1, 3] <- gamma[k, t] *(1 - lambda.op)\n\t\t\t\tLambda[k, t, 1, 4] <- 0\n\t\t\t\tLambda[k, t, 1, 5] <- lambda[k, t] \n\n\t\t\t\tLambda[k, t, 2, 1] <- 0\n\t\t\t\tLambda[k, t, 2, 2] <- 0 \n\t\t\t\tLambda[k, t, 2, 3] <- 0 \n\t\t\t\tLambda[k, t, 2, 4] <- 0 \n\t\t\t\tLambda[k, t, 2, 5] <- 1 \n\n\t\t\t\tLambda[k, t, 3, 1] <- 0\n\t\t\t\tLambda[k, t, 3, 2] <- 0 \n\t\t\t\tLambda[k, t, 3, 3] <- 0\n\t\t\t\tLambda[k, t, 3, 4] <- 1 -  lambda[k, t]\n\t\t\t\tLambda[k, t, 3, 5] <- lambda[k, t]\n\n\t\t\t\tLambda[k, t, 4, 1] <- 0\n\t\t\t\tLambda[k, t, 4, 2] <- rho * lambda.op\n\t\t\t\tLambda[k, t, 4, 3] <- rho * (1 - lambda.op)\n\t\t\t\tLambda[k, t, 4, 4] <- 1 - rho - lambda[k, t]\n\t\t\t\tLambda[k, t, 4, 5] <- lambda[k, t]\n\n\t\t\t\tLambda[k, t, 5, 1] <- 0\n\t\t\t\tLambda[k, t, 5, 2] <- 0 \n\t\t\t\tLambda[k, t, 5, 3] <- 0\n\t\t\t\tLambda[k, t, 5, 4] <- 0\n\t\t\t\tLambda[k, t, 5, 5] <- 1\n\n\t\t\t\tgamma[k, t] <- h[k] * (t - 1)\n\t\t\t}\n\n\t\t\t# Marginal probability of being in each state at time 1\n\t\t\tpi[k, 1, 1] <- 1 - lambda.op  pi[k, 1, 2]<-0     pi[k, 1, 3] <- 0   pi[k, 1, 4] <- 0  \n\t\t\tpi[k, 1, 5] <- lambda.op\n\n\t\t\t# state of each individual in strata k at time t =1 \n\t\t\ty[k,1,1 : S] ~ dmulti(pi[k,1, ], 1)   \n\n\t\t\t# state of each individual in strata k at time t > 1\n\t\t\tfor(t in 2 : N) {\n\t\t\t\tfor(s in 1:S) {                 \n\t\t\t\t\t#  sampling probabilities        \n\t\t\t\t\tpi[k, t, s] <- inprod(y[k, t - 1, ], Lambda[k, t, , s])   \n\t\t\t\t}\n\t\t\t\ty[k, t, 1 : S] ~ dmulti(pi[k, t, ], 1)     \n\t\t\t}\n\n\t\t}\n\n\t\t# Mean of costs and benefits over strata\n\t\t#################################\n\n\t\tmean.C <- inprod(p.strata[], C[])\n\t\tmean.BL <- inprod(p.strata[], BL[])\n\t\tmean.BQ <- inprod(p.strata[], BQ[])\n\n\t}\n",
+    "volume": "VOLUME_3"
+  },
+  {
+    "data_keys": [
+      "N",
+      "K",
+      "S",
+      "rho",
+      "lambda.op",
+      "logh0",
+      "tau",
+      "C0",
+      "c",
+      "bl",
+      "bq",
+      "delta.c",
+      "delta.b",
+      "p.strata",
+      "lambda"
+    ],
+    "inits_keys": [],
+    "key": "hips3",
+    "name": "Hips3: MC estimates for each strata, allowing for parameter uncertainty in revision hazard, h",
+    "program": "model {\n\n    for(k in 1 : K) {    # loop over strata\n\n    # Cost and benefit equations in closed form:\n    ####################################\n\n        # Costs\n        for(t in 1 : N) {\n            ct[k, t] <- inprod(pi[k, t, ], c[]) / pow((1 + delta.c), t - 1)\n        } \n        C[k] <- C0 + sum(ct[k, ])\n\n        # Benefits - life expectancy\n        for(t in 1:N) {\n            blt[k, t] <- inprod(pi[k, t, ], bl[]) / pow((1 + delta.b), t - 1)\n        } \n        BL[k] <- sum(blt[k, ])\n\n        # Benefits - QALYs\n        for(t in 1 : N) {\n            bqt[k, t] <- inprod(pi[k,t, ], bq[]) / pow((1 + delta.b), t - 1)\n        } \n        BQ[k] <- sum(bqt[k, ])\n\n        # Markov model probabilities:\n        #######################\n\n        # Transition matrix\n        for(t in 2 : N) {\n            Lambda[k, t, 1, 1] <- 1 -  gamma[k, t] - lambda[k, t]\n            Lambda[k, t, 1, 2] <- gamma[k, t] * lambda.op\n            Lambda[k, t, 1, 3] <- gamma[k, t] * (1 - lambda.op)\n            Lambda[k, t, 1, 4] <- 0\n            Lambda[k, t, 1, 5] <- lambda[k, t] \n\n            Lambda[k, t, 2, 1] <- 0\n            Lambda[k, t, 2, 2] <- 0 \n            Lambda[k, t, 2, 3] <- 0 \n            Lambda[k, t, 2, 4] <- 0 \n            Lambda[k, t, 2, 5] <- 1 \n\n            Lambda[k, t, 3, 1] <- 0\n            Lambda[k, t, 3, 2] <- 0 \n            Lambda[k, t, 3, 3] <- 0\n            Lambda[k, t, 3, 4] <- 1 -  lambda[k, t]\n            Lambda[k, t, 3, 5] <- lambda[k, t]\n\n            Lambda[k, t, 4, 1] <- 0\n            Lambda[k, t, 4, 2] <- rho * lambda.op\n            Lambda[k, t, 4, 3] <- rho * (1 - lambda.op)\n            Lambda[k, t, 4, 4] <- 1 - rho - lambda[k, t]\n            Lambda[k, t, 4, 5] <- lambda[k,t]\n\n            Lambda[k, t, 5, 1] <- 0\n            Lambda[k, t, 5, 2] <- 0 \n            Lambda[k, t, 5, 3] <- 0\n            Lambda[k, t, 5, 4] <- 0\n            Lambda[k, t, 5, 5] <- 1\n\n            gamma[k, t] <- h[k] * (t - 1)\n        }\n\n        # Marginal probability of being in each state at time 1\n        pi[k,1,1] <- 1 - lambda.op  pi[k,1, 2]<-0     pi[k,1,3] <- 0   \n        pi[k,1, 4] <- 0   pi[k,1, 5] <- lambda.op\n\n        # Marginal probability of being in each state at time t>1\n        for(t in 2:N) {\n            for(s in 1:S) {\n                pi[k, t, s] <- inprod(pi[k, t - 1, ], Lambda[k, t, , s])\n            }\n        }\n    }\n\n    # age-sex specific revision hazard\n    for(k in 1 : K) { \n        logh[k] ~ dnorm(logh0[k], tau)\n        h[k] <- exp(logh[k])  \n    }\n\n    # Calculate mean and variance across strata at each iteration \n    # (Gives overall mean and variance using approach 1)\n\n    mean.C <- inprod(p.strata[], C[])\n    mean.BL <- inprod(p.strata[], BL[])\n    mean.BQ <- inprod(p.strata[], BQ[])\n\n    for(k in 1:12) {\n        C.dev[k] <- pow(C[k]-mean.C , 2)\n        BL.dev[k] <- pow(BL[k]-mean.BL , 2)\n        BQ.dev[k] <- pow(BQ[k]-mean.BQ , 2)\n    }\n    var.C <- inprod(p.strata[], C.dev[])\n    var.BL <- inprod(p.strata[], BL.dev[])\n    var.BQ <- inprod(p.strata[], BQ.dev[])\n\n}\n",
+    "volume": "VOLUME_3"
+  },
+  {
+    "data_keys": [
+      "N",
+      "K",
+      "S",
+      "M",
+      "rho",
+      "lambda.op",
+      "logh0",
+      "tau",
+      "C0",
+      "c",
+      "bl",
+      "bq",
+      "delta.c",
+      "delta.b",
+      "p.strata",
+      "lambda",
+      "KK",
+      "rC",
+      "nC",
+      "rS",
+      "nS",
+      "qualweights"
+    ],
+    "inits_keys": [
+      "base",
+      "logHR",
+      "LHR"
+    ],
+    "key": "hips4",
+    "name": "Hips4: Bayesian approaches to multiple sources of evidence and uncertainty in complex cost-effectiveness modelling",
+    "program": "model {\n\n# Evidence\n#########\n\nfor (i in 1 : M){ # loop over studies\nrC[i] ~ dbin(pC[i], nC[i]) # number of revisions on Charnley\nrS[i] ~ dbin(pS[i], nS[i]) # number of revisions on Stanmore\ncloglog(pC[i]) <- base[i] - logHR[i]/2\ncloglog(pS[i]) <- base[i] + logHR[i]/2\nbase[i] ~ dunif(-100,100)\n# log hazard ratio for ith study\nlogHR[i] ~ dnorm(LHR,tauHR[i])\ntauHR[i] <- qualweights[i] * tauh # precision for ith study weighted by quality weights\n}\nLHR ~ dunif(-100,100)\nlog(HR) <- LHR\ntauh <- 1 / (sigmah * sigmah)\nsigmah ~ dnorm( 0.2, 400)T(0, ) # between-trial sd = 0.05 (prior constrained to be positive)\n\nfor(k in 1 : K) {\nlogh[k] ~ dnorm(logh0[k], tau)\nh[1, k] <- exp(logh[k]) # revision hazard for Charnley\nh[2, k] <- HR * h[1, k] # revision hazard for Stanmore\n}# Cost-effectiveness model\n######################\n\nfor(k in 1 : K) { # loop over strata\n\nfor(n in 1 : 2) { # loop over protheses\n# Cost and benefit equations in closed form:\n####################################\n\n# Costs\nfor(t in 1 : N) {\n   ct[n, k, t] <- inprod(pi[n, k, t, ], c[n, ]) / pow(1 + delta.c, t - 1)\n}\nC[n,k] <- C0[n] + sum(ct[n, k, ])\n\n# Benefits - life expectancy\nfor(t in 1 : N) {\n   blt[n, k, t] <- inprod(pi[n, k, t, ], bl[]) / pow(1 + delta.b, t - 1)\n}\nBL[n, k] <- sum(blt[n, k, ])\n\n# Benefits - QALYs\nfor(t in 1 : N) {\n   bqt[n, k, t] <- inprod(pi[n, k, t, ], bq[]) / pow(1 + delta.b, t - 1)\n}\nBQ[n, k] <- sum(bqt[n, k, ])\n\n# Markov model probabilities:\n#######################\n\n# Transition matrix\nfor(t in 2:N) {\nLambda[n, k, t, 1, 1] <- 1 - gamma[n, k, t] - lambda[k, t]\nLambda[n, k, t, 1, 2] <- gamma[n, k, t] * lambda.op\nLambda[n, k, t, 1, 3] <- gamma[n, k, t] *(1 - lambda.op)\nLambda[n, k, t, 1, 4] <- 0\nLambda[n, k, t, 1, 5] <- lambda[k, t]\n\nLambda[n, k, t, 2, 1] <- 0\nLambda[n, k, t, 2, 2] <- 0\nLambda[n, k, t, 2, 3] <- 0\nLambda[n, k, t, 2, 4] <- 0\nLambda[n, k ,t, 2, 5] <- 1\n\nLambda[n, k, t, 3, 1] <- 0\nLambda[n, k, t, 3, 2] <- 0\nLambda[n, k, t, 3, 3] <- 0\nLambda[n, k, t, 3, 4] <- 1 - lambda[k, t]\nLambda[n, k, t, 3, 5] <- lambda[k, t]\n\nLambda[n, k, t, 4, 1] <- 0\nLambda[n, k, t, 4, 2] <- rho * lambda.op\nLambda[n, k, t, 4, 3] <- rho * (1 - lambda.op)\nLambda[n, k, t, 4, 4] <- 1 - rho - lambda[k, t]\nLambda[n, k, t, 4, 5] <- lambda[k, t]\n\nLambda[n, k, t, 5, 1] <- 0\nLambda[n, k, t, 5, 2] <- 0\nLambda[n, k, t, 5, 3] <- 0\nLambda[n, k, t, 5, 4] <- 0\nLambda[n, k, t, 5, 5] <- 1\n\ngamma[n, k, t] <- h[n, k] * (t - 1)\n   }\n\n# Marginal probability of being in each state at time 1\npi[n, k, 1, 1] <- 1 - lambda.op pi[n, k, 1, 2] <- 0 pi[n, k, 1, 3] <- 0\n         pi[n, k, 1, 4] <- 0 pi[n, k, 1, 5] <- lambda.op\n\n# Marginal probability of being in each state at time t>1\nfor(t in 2 : N) {\nfor(s in 1 : S) {\n   pi[n, k,t, s] <- inprod(pi[n, k, t - 1, ], Lambda[n, k, t, , s])\n}\n}\n}\n}\n\n# Incremental costs and benefits\n##########################\n\nfor(k in 1 : K) {\nC.incr[k] <- C[2, k] - C[1, k]\nBQ.incr[k] <-BQ[2, k] - BQ[1, k]\nICER.strata[k] <- C.incr[k] / BQ.incr[k]\n}\n\n# Probability of cost effectiveness @ KK pounds per QALY\n# (values of KK considered range from 200 to 20000 in 200 pound increments)\nfor(m in 1 : 100) {\nfor(k in 1 : 12) {\n   P.CEA.strata[m,k] <- step(KK[m] * BQ.incr[k] - C.incr[k])\n}\n   P.CEA[m] <- step(KK[m] * mean.BQ.incr - mean.C.incr)\n}\n\n# overall incremental costs and benefit\nfor(n in 1 : 2) {\nmean.C[n] <- inprod(p.strata[], C[n, ])\nmean.BQ[n] <- inprod(p.strata[], BQ[n, ])\n}\nmean.C.incr <- mean.C[2] - mean.C[1]\nmean.BQ.incr <- mean.BQ[2] - mean.BQ[1]\nmean.ICER <- mean.C.incr / mean.BQ.incr }\n",
+    "volume": "VOLUME_3"
+  },
+  {
+    "data_keys": [
+      "y",
+      "n",
+      "s"
+    ],
+    "inits_keys": [
+      "gam"
+    ],
+    "key": "pig_weights",
+    "name": "Pig Weights: Histogram smoothing with structured precision matrix",
+    "program": "model{\n      y[1:s] ~ dmulti(th[1 : s] , n)\n      sum.g <- sum(g[])\n# smoothed frequencies\n   for (i in 1 : s) {\n         Sm[i] <- n * th[i]\n      g[i] <- exp(gam[i])\n         th[i] <- g[i] / sum.g\n      }\n# prior on elements of AR Precision Matrix\n   rho ~ dunif(0, 1)\n   tau ~ dunif(0.5, 10)\n# MVN for logit parameters\n   gam[1 : s] ~ dmnorm(mu[], T[ , ])\n   for (j in 1:s) {\n         mu[j] <- -log(s)\n      }\n   # Define Precision Matrix\n      for (j in 2 : s - 1) {\n         T[j, j] <- tau * (1 + pow(rho, 2))\n      }\n      T[1, 1] <- tau\n      T[s, s] <- tau\n      for (j in 1 : s -1 ) {\n         T[j, j + 1] <- -tau * rho\n         T[j + 1, j] <- T[j, j + 1]\n      }\n      for (i in 1 : s - 1) {\n         for (j in 2 + i : s) {\n            T[i, j] <- 0; T[j, i] <- 0\n         }\n      }\n# Or Could do in terms of covariance, which is simpler to write but slower\n#      for (i in 1 : s) {\n#         for (j in 1 : s) {\n#            cov[i, j] <- pow(rho, abs(i - j)) / tau\n#         }\n#      }\n#      T[1 : s, 1 : s] <- inverse(cov[ , ])\n   }\n",
+    "volume": "VOLUME_3"
+  },
+  {
+    "data_keys": [
+      "N",
+      "Y",
+      "x",
+      "z"
+    ],
+    "inits_keys": [
+      "j",
+      "tau",
+      "alpha",
+      "beta",
+      "gamma",
+      "delta"
+    ],
+    "key": "bayes_factors",
+    "name": "Bayes Factors: Using pseudo priors with Carlin and Chib method",
+    "program": "model{\n# standardise data\nfor(i in 1:N){\nYs[i] <- (Y[i] - mean(Y[])) / sd(Y[])\nxs[i] <- (x[i] - mean(x[])) / sd(x[])\nzs[i] <- (z[i] - mean(z[])) / sd(z[])\n}\n\n# model node\nj ~ dcat(p[])\np[1] <- 0.9995 p[2] <- 1 - p[1] # use for joint modelling\n# p[1] <- 1 p[2] <- 0 # include for estimating Model 1\n# p[1] <- 0 p[2] <-1 # include for estimating Model 2\npM2 <- step(j - 1.5)\n\n# model structure\nfor(i in 1 : N){\nmu[1, i] <- alpha + beta * xs[i]\nmu[2, i] <- gamma + delta*zs[i]\nYs[i] ~ dnorm(mu[j, i], tau[j])\n}\n\n# Model 1\nalpha ~ dnorm(mu.alpha[j], tau.alpha[j])\nbeta ~ dnorm(mu.beta[j], tau.beta[j])\ntau[1] ~ dgamma(r1[j], l1[j])\n# estimation priors\nmu.alpha[1]<- 0 tau.alpha[1] <- 1.0E-6\nmu.beta[1] <- 0 tau.beta[1] <- 1.0E-4\nr1[1] <- 0.0001 l1[1] <- 0.0001\n# pseudo-priors\nmu.alpha[2]<- 0 tau.alpha[2] <- 256\nmu.beta[2] <- 1 tau.beta[2] <- 256\nr1[2] <- 30 l1[2] <- 4.5\n\n# Model 2\ngamma ~ dnorm(mu.gamma[j], tau.gamma[j])\ndelta ~ dnorm(mu.delta[j], tau.delta[j])\ntau[2] ~ dgamma(r2[j], l2[j])\n# pseudo-priors\nmu.gamma[1] <- 0 tau.gamma[1] <- 400\nmu.delta[1] <- 1 tau.delta[1] <- 400\nr2[1] <- 46 l2[1] <- 4.5\n# estimation priors\nmu.gamma[2] <- 0 tau.gamma[2] <- 1.0E-6\nmu.delta[2] <- 0 tau.delta[2] <- 1.0E-4\nr2[2] <- 0.0001 l2[2] <- 0.0001\n}\n",
+    "volume": "VOLUME_3"
+  }
+]

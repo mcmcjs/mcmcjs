@@ -79,8 +79,13 @@ export function useGraphLayout() {
     return layoutOptionsMap[layoutName] || layoutOptionsMap.preset
   }
 
-  const applyLayout = (cy: Core, layoutName: string, onComplete?: () => void) => {
-    const options = getLayoutOptions(layoutName)
+  const applyLayout = (
+    cy: Core,
+    layoutName: string,
+    onComplete?: () => void,
+    overrides: Partial<LayoutOptions> = {}
+  ) => {
+    const options = { ...getLayoutOptions(layoutName), ...overrides } as LayoutOptions
 
     if (onComplete) {
       cy.one('layoutstop', onComplete)
@@ -89,8 +94,11 @@ export function useGraphLayout() {
     cy.layout(options).run()
   }
 
-  const applyLayoutWithFit = (cy: Core, layoutName: string) => {
-    applyLayout(cy, layoutName, () => smartFit(cy, true))
+  // `animate: false` runs the layout and the fit synchronously, which is what a
+  // layout on open needs: the graph settles before it is first painted.
+  const applyLayoutWithFit = (cy: Core, layoutName: string, opts: { animate?: boolean } = {}) => {
+    const animate = opts.animate ?? true
+    applyLayout(cy, layoutName, () => smartFit(cy, animate), animate ? {} : { animate: false })
   }
 
   return {

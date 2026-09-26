@@ -65,4 +65,17 @@ export interface UnifiedModelData {
   inits?: Record<string, unknown>;
   /** export schema version (1). */
   version?: number;
+  /**
+   * The language the model was written in, when it was imported from code.
+   * Decides which variable-name rules validation applies. Unset means BUGS.
+   */
+  language?: ModelLanguage;
+  /**
+   * A layout to run when the document is opened in the editor (`dagre`, `klay`,
+   * `fcose`, `cola`). Unset keeps the positions the nodes carry. (`layout` is
+   * the editor's own panel geometry and is left alone.)
+   */
+  autoLayout?: string;
 }
+
+export type ModelLanguage = "bugs" | "stan";

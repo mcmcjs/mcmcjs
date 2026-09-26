@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Graph comparison</title>
+<style>
+  body { margin: 0; font: 14px system-ui, sans-serif; background: #fafafa; color: #222; }
+  header { display: flex; gap: 16px; align-items: center; padding: 10px 16px; border-bottom: 1px solid #ddd; background: #fff; }
+  header select { font: inherit; padding: 4px 8px; }
+  header a { color: #444; }
+  main { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; padding: 12px 16px; }
+  h2 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #444; }
+  .frame, .empty { height: 620px; border-radius: 6px; }
+  .frame { overflow: auto; border: 1px solid #ddd; background: #fff; }
+  .frame img { display: block; max-width: none; }
+  .empty { display: grid; place-items: center; color: #999; border: 1px dashed #ccc; }
+  doodle-ppl { display: block; }
+</style>
+
+<header>
+  <label>Example <select id="pick"></select></label>
+  <a href="viewer.html">Editor</a>
+</header>
+<main>
+  <div><h2>mcmc graph (TypeScript parser, dagre, SVG)</h2><div id="cli"></div></div>
+  <div><h2>Widget, opened from the Julia prototype's document</h2><div id="gen"></div></div>
+  <div><h2>Hand-drawn (bundled with the widget)</h2><div id="hand"></div></div>
+</main>
+
+<script src="vendor/doodleppl.global.js" defer></script>
+<script type="module">
+  const programs = await (await fetch('fixtures/programs.json')).json()
+  const hand = { rats: 'rats', pumps: 'pumps', seeds: 'seeds', surgical_simple: 'surgical', dyes: 'dyes',
+    blockers: 'blockers', salm: 'salm', equiv: 'equiv', oxford: 'oxford', epil: 'epil', mice: 'mice', kidney: 'kidney' }
+  const $ = (id) => document.getElementById(id)
+
+  function widget(host, url) {
+    host.replaceChildren()
+    const el = document.createElement('doodle-ppl')
+    el.setAttribute('local-model', url)
+    el.setAttribute('height', '620px')
+    el.setAttribute('storage-key', `compare-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    host.append(el)
+  }
+  function image(host, url) {
+    host.replaceChildren()
+    const box = document.createElement('div'); box.className = 'frame'
+    const img = document.createElement('img'); img.src = `${url}?${Date.now()}`; img.alt = url
+    img.onerror = () => { box.className = 'empty'; box.textContent = `not rendered: ${url}` }
+    box.append(img); host.append(box)
+  }
+  function show(k) {
+    location.hash = k
+    image($('cli'), `cli/${k}.svg`)
+    widget($('gen'), `out/${k}.json`)
+    if (hand[k]) widget($('hand'), `hand/${hand[k]}.json`)
+    else { const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'no hand-drawn graph'; $('hand').replaceChildren(d) }
+  }
+
+  const pick = $('pick')
+  for (const p of programs) {
+    const o = document.createElement('option'); o.value = p.key; o.textContent = hand[p.key] ? `${p.key}  (has hand-drawn)` : p.key; pick.append(o)
+  }
+  pick.addEventListener('change', () => show(pick.value))
+  const start = location.hash.slice(1)
+  pick.value = programs.some((p) => p.key === start) ? start : 'rats'
+  show(pick.value)
+</script>

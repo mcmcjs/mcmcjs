@@ -66,6 +66,10 @@ const bunArgs = [
   `__MCMC_META__=${JSON.stringify(meta)}`,
   "--define",
   "__MCMC_COMPILED__=true",
+  // A native binding the binary does not carry; `mcmc graph --format png`
+  // reports the fallback when the import fails.
+  "--external",
+  "@resvg/resvg-js",
   "--outfile",
   outfile,
   ...(bunTarget ? ["--target", bunTarget] : []),

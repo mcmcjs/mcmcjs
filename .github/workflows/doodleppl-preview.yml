@@ -6,6 +6,7 @@ on:
     paths:
       - "packages/doodleppl-ui/**"
       - "packages/doodleppl/**"
+      - "experimental/bugs-to-graph/**"
       - ".github/workflows/doodleppl-preview.yml"
 
 permissions:
@@ -33,6 +34,18 @@ jobs:
           mkdir -p preview-site
           cp -r packages/doodleppl-ui/preview/. preview-site/
           cp packages/doodleppl-ui/dist/doodleppl.global.js preview-site/
+      - name: Assemble the model-graph page
+        if: github.event.action != 'closed'
+        working-directory: experimental/bugs-to-graph
+        run: |
+          node build-bundle.mjs
+          curl -sSL -o vendor/stanc.js https://github.com/stan-dev/stanc3/releases/download/v2.39.0/stanc.js
+          out=../../preview-site/model-graph
+          mkdir -p "$out/dist" "$out/vendor" "$out/fixtures"
+          cp viewer.html "$out/index.html"
+          cp dist/graph.js "$out/dist/"
+          cp vendor/stanc.js vendor/doodleppl.global.js "$out/vendor/"
+          cp fixtures/programs.json fixtures/stan-programs.json "$out/fixtures/"
       - uses: rossjrw/pr-preview-action@v1
         with:
           source-dir: preview-site
