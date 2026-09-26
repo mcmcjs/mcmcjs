@@ -94,6 +94,8 @@ export const useUiStore = defineStore('ui', () => {
 
   const isDarkMode = ref<boolean>(localStorage.getItem(getStorageKey('darkMode')) === 'true')
 
+  const isPaperStyle = ref<boolean>(localStorage.getItem(getStorageKey('paperStyle')) === 'true')
+
   // Node Styles
   const storedStyles = localStorage.getItem(getStorageKey('nodeStyles'))
   const initialNodeStyles: Record<string, NodeStyle> = {}
@@ -154,6 +156,7 @@ export const useUiStore = defineStore('ui', () => {
     canvasGridStyle.value =
       (localStorage.getItem(getStorageKey('canvasGridStyle')) as GridStyle) || 'dots'
     isDarkMode.value = localStorage.getItem(getStorageKey('darkMode')) === 'true'
+    isPaperStyle.value = localStorage.getItem(getStorageKey('paperStyle')) === 'true'
 
     // Styles
     const storedStyles = localStorage.getItem(getStorageKey('nodeStyles'))
@@ -215,6 +218,7 @@ export const useUiStore = defineStore('ui', () => {
   )
   watch(canvasGridStyle, (style) => localStorage.setItem(getStorageKey('canvasGridStyle'), style))
   watch(isDarkMode, (val) => localStorage.setItem(getStorageKey('darkMode'), String(val)))
+  watch(isPaperStyle, (val) => localStorage.setItem(getStorageKey('paperStyle'), String(val)))
   watch(
     nodeStyles,
     (styles) => localStorage.setItem(getStorageKey('nodeStyles'), JSON.stringify(styles)),
@@ -279,6 +283,7 @@ export const useUiStore = defineStore('ui', () => {
     canvasGridStyle,
     isDarkMode,
     toggleDarkMode,
+    isPaperStyle,
     nodeStyles,
     edgeStyles,
     isGridEnabled,

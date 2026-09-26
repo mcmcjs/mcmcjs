@@ -1,9 +1,11 @@
 import { ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useGraphStore } from '../stores/graphStore'
+import { useProjectStore } from '../stores/projectStore'
 import { useGraphInstance } from './useGraphInstance'
 import type { Artifact } from './useModelArtifacts'
 import { downloadBlob } from '../utils/downloadBlob'
+import { figureSvg, figureTikz } from '@mcmcjs/doodleppl/figure'
 
 /**
  * Saving things to disk: pictures of the canvas, and whatever artifact a panel
@@ -12,6 +14,7 @@ import { downloadBlob } from '../utils/downloadBlob'
  */
 export function useFileExport() {
   const graphStore = useGraphStore()
+  const projectStore = useProjectStore()
   const toast = useToast()
   const { getCyInstance } = useGraphInstance()
 
@@ -62,11 +65,37 @@ export function useFileExport() {
     }
   }
 
+  const handleExportFigure = (format: 'tikz' | 'svg') => {
+    const graphMeta = projectStore.currentProject?.graphs.find(
+      (g) => g.id === graphStore.currentGraphId
+    )
+    const name = graphMeta?.name ?? 'graph'
+    const model = { name, elements: graphStore.currentGraphElements }
+    const slug = name.replace(/[^a-z0-9]/gi, '_').toLowerCase()
+    try {
+      const blob =
+        format === 'svg'
+          ? new Blob([figureSvg(model)], { type: 'image/svg+xml;charset=utf-8' })
+          : new Blob([figureTikz(model, { standalone: true })], {
+              type: 'application/x-tex;charset=utf-8',
+            })
+      downloadBlob(blob, `${slug}.${format === 'svg' ? 'svg' : 'tex'}`)
+    } catch (err) {
+      toast.add({
+        severity: 'error',
+        summary: 'Export Failed',
+        detail: err instanceof Error ? err.message : 'Could not draw the figure.',
+        life: 3000,
+      })
+    }
+  }
+
   return {
     showExportModal,
     currentExportType,
     downloadArtifact,
     openExportModal,
     handleConfirmExport,
+    handleExportFigure,
   }
 }

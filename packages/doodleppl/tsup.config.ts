@@ -3,7 +3,13 @@ import { defineConfig } from "tsup";
 import { graphJsonSchema } from "./src/core/schema";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/core/index.ts", "src/codegen/stan.ts", "src/codegen/notebook.ts"],
+  entry: [
+    "src/index.ts",
+    "src/core/index.ts",
+    "src/codegen/stan.ts",
+    "src/codegen/notebook.ts",
+    "src/figure/index.ts",
+  ],
   format: ["esm", "cjs"],
   dts: true,
   clean: true,

@@ -369,6 +369,7 @@ const {
   downloadArtifact,
   openExportModal,
   handleConfirmExport,
+  handleExportFigure,
   handleElementSelected,
   handleSelectNodeFromModal,
   handleShare,
@@ -1385,6 +1386,7 @@ watch(showNewGraphModal, (val) => {
             @download-notebook="handleDownloadNotebook"
             @share="handleShare"
             @open-export-modal="openExportModal"
+            @export-figure="handleExportFigure"
             @toggle-fullscreen="toggleFullScreen"
           />
         </div>

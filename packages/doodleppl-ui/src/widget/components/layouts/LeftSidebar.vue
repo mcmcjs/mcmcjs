@@ -46,7 +46,7 @@ const emit = defineEmits<{
 }>()
 
 const uiStore = useUiStore()
-const { isLeftSidebarOpen, canvasGridStyle, isDarkMode } = storeToRefs(uiStore)
+const { isLeftSidebarOpen, canvasGridStyle, isDarkMode, isPaperStyle } = storeToRefs(uiStore)
 
 const vTooltip = Tooltip
 
@@ -178,6 +178,16 @@ const handleHeaderClick = () => {
           <AccordionHeader><i class="fas fa-eye db-icon-12"></i> View Options</AccordionHeader>
           <AccordionContent>
             <div class="db-menu-panel flex-col gap-3">
+              <div class="db-menu-row">
+                <label
+                  v-tooltip.top="{
+                    value: 'Draw the graph in black and white, like the Figure for Papers export',
+                    showDelay: 300,
+                  }"
+                  >Paper Style</label
+                >
+                <ToggleSwitch v-model="isPaperStyle" />
+              </div>
               <div class="db-menu-row">
                 <label>Canvas Grid</label>
                 <ToggleSwitch

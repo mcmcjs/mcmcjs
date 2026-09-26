@@ -1101,6 +1101,52 @@ d("julia e2e: juliabugs discrete latents through every sampler", () => {
     expect(pooledMean(samples, "z[1]")).toBe(1);
   }, 900_000);
 
+  it("fits a bare .bugs program, marginalizing its discrete latents unasked", async () => {
+    const bugsPath = join(dir, "mixture.bugs");
+    writeFileSync(
+      bugsPath,
+      [
+        "model {",
+        "  mu[1] ~ dnorm(-3, 4)",
+        "  mu[2] ~ dnorm(3, 4)",
+        "  for (i in 1:N) {",
+        "    z[i] ~ dcat(w[1:2])",
+        "    y[i] ~ dnorm(mu[z[i]], 1)",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    const env = ENV as NonNullable<typeof ENV>;
+    const outPath = join(dir, "mix_bugs.samples.json");
+    const base = mixtureSpec(nuts());
+    // `y` is observed, so its starting value is ignored rather than refused.
+    const withInits = {
+      ...base,
+      model: { kind: "file" as const, path: bugsPath, entry: "build_model" },
+      modelPath: bugsPath,
+      sampler: { ...base.sampler, initial_params: { mu: [-3, 3], y: MIXTURE_DATA.y } },
+    };
+    const result = await runFit(
+      withInits,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        recordPath: join(dir, "mix_bugs.run.json"),
+      },
+    );
+    expect(result.status).toBe("ok");
+
+    const samples: Samples = parseSamples(readFileSync(outPath, "utf8"));
+    for (const leaf of ["mu[1]", "mu[2]", "z[1]", "z[10]"]) {
+      expect(samples.variables).toContain(leaf);
+    }
+    expect(pooledMean(samples, "mu[1]")).toBeCloseTo(-3.0, 0);
+    expect(pooledMean(samples, "z[1]")).toBe(1);
+  }, 900_000);
+
   it("splits the continuous and discrete parameters across Gibbs blocks", async () => {
     const { result, outPath } = await fitMixture("mix_gibbs", {
       ...nuts(),

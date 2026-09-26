@@ -49,6 +49,7 @@ export function useEditorActions(elements: Ref<GraphElement[]>, persistencePrefi
     downloadArtifact,
     openExportModal,
     handleConfirmExport,
+    handleExportFigure,
   } = useFileExport()
 
   const { shareUrl, minifyGraph, expandGraph, generateShareLink, decodeAndDecompress } =
@@ -502,6 +503,7 @@ export function useEditorActions(elements: Ref<GraphElement[]>, persistencePrefi
     downloadArtifact,
     openExportModal,
     handleConfirmExport,
+    handleExportFigure,
     handleElementSelected,
     handleSelectNodeFromModal,
     handleShare,

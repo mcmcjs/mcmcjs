@@ -10,6 +10,7 @@ It is framework-free and meant to be the single source of truth for the codegen,
 - **Order** — topologically sort the graph nodes (`buildTopologicalOrder`, Kahn's algorithm).
 - **Generate** — emit classic BUGS `model { ... }` code (`generateBugsModel`): plates become `for` loops, stochastic/observed nodes become `~`, deterministic nodes become `<-`.
 - **Validate** — surface graph issues such as cycles (`validateGraph`).
+- **Draw** — a black-and-white figure of the graph for papers, as TikZ or SVG (`figureTikz`, `figureSvg` from `@mcmcjs/doodleppl/figure`).
 - **Catalog** — the supported distributions and BUGS functions (`DISTRIBUTIONS`, `BUGS_FUNCTIONS`).
 
 > Early alpha: the API is not yet stable.

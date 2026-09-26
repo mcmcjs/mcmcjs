@@ -57,6 +57,7 @@ export function fitRequest(
       file: spec.modelPath,
       entry: spec.model.entry,
       ...(spec.model.evaluation_mode ? { evaluation_mode: spec.model.evaluation_mode } : {}),
+      ...(spec.model.monitor ? { monitor: spec.model.monitor } : {}),
     },
     data: spec.data,
     sampler: spec.sampler,
