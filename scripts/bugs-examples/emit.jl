@@ -33,9 +33,9 @@ const CHAINS = 2
 const WARMUP = 1000
 const UPDATES = 10_000
 const KEEP = 1000
-# Long enough for the thousand-parameter models under ForwardDiff, short enough that a
-# volume of them still fits in one six-hour job, which only publishes at its end.
-const TIMEOUT_MINUTES = 60
+# Short enough that a volume still fits in one six-hour job, which only publishes at its
+# end. The marginalized models need longer and get their own run with a larger value.
+const TIMEOUT_MINUTES = parse(Int, get(ENV, "FIT_TIMEOUT_MINUTES", "60"))
 
 length(ARGS) >= 1 ||
     error("usage: emit.jl <out-dir> [volume_1|volume_2|volume_3|all|<key>[,<key>...]]")
@@ -78,12 +78,11 @@ nothing to sample.
 The published initial values are kept only where they name a parameter, since the
 driver rejects a name it does not know and several examples initialise data-like
 nodes too, and only where they are complete, since the spec is stored as TOML, which
-has no missing value. A model with discrete parameters is sampled with NUTS on the
-marginalized log density; one that is discrete throughout has nothing left for a
+has no missing value. A model that is discrete throughout has nothing left for a
 gradient sampler and gets Metropolis-Hastings, which moves the discrete values itself.
 
-The sampler keeps the driver's default AD backend. Mooncake was tried and fitted Rats
-in 48 minutes where ForwardDiff takes 7, so the big models get a long timeout instead.
+The gradient is left to the driver, which checks each candidate against finite
+differences at the starting values and keeps the fastest one that agrees.
 """
 function plan(ex)
     model = nothing
@@ -174,7 +173,12 @@ function write_example(dir, vol, key, ex, p)
         # `beta.c` exactly as the original program and its reference table do.
         println(io, "\"\"\", false)")
         println(io)
-        println(io, "build_model(data) = JuliaBUGS.compile(model_def, data)")
+        # Taking the starting values lets the driver compile from them rather than
+        # from prior draws, which underflow for several of these models.
+        println(
+            io,
+            "build_model(data, inits = (;)) = JuliaBUGS.compile(model_def, data, inits)",
+        )
     end
 
     open(joinpath(dir, "$(key).data.json"), "w") do io
@@ -188,11 +192,9 @@ function write_example(dir, vol, key, ex, p)
     model = Dict{String,Any}(
         "kind" => "file", "path" => "$(key).jl", "monitor" => monitored(ex, p.parameters)
     )
-    if p.continuous == 0
-        sampler["algorithm"] = "MH"
-    elseif p.discrete > 0
-        model["evaluation_mode"] = "marginalized"
-    end
+    # The driver marginalizes discrete latents and picks the gradient itself when the
+    # spec leaves the mode unset, so the mode is set only where no gradient can work.
+    p.continuous == 0 && (sampler["algorithm"] = "MH")
     spec = Dict(
         "schema_version" => "0",
         "seed" => 42,
