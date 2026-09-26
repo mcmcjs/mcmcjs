@@ -1,5 +1,16 @@
 # mcmcjs
 
+## 0.36.0
+
+### Minor Changes
+
+- a8967cb: Add `mcmc figure <graph>` to draw a DoodleBUGS graph as a black-and-white figure for papers, as TikZ for LaTeX (with `--standalone` for a document pdflatex compiles on its own) or as SVG.
+
+### Patch Changes
+
+- Updated dependencies [a8967cb]
+  - @mcmcjs/doodleppl@0.8.0
+
 ## 0.35.0
 
 ### Minor Changes
