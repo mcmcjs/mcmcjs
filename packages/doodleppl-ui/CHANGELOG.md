@@ -1,5 +1,17 @@
 # doodleppl
 
+## 0.11.0
+
+### Minor Changes
+
+- a8967cb: Add a Figure for Papers section to the Export tab that downloads the graph as a black-and-white TikZ document for LaTeX or as a black-and-white SVG.
+- a8967cb: Add a Paper Style switch to View Options that draws the canvas like the Figure for Papers export: black and white, with names typeset as maths and plate loops in the corner, in light ink when the dark theme is on.
+
+### Patch Changes
+
+- Updated dependencies [a8967cb]
+  - @mcmcjs/doodleppl@0.8.0
+
 ## 0.10.1
 
 ### Patch Changes
