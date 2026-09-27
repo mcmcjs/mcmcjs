@@ -546,7 +546,43 @@ function initialize_bugs_model(model, sampler)
     end
     inits = Dict(k => v for (k, v) in sampler["initial_params"] if k in parameters)
     isempty(inits) && return model
-    return Base.invokelatest(JuliaBUGS.initialize!, model, bugs_namedtuple(inits))
+    # A JSON `0` arrives as an integer, and a continuous parameter initialized with it
+    # gets an integer slot that the generated log density cannot write a float into.
+    types = bugs_node_types(base_bugs(model))
+    continuous(k) = all(t == :continuous for (vn, t) in types if name(vn) == k)
+    as_float(v) = v isa AbstractArray{<:Real} || v isa Real ? float(v) : v
+    values = bugs_namedtuple(inits)
+    values = (; (k => (continuous(String(k)) ? as_float(v) : v) for (k, v) in pairs(values))...)
+    model = Base.invokelatest(JuliaBUGS.initialize!, model, values)
+    return finite_start(model, Set(String.(keys(values))))
+end
+
+# Published initial values rarely cover every parameter, and the rest come from prior
+# draws, which under vague priors put Magnesium's start at -Inf every time. A start that
+# is not finite has those uncovered parameters redrawn uniformly on (-2, 2) in
+# unconstrained space, as Stan starts, keeping the given values.
+function finite_start(model, given; attempts = 50)
+    model.transformed || return model
+    LDP = JuliaBUGS.LogDensityProblems
+    x = Base.invokelatest(JuliaBUGS.getparams, model)
+    isfinite(Base.invokelatest(LDP.logdensity, model, x)) && return model
+    vars = model.evaluation_mode isa JuliaBUGS.UseAutoMarginalization ?
+        model.marginalization_cache.continuous_model_parameters :
+        Base.invokelatest(JuliaBUGS.model_parameters, model)
+    rng = StableRNG(1)
+    for _ in 1:attempts
+        z = copy(x)
+        pos = 1
+        for vn in vars
+            len = model.transformed_var_lengths[vn]
+            String(JuliaBUGS.AbstractPPL.getsym(vn)) in given ||
+                (z[pos:(pos + len - 1)] .= 4 .* rand(rng, len) .- 2)
+            pos += len
+        end
+        isfinite(Base.invokelatest(LDP.logdensity, model, z)) &&
+            return Base.invokelatest(JuliaBUGS.initialize!, model, z)
+    end
+    return model
 end
 
 # With no evaluation mode chosen, a gradient sampler gets the discrete finite
@@ -594,14 +630,72 @@ function prepare_bugs_model(model, sampler, mode_name)
         return check_bugs_start(base, sampler)
     end
     base = mode_name === nothing ? marginalize_if_discrete(base) : set_bugs_mode(base, mode_name)
-    base = initialize_bugs_model(base, sampler)
     # A derivative-free sampler wants the plain model: preparing a gradient it
     # never calls costs a compile, which for Mooncake runs into minutes.
-    get(sampler, "algorithm", "NUTS") == "Slice" && return base
+    get(sampler, "algorithm", "NUTS") == "Slice" && return initialize_bugs_model(base, sampler)
+    if !haskey(sampler, "adtype") && !(model isa JuliaBUGS.BUGSModelWithGradient) &&
+       mode_name === nothing
+        checked = checked_gradient(base, sampler)
+        checked === nothing || return checked
+    end
     adtype = haskey(sampler, "adtype") ? build_adtype(sampler["adtype"]) :
         model isa JuliaBUGS.BUGSModelWithGradient ? model.adtype :
         Turing.ADTypes.AutoForwardDiff()
+    base = initialize_bugs_model(base, sampler)
     return Base.invokelatest(JuliaBUGS.BUGSModelWithGradient, base, adtype)
+end
+
+# With neither an evaluation mode nor an AD backend chosen, each candidate gradient is
+# tried fastest first, and the first whose gradient at the starting point matches central
+# differences of the same function is used. On the BUGS examples the generated log
+# density under Mooncake takes 10 to 740 times less per gradient than ForwardDiff on the
+# graph, and on marginalized models ForwardDiff is the faster by 13 to 18 times.
+# Neither is right everywhere: ForwardDiff's Poisson derivative at rate zero is NaN
+# (Leuk, Hearts) and Mooncake's Birats gradient is 6% off. Returns nothing when no
+# candidate passes, and the model is then fitted as before.
+function checked_gradient(base, sampler)
+    forwarddiff = Turing.ADTypes.AutoForwardDiff()
+    mooncake = Turing.ADTypes.AutoMooncake(; config = nothing)
+    candidates = if base.evaluation_mode isa JuliaBUGS.UseGraph
+        (("generated", mooncake),)
+    elseif base.evaluation_mode isa JuliaBUGS.UseAutoMarginalization
+        ((nothing, forwarddiff), (nothing, mooncake))
+    else
+        ()
+    end
+    for (mode, adtype) in candidates
+        try
+            # The generated function writes into the evaluation environment's arrays,
+            # so each attempt gets its own copy and a failed one leaves `base` unchanged.
+            candidate = deepcopy(base)
+            if mode !== nothing
+                candidate = set_bugs_mode(candidate, mode)
+                candidate.evaluation_mode isa JuliaBUGS.UseGeneratedLogDensityFunction || continue
+            end
+            candidate = initialize_bugs_model(candidate, sampler)
+            wrapped = Base.invokelatest(JuliaBUGS.BUGSModelWithGradient, candidate, adtype)
+            x = Base.invokelatest(JuliaBUGS.getparams, candidate)
+            gradient_matches_differences(wrapped, x) && return wrapped
+        catch
+        end
+    end
+    return nothing
+end
+
+function gradient_matches_differences(wrapped, x; rtol = 1e-4)
+    LDP = JuliaBUGS.LogDensityProblems
+    ld, grad = Base.invokelatest(LDP.logdensity_and_gradient, wrapped, x)
+    (isfinite(ld) && all(isfinite, grad)) || return false
+    f(z) = Base.invokelatest(LDP.logdensity, wrapped, z)
+    diffs = similar(x)
+    for i in eachindex(x)
+        h = 1e-6 * max(1.0, abs(x[i]))
+        step = zero(x)
+        step[i] = h
+        diffs[i] = (f(x .+ step) - f(x .- step)) / 2h
+    end
+    all(isfinite, diffs) || return false
+    return sqrt(sum(abs2, grad .- diffs)) <= rtol * max(sqrt(sum(abs2, diffs)), 1.0)
 end
 
 # AdvancedHMC starts from a fresh draw unless handed a starting vector, so an
@@ -971,6 +1065,15 @@ end
 # Load the user's model file into a throwaway module. Isolation keeps repeated
 # requests in the persistent worker from colliding on names (e.g. two models each
 # defining `const model_def`), and confines the model's globals to their own scope.
+# Compiling draws every parameter it is not given from its prior, and a draw from a
+# vague prior such as dgamma(0.001, 0.001) can underflow into a Weibull scale of zero
+# or a Poisson rate of NaN before sampling starts. An entry that takes the starting
+# values as a second argument gets them at compile time.
+function build_bugs_model(entry, data, sampler)
+    haskey(sampler, "initial_params") && applicable(entry, data, (;)) || return entry(data)
+    return entry(data, bugs_namedtuple(sampler["initial_params"]))
+end
+
 function load_model_module(path)
     mod = Module(gensym(:UserModel))
     if endswith(lowercase(path), ".bugs")
@@ -979,7 +1082,9 @@ function load_model_module(path)
         model_def = JuliaBUGS.Parser._bugs_string_input(read(abspath(path), String), false)
         Core.eval(mod, :(using JuliaBUGS))
         Core.eval(mod, :(const model_def = $(Meta.quot(model_def))))
-        Core.eval(mod, :(build_model(data) = JuliaBUGS.compile(model_def, data)))
+        Core.eval(
+            mod, :(build_model(data, inits = (;)) = JuliaBUGS.compile(model_def, data, inits)),
+        )
     else
         Base.include(mod, abspath(path))
     end
@@ -1063,7 +1168,9 @@ function handle_request(request)
             draws = Int(request["sampler"]["draws"])
             stage = "sample"
             if backend == "juliabugs"
-                model = Base.invokelatest(entry, data)
+                stage = "compile"
+                model = Base.invokelatest(build_bugs_model, entry, data, sampler_conf)
+                stage = "sample"
                 chn = if get(sampler_conf, "algorithm", "NUTS") == "Prior"
                     Base.invokelatest(sample_bugs_prior, model, draws, chains, rng)
                 else
