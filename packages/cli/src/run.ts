@@ -38,7 +38,7 @@ import {
   ensureProject,
   managedProjectDir,
   type PackagePins,
-  resolveVersion,
+  resolveJulia,
   runFitAuto,
   validatePins,
   validateVersionString,
@@ -51,7 +51,7 @@ import { pickModel } from "./browse";
 import { convertGraph } from "./convert";
 import { buildDiagnosticsReport, type DiagnosticsReport, formatReportHuman } from "./diagnose";
 import { backendLabel, entryHelp, formatFitResult } from "./fit";
-import { installRunner, juliaupBin } from "./julia";
+import { installRunner } from "./julia";
 import { parseFloatOption, parseIntOption } from "./options";
 import { rendererFor } from "./progress";
 import { openInBrowser, resolveAppUrl, stageReport } from "./report";
@@ -873,11 +873,10 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       // Like the juliaup resolution below, CmdStan resolves after the reuse
       // check so replaying a cached run never needs the toolchain.
       const stan = isStan ? resolveCmdStan(config.channel) : undefined;
-      let resolved: Awaited<ReturnType<typeof resolveVersion>> | undefined;
+      let resolved: Awaited<ReturnType<typeof resolveJulia>> | undefined;
       let projectDir: string | undefined;
       if (!stan) {
-        const bin = await juliaupBin(ctx);
-        resolved = await resolveVersion(bin, config.channel, ctx.run);
+        resolved = await resolveJulia(config.channel, ctx.run);
         projectDir = managedProjectDir(resolved.version, pins);
         await ensureProject(
           resolved.command,

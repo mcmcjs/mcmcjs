@@ -5,14 +5,14 @@ import { createFitRunner, type EngineContext } from "@mcmcjs/engine";
 import {
   ensureProject,
   managedProjectDir,
-  resolveVersion,
+  resolveJulia,
   runPredict,
   validatePins,
 } from "@mcmcjs/julia";
 import { resolveCmdStan, runPredict as runStanPredict } from "@mcmcjs/stan";
 import type { Command } from "commander";
 import { formatFitResult } from "./fit";
-import { installRunner, juliaupBin } from "./julia";
+import { installRunner } from "./julia";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
 
@@ -72,8 +72,7 @@ export function registerPredict(program: Command, ctx: EngineContext): void {
 
         const channel = opts.juliaVersion ?? spec.backend.version;
         const outPath = resolve(opts.out ?? defaultPredictOut(samplesPath));
-        const bin = await juliaupBin(ctx);
-        const resolved = await resolveVersion(bin, channel, ctx.run);
+        const resolved = await resolveJulia(channel, ctx.run);
         const pins = spec.backend.packages;
         const projectDir = managedProjectDir(resolved.version, pins);
         await ensureProject(

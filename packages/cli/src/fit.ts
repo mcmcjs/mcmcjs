@@ -7,7 +7,7 @@ import {
   type MatrixEntry,
   type MatrixResult,
   managedProjectDir,
-  resolveVersion,
+  resolveJulia,
   runFit,
   runFitAuto,
   runMatrix,
@@ -16,7 +16,7 @@ import {
 import { resolveCmdStan, runFit as runStanFit, runMatrix as runStanMatrix } from "@mcmcjs/stan";
 import type { Command } from "commander";
 import pc from "picocolors";
-import { installRunner, juliaupBin } from "./julia";
+import { installRunner } from "./julia";
 import { entryAdvice, inspectSource } from "./model-file";
 import { rendererFor, silentProgress } from "./progress";
 
@@ -227,7 +227,6 @@ export function registerFit(program: Command, ctx: EngineContext): void {
           return;
         }
 
-        const bin = await juliaupBin(ctx);
         const provision = (label: string) =>
           installRunner({
             label,
@@ -259,7 +258,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
           const result = await runMatrix(spec, versions, {
             spawn: createFitRunner(),
             outDir,
-            resolve: (v) => resolveVersion(bin, v, ctx.run),
+            resolve: (v) => resolveJulia(v, ctx.run),
             ensure: (r) =>
               ensureProject(
                 r.command,
@@ -286,7 +285,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
         if (opts.packageVersions) {
           const { name, versions } = parsePackageVersions(opts.packageVersions);
           const channel = opts.juliaVersion ?? spec.backend.version;
-          const resolved = await resolveVersion(bin, channel, ctx.run);
+          const resolved = await resolveJulia(channel, ctx.run);
           const outDir = resolve(opts.out ?? matrixOutDir(specPath));
           mkdirSync(outDir, { recursive: true });
           if (!opts.json) {
@@ -341,7 +340,7 @@ export function registerFit(program: Command, ctx: EngineContext): void {
 
         const channel = opts.juliaVersion ?? spec.backend.version;
         const outPath = resolve(opts.out ?? defaultOut(specPath));
-        const resolved = await resolveVersion(bin, channel, ctx.run);
+        const resolved = await resolveJulia(channel, ctx.run);
         const pins = spec.backend.packages;
         const projectDir = managedProjectDir(resolved.version, pins);
         await ensureProject(

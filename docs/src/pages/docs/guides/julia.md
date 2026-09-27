@@ -10,6 +10,7 @@ This guide covers provisioning the toolchain, checking it, managing Julia versio
 ## Provision and check
 
 `mcmc setup` installs the Julia toolchain (juliaup and Julia) and precompiles the managed project.
+A Julia installed without juliaup, such as the one in Colab's Julia runtime or the official Julia Docker image, runs fits as it is when it is the pinned version, while `mcmc julia version` needs juliaup.
 
 ```bash
 mcmc setup            # install and precompile

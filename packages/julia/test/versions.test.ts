@@ -6,6 +6,7 @@ import {
   gcVersions,
   listVersions,
   removeVersion,
+  resolveJulia,
   resolveVersion,
   setDefaultVersion,
   updateVersion,
@@ -139,6 +140,40 @@ describe("resolveVersion", () => {
 
   it("throws with an add hint for a missing channel", async () => {
     await expect(resolveVersion("juliaup", "1.9", constant(CONFIG))).rejects.toThrow(/add 1\.9/);
+  });
+});
+
+/**
+ * A machine with the given tools: juliaup answers `--version` and `api getconfig1`, and the
+ * `julia` on PATH, if any, answers `--version`. Anything else is not installed.
+ */
+function machine(tools: { juliaup?: boolean; pathJulia?: string }): CommandRunner {
+  return async (command, args) => {
+    if (command.endsWith("juliaup") && tools.juliaup) {
+      return args[0] === "api" ? CONFIG : "Juliaup 1.22.7";
+    }
+    if (command === "julia" && tools.pathJulia) return `julia version ${tools.pathJulia}`;
+    throw new Error(`ENOENT: ${command}`);
+  };
+}
+
+describe("resolveJulia", () => {
+  it("goes through juliaup when it is installed", async () => {
+    const resolved = await resolveJulia("1.10", machine({ juliaup: true, pathJulia: "1.10.5" }));
+    expect(resolved.command).toBe("/home/u/.julia/juliaup/julia-1.10.5/bin/julia");
+  });
+
+  it("runs the julia on PATH without juliaup when it is the version asked for", async () => {
+    const resolved = await resolveJulia("1.12.6", machine({ pathJulia: "1.12.6" }));
+    expect(resolved).toEqual({ command: "julia", args: [], version: "1.12.6" });
+  });
+
+  it("otherwise fails as before, pointing at mcmc setup", async () => {
+    for (const tools of [{ pathJulia: "1.11.2" }, {}]) {
+      await expect(resolveJulia("1.12.6", machine(tools))).rejects.toThrow(
+        "juliaup not found. Run `mcmc setup` to install the Julia toolchain.",
+      );
+    }
   });
 });
 

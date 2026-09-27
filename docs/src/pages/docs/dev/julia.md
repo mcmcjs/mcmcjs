@@ -12,6 +12,7 @@ It is the one place that touches Julia.
 
 `detectJulia` and `detectJuliaup` locate the installed tools and their versions; `planSetup` and `runSetup` install [juliaup](https://github.com/JuliaLang/juliaup) and Julia when they are missing.
 `doctor` rolls these into the `HealthReport` the CLI prints.
+`resolveJulia` picks the Julia a fit runs: the juliaup channel when juliaup is installed, and otherwise the `julia` on PATH when it is exactly the version asked for.
 This is what `mcmc setup` and `mcmc doctor` call.
 
 ## Version management
