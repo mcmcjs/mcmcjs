@@ -63,10 +63,19 @@ Pinned packages provision into their own managed environment, so different pins 
 | `path` | string | required | path to the model file, resolved relative to the spec's directory |
 | `entry` | string | `"build_model"` | the model entry function (Julia backends; ignored for Stan) |
 | `evaluation_mode` | `"graph"`, `"generated"`, `"marginalized"` | the model file's own choice | how a JuliaBUGS model evaluates its log density; juliabugs only |
+| `monitor` | array of strings | all of them | deterministic quantities to store with the parameters, by base name; juliabugs only |
 
 `evaluation_mode` overrides whatever the model file selected: `"graph"` walks the node graph, `"generated"` compiles a specialised log-density function (which mutates arrays in place, so it needs `adtype = "mooncake"`), and `"marginalized"` sums the discrete latents out of the log density exactly, so a gradient sampler never sees them.
 The marginalized latents still appear in the chain, drawn from their conditional posterior once sampling is done.
 It does not combine with `MH` or `Gibbs`, which propose the discrete latents themselves.
+
+When a JuliaBUGS spec sets neither `evaluation_mode` nor `sampler.adtype`, a gradient sampler runs on the generated log density under Mooncake, which on the classic BUGS examples takes 10 to 740 times less per gradient than ForwardDiff on the graph.
+A model with discrete latents is marginalized as described above and runs under ForwardDiff, the faster backend there, or under Mooncake where ForwardDiff's gradient is not finite.
+Whichever is chosen, its gradient is checked against finite differences at the starting point first, and a model that fails every check runs on the graph, or marginalized, under ForwardDiff as before.
+
+`monitor` limits which deterministic quantities the run stores.
+The model's parameters are always stored, so `monitor = ["sigma", "alpha0"]` keeps those two derived quantities and drops every other one, and `monitor = []` keeps the parameters alone.
+A model that computes large deterministic arrays at every draw needs this to keep its run at a size the report app can load.
 
 ### `[sampler]`
 

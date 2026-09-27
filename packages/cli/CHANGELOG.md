@@ -1,5 +1,42 @@
 # mcmcjs
 
+## 0.36.0
+
+### Minor Changes
+
+- a8967cb: Add `mcmc figure <graph>` to draw a DoodleBUGS graph as a black-and-white figure for papers, as TikZ for LaTeX (with `--standalone` for a document pdflatex compiles on its own) or as SVG.
+
+### Patch Changes
+
+- Updated dependencies [a8967cb]
+  - @mcmcjs/doodleppl@0.8.0
+
+## 0.35.0
+
+### Minor Changes
+
+- 6bc169b: `mcmc run` takes a program in BUGS syntax as a `.bugs` file, or a BUGS example folder as the JuliaBUGS repository keeps them, picking up its `data.json`, published initial values, and published quantities; `--inits <file>` supplies starting values for any model.
+
+### Patch Changes
+
+- Updated dependencies [6bc169b]
+  - @mcmcjs/julia@0.19.0
+
+## 0.34.0
+
+### Minor Changes
+
+- 8486d73: `mcmc run` takes `--monitor <name>` to store only the named deterministic quantities alongside the parameters, and `--timeout <minutes>` to give a long fit more than the default 30 minutes.
+
+### Patch Changes
+
+- Updated dependencies [8486d73]
+- Updated dependencies [8486d73]
+  - @mcmcjs/julia@0.18.0
+  - @mcmcjs/core@0.14.0
+  - @mcmcjs/plots@0.8.6
+  - @mcmcjs/stan@0.1.9
+
 ## 0.33.1
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DEFAULT_JULIA_CHANNEL, type LedgerEntry, serializeSpecToml } from "@mcmcjs/core";
 import type { DrawBatch } from "@mcmcjs/engine";
 import { describe, expect, it, vi } from "vitest";
@@ -169,6 +169,68 @@ describe("buildRunConfig: model file with no spec", () => {
       /no gradient/,
     );
     expect(() => buildRunConfig(model, { algorithm: "Gibbs" })).toThrow();
+  });
+
+  it("stores only the monitored quantities when --monitor is given", () => {
+    const dir = tmp();
+    const model = writeModel(dir, "model.bugs.jl");
+    const config = buildRunConfig(model, { backend: "juliabugs", monitor: ["sigma", "alpha0"] });
+    expect(config.spec.model.monitor).toEqual(["sigma", "alpha0"]);
+    expect(buildRunConfig(model, { backend: "juliabugs" }).spec.model.monitor).toBeUndefined();
+    // The flag's empty default must not turn into "store the parameters alone".
+    expect(
+      buildRunConfig(model, { backend: "juliabugs", monitor: [] }).spec.model.monitor,
+    ).toBeUndefined();
+    expect(() => buildRunConfig(model, { backend: "turing", monitor: ["sigma"] })).toThrow(
+      /stores parameters only/,
+    );
+  });
+
+  it("runs a bare .bugs program on the juliabugs backend", () => {
+    const dir = tmp();
+    const path = join(dir, "rats.bugs");
+    writeFileSync(
+      path,
+      "model { for (i in 1:N) { y[i] ~ dnorm(mu, 1) }\n mu ~ dnorm(0, 0.001) }\n",
+    );
+    const config = buildRunConfig(path, {});
+    expect(config.spec.backend.id).toBe("juliabugs");
+    expect(config.spec.model.path).toBe("./rats.bugs");
+    expect(() => buildRunConfig(path, { backend: "turing" })).toThrow(/juliabugs backend/);
+  });
+
+  it("runs a BUGS example folder with its data, inits, and published quantities", () => {
+    const dir = tmp();
+    writeFileSync(join(dir, "example.toml"), 'name = "Toy"\n');
+    writeFileSync(join(dir, "model.bugs"), "model { y ~ dnorm(mu, 1)\n mu ~ dnorm(0, 1) }\n");
+    writeFileSync(join(dir, "data.json"), JSON.stringify({ y: 1.5 }));
+    writeFileSync(join(dir, "inits.json"), JSON.stringify({ mu: 0.5, err: [0.5, null] }));
+    writeFileSync(join(dir, "reference.json"), JSON.stringify({ mu: {}, "s[1]": {}, "s[2]": {} }));
+    const config = buildRunConfig(dir, {});
+    expect(config.modelPath).toBe(join(dir, "model.bugs"));
+    expect(config.spec.backend.id).toBe("juliabugs");
+    expect(config.dataFile).toBe(join(dir, "data.json"));
+    expect(config.spec.sampler.initial_params).toEqual({ mu: 0.5 });
+    expect(config.notes.join("\n")).toMatch(/err left out/);
+    expect(config.spec.model.monitor).toEqual(["mu", "s"]);
+    expect(config.storeAnchor && dirname(config.storeAnchor)).toBe(process.cwd());
+    // Flags still win over what the folder provides.
+    expect(buildRunConfig(dir, { monitor: ["s"] }).spec.model.monitor).toEqual(["s"]);
+    expect(() => buildRunConfig(dir, { backend: "turing" })).toThrow(/juliabugs backend/);
+    // A folder without a program is refused rather than guessed at.
+    expect(() => buildRunConfig(tmp(), {})).toThrow(/without a model\.bugs/);
+  });
+
+  it("takes starting values from --inits on any model", () => {
+    const dir = tmp();
+    const model = writeModel(dir);
+    const inits = join(dir, "start.json");
+    writeFileSync(inits, JSON.stringify({ mu: 1, sigma: [1, null] }));
+    const config = buildRunConfig(model, { inits });
+    expect(config.spec.sampler.initial_params).toEqual({ mu: 1 });
+    expect(config.notes.join("\n")).toMatch(/sigma left out/);
+    writeFileSync(inits, "[1, 2]");
+    expect(() => buildRunConfig(model, { inits })).toThrow(/JSON object/);
   });
 
   it("sets the JuliaBUGS evaluation mode from a flag, and only for that backend", () => {

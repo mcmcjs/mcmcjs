@@ -1,5 +1,11 @@
 # @mcmcjs/core
 
+## 0.14.0
+
+### Minor Changes
+
+- 8486d73: Add `[model].monitor`, a list of deterministic quantities to store with the parameters, so a JuliaBUGS model that computes large arrays at every draw can keep its run bundle small.
+
 ## 0.13.1
 
 ### Patch Changes

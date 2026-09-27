@@ -473,19 +473,27 @@ end
 
 keep_patterns(request) = get(get(request, "output", Dict()), "keep", nothing)
 
+# The spec's [output] keep list as a filter on leaf names, or nothing to keep them all.
+function keep_filter(request)
+    patterns = keep_patterns(request)
+    return patterns === nothing ? nothing : name -> keep_matches(name, patterns)
+end
+
+# A column is stored only when every filter that is set allows it.
+both_filters(f, g) = f === nothing ? g : g === nothing ? f : name -> f(name) && g(name)
+
 # FlexiChains-native wire writer. DimArray(chn) splits array-valued parameters
 # into scalar leaves (theta -> theta[1], theta[2]) in the (iter, chain, param)
-# orientation; the sampler's statistics become the internals section.
+# orientation; the sampler's statistics become the internals section. `keep`
+# decides by leaf name which columns are written; nothing keeps them all.
 function vnchain_to_wire(chn; keep = nothing)
     da = DimensionalData.DimArray(chn)
-    allnames = string.(collect(DimensionalData.lookup(da, :param)))
-    # The spec's [output] keep list: only these columns are stored.
-    sel = keep === nothing ? collect(eachindex(allnames)) :
-          [i for (i, n) in enumerate(allnames) if keep_matches(n, keep)]
-    pnames = allnames[sel]
+    names = string.(collect(DimensionalData.lookup(da, :param)))
     arr = parent(da)
     nIter, nChains, _ = size(arr)
-    nParams = length(sel)
+    kept = keep === nothing ? eachindex(names) : findall(keep, names)
+    pnames = names[kept]
+    nParams = length(kept)
 
     extras = extra_columns(chn)
     enames = first.(extras)
@@ -495,8 +503,8 @@ function vnchain_to_wire(chn; keep = nothing)
     # JSON has no Inf/NaN; a non-finite draw (e.g. 1/sqrt(tau) under a diffuse
     # prior) becomes null, which the samples parser reads back as NaN.
     cell(v) = v === missing || !isfinite(v) ? nothing : Float64(v)
-    for c in 1:nChains, p in 1:nParams, i in 1:nIter
-        flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(arr[i, c, sel[p]])
+    for c in 1:nChains, (p, src) in enumerate(kept), i in 1:nIter
+        flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(arr[i, c, src])
     end
     for (k, (_, draw)) in enumerate(extras)
         p = nParams + k
@@ -516,6 +524,20 @@ end
 # A BUGSModel carries its own `base_model` field (the unconditioned model, or
 # nothing), so unwrapping has to test the wrapper's type, not for the field.
 base_bugs(model) = model isa JuliaBUGS.BUGSModelWithGradient ? model.base_model : model
+
+# `[model].monitor` names the deterministic quantities worth storing; the model's
+# parameters are always stored. Unset keeps every column the chain carries. The
+# graph's parameter list is read rather than `model_parameters`, which in the
+# marginalized mode leaves out the discrete latents the chain still carries.
+function bugs_column_filter(request, model)
+    monitor = get(request["model"], "monitor", nothing)
+    monitor === nothing && return nothing
+    keep = Set{String}(String.(monitor))
+    for vn in base_bugs(model).graph_evaluation_data.model_parameters
+        push!(keep, String(JuliaBUGS.AbstractPPL.getsym(vn)))
+    end
+    return name -> first(split(name, '['; limit = 2)) in keep
+end
 
 # JuliaBUGS samplers that propose in the evaluation environment, so they move the
 # discrete latents themselves rather than needing them summed out.
@@ -537,21 +559,73 @@ function set_bugs_mode(model, name)
     )
 end
 
-# Named starting values, in constrained space, as the spec records them.
-# `initialize!` ignores a name it does not recognise, so an unknown one is an
-# error here rather than a silent no-op.
+# Named starting values, in constrained space, as the spec records them. A name
+# the model does not have at all is an error, since `initialize!` would ignore it
+# silently. A name that is a variable but not a parameter, an observed node or a
+# deterministic one, is left out, as BUGS does with such initial values; the
+# published inits of the classic examples carry them.
 function initialize_bugs_model(model, sampler)
     haskey(sampler, "initial_params") || return model
-    known = Set(
-        String(JuliaBUGS.AbstractPPL.getsym(vn)) for vn in JuliaBUGS.model_parameters(model)
-    )
-    for name in keys(sampler["initial_params"])
-        name in known ||
-            error("initial_params names $name, which is not a parameter of this model")
+    gd = base_bugs(model).graph_evaluation_data
+    name(vn) = String(JuliaBUGS.AbstractPPL.getsym(vn))
+    parameters = Set(name.(gd.model_parameters))
+    known = Set(name.(gd.sorted_nodes))
+    for k in keys(sampler["initial_params"])
+        k in known || error("initial_params names $k, which is not a variable of this model")
     end
-    return Base.invokelatest(
-        JuliaBUGS.initialize!, model, bugs_namedtuple(sampler["initial_params"]),
+    inits = Dict(k => v for (k, v) in sampler["initial_params"] if k in parameters)
+    isempty(inits) && return model
+    # A JSON `0` arrives as an integer, and a continuous parameter initialized with it
+    # gets an integer slot that the generated log density cannot write a float into.
+    types = bugs_node_types(base_bugs(model))
+    continuous(k) = all(t == :continuous for (vn, t) in types if name(vn) == k)
+    as_float(v) = v isa AbstractArray{<:Real} || v isa Real ? float(v) : v
+    values = bugs_namedtuple(inits)
+    values = (; (k => (continuous(String(k)) ? as_float(v) : v) for (k, v) in pairs(values))...)
+    model = Base.invokelatest(JuliaBUGS.initialize!, model, values)
+    return finite_start(model, Set(String.(keys(values))))
+end
+
+# Published initial values rarely cover every parameter, and the rest come from prior
+# draws, which under vague priors put Magnesium's start at -Inf every time. A start that
+# is not finite has those uncovered parameters redrawn uniformly on (-2, 2) in
+# unconstrained space, as Stan starts, keeping the given values.
+function finite_start(model, given; attempts = 50)
+    model.transformed || return model
+    LDP = JuliaBUGS.LogDensityProblems
+    x = Base.invokelatest(JuliaBUGS.getparams, model)
+    isfinite(Base.invokelatest(LDP.logdensity, model, x)) && return model
+    vars = model.evaluation_mode isa JuliaBUGS.UseAutoMarginalization ?
+        model.marginalization_cache.continuous_model_parameters :
+        Base.invokelatest(JuliaBUGS.model_parameters, model)
+    rng = StableRNG(1)
+    for _ in 1:attempts
+        z = copy(x)
+        pos = 1
+        for vn in vars
+            len = model.transformed_var_lengths[vn]
+            String(JuliaBUGS.AbstractPPL.getsym(vn)) in given ||
+                (z[pos:(pos + len - 1)] .= 4 .* rand(rng, len) .- 2)
+            pos += len
+        end
+        isfinite(Base.invokelatest(LDP.logdensity, model, z)) &&
+            return Base.invokelatest(JuliaBUGS.initialize!, model, z)
+    end
+    return model
+end
+
+# With no evaluation mode chosen, a gradient sampler gets the discrete finite
+# latents summed out of the log density, since it cannot move them itself. A model
+# that is discrete throughout has nothing left for it to sample.
+function marginalize_if_discrete(base)
+    base.evaluation_mode isa JuliaBUGS.UseGraph || return base
+    marginalized = set_bugs_mode(base, "marginalized")
+    cache = marginalized.marginalization_cache
+    (cache === nothing || cache.n_discrete_finite == 0) && return base
+    Base.invokelatest(JuliaBUGS.LogDensityProblems.dimension, marginalized) == 0 && error(
+        "every parameter of this model is discrete, which a gradient sampler cannot move; use the MH sampler",
     )
+    return marginalized
 end
 
 # An environment-based sampler starts from the model's evaluation environment and
@@ -584,15 +658,73 @@ function prepare_bugs_model(model, sampler, mode_name)
         base = initialize_bugs_model(set_bugs_mode(base, "graph"), sampler)
         return check_bugs_start(base, sampler)
     end
-    mode_name === nothing || (base = set_bugs_mode(base, mode_name))
-    base = initialize_bugs_model(base, sampler)
+    base = mode_name === nothing ? marginalize_if_discrete(base) : set_bugs_mode(base, mode_name)
     # A derivative-free sampler wants the plain model: preparing a gradient it
     # never calls costs a compile, which for Mooncake runs into minutes.
-    get(sampler, "algorithm", "NUTS") == "Slice" && return base
+    get(sampler, "algorithm", "NUTS") == "Slice" && return initialize_bugs_model(base, sampler)
+    if !haskey(sampler, "adtype") && !(model isa JuliaBUGS.BUGSModelWithGradient) &&
+       mode_name === nothing
+        checked = checked_gradient(base, sampler)
+        checked === nothing || return checked
+    end
     adtype = haskey(sampler, "adtype") ? build_adtype(sampler["adtype"]) :
         model isa JuliaBUGS.BUGSModelWithGradient ? model.adtype :
         Turing.ADTypes.AutoForwardDiff()
+    base = initialize_bugs_model(base, sampler)
     return Base.invokelatest(JuliaBUGS.BUGSModelWithGradient, base, adtype)
+end
+
+# With neither an evaluation mode nor an AD backend chosen, each candidate gradient is
+# tried fastest first, and the first whose gradient at the starting point matches central
+# differences of the same function is used. On the BUGS examples the generated log
+# density under Mooncake takes 10 to 740 times less per gradient than ForwardDiff on the
+# graph, and on marginalized models ForwardDiff is the faster by 13 to 18 times.
+# Neither is right everywhere: ForwardDiff's Poisson derivative at rate zero is NaN
+# (Leuk, Hearts) and Mooncake's Birats gradient is 6% off. Returns nothing when no
+# candidate passes, and the model is then fitted as before.
+function checked_gradient(base, sampler)
+    forwarddiff = Turing.ADTypes.AutoForwardDiff()
+    mooncake = Turing.ADTypes.AutoMooncake(; config = nothing)
+    candidates = if base.evaluation_mode isa JuliaBUGS.UseGraph
+        (("generated", mooncake),)
+    elseif base.evaluation_mode isa JuliaBUGS.UseAutoMarginalization
+        ((nothing, forwarddiff), (nothing, mooncake))
+    else
+        ()
+    end
+    for (mode, adtype) in candidates
+        try
+            # The generated function writes into the evaluation environment's arrays,
+            # so each attempt gets its own copy and a failed one leaves `base` unchanged.
+            candidate = deepcopy(base)
+            if mode !== nothing
+                candidate = set_bugs_mode(candidate, mode)
+                candidate.evaluation_mode isa JuliaBUGS.UseGeneratedLogDensityFunction || continue
+            end
+            candidate = initialize_bugs_model(candidate, sampler)
+            wrapped = Base.invokelatest(JuliaBUGS.BUGSModelWithGradient, candidate, adtype)
+            x = Base.invokelatest(JuliaBUGS.getparams, candidate)
+            gradient_matches_differences(wrapped, x) && return wrapped
+        catch
+        end
+    end
+    return nothing
+end
+
+function gradient_matches_differences(wrapped, x; rtol = 1e-4)
+    LDP = JuliaBUGS.LogDensityProblems
+    ld, grad = Base.invokelatest(LDP.logdensity_and_gradient, wrapped, x)
+    (isfinite(ld) && all(isfinite, grad)) || return false
+    f(z) = Base.invokelatest(LDP.logdensity, wrapped, z)
+    diffs = similar(x)
+    for i in eachindex(x)
+        h = 1e-6 * max(1.0, abs(x[i]))
+        step = zero(x)
+        step[i] = h
+        diffs[i] = (f(x .+ step) - f(x .- step)) / 2h
+    end
+    all(isfinite, diffs) || return false
+    return sqrt(sum(abs2, grad .- diffs)) <= rtol * max(sqrt(sum(abs2, diffs)), 1.0)
 end
 
 # AdvancedHMC starts from a fresh draw unless handed a starting vector, so an
@@ -750,7 +882,9 @@ end
 # the model so reconstruction never perturbs the sampler's state. AbstractMCMC
 # passes the 1-based chain index as chain_number; each chain's batches carry a
 # per-chain monotonic seq.
-function bugs_draw_streamer(model, sampler, draws_per_chain::Int, batch_size::Int)
+function bugs_draw_streamer(
+    model, sampler, draws_per_chain::Int, batch_size::Int; keep = nothing,
+)
     recon = deepcopy(model)
     side_rng = StableRNG(0)
     chain = Ref(-1)
@@ -761,7 +895,7 @@ function bugs_draw_streamer(model, sampler, draws_per_chain::Int, batch_size::In
         chn = JuliaBUGS.bundle_transitions(
             FlexiChains.VNChain, recon, transitions, sampler; rng = side_rng,
         )
-        wire = vnchain_to_wire(chn)
+        wire = vnchain_to_wire(chn; keep)
         nIter, total, _ = wire["size"]
         flat = wire["value_flat"]
         params = wire["parameters"]
@@ -960,9 +1094,29 @@ end
 # Load the user's model file into a throwaway module. Isolation keeps repeated
 # requests in the persistent worker from colliding on names (e.g. two models each
 # defining `const model_def`), and confines the model's globals to their own scope.
+# Compiling draws every parameter it is not given from its prior, and a draw from a
+# vague prior such as dgamma(0.001, 0.001) can underflow into a Weibull scale of zero
+# or a Poisson rate of NaN before sampling starts. An entry that takes the starting
+# values as a second argument gets them at compile time.
+function build_bugs_model(entry, data, sampler)
+    haskey(sampler, "initial_params") && applicable(entry, data, (;)) || return entry(data)
+    return entry(data, bugs_namedtuple(sampler["initial_params"]))
+end
+
 function load_model_module(path)
     mod = Module(gensym(:UserModel))
-    Base.include(mod, abspath(path))
+    if endswith(lowercase(path), ".bugs")
+        # A bare BUGS program, parsed as the string form of `@bugs` parses it with
+        # dotted names kept, and given the entry a Julia model file would define.
+        model_def = JuliaBUGS.Parser._bugs_string_input(read(abspath(path), String), false)
+        Core.eval(mod, :(using JuliaBUGS))
+        Core.eval(mod, :(const model_def = $(Meta.quot(model_def))))
+        Core.eval(
+            mod, :(build_model(data, inits = (;)) = JuliaBUGS.compile(model_def, data, inits)),
+        )
+    else
+        Base.include(mod, abspath(path))
+    end
     return mod
 end
 
@@ -1043,7 +1197,9 @@ function handle_request(request)
             draws = Int(request["sampler"]["draws"])
             stage = "sample"
             if backend == "juliabugs"
-                model = Base.invokelatest(entry, data)
+                stage = "compile"
+                model = Base.invokelatest(build_bugs_model, entry, data, sampler_conf)
+                stage = "sample"
                 chn = if get(sampler_conf, "algorithm", "NUTS") == "Prior"
                     Base.invokelatest(sample_bugs_prior, model, draws, chains, rng)
                 else
@@ -1058,7 +1214,10 @@ function handle_request(request)
                     cb = get(request, "stream_draws", false) && !threads ?
                         bugs_draw_streamer(
                             base_bugs(model), sampler, draws,
-                            Int(get(request, "draw_batch_size", 25)),
+                            Int(get(request, "draw_batch_size", 25));
+                            keep = both_filters(
+                                bugs_column_filter(request, model), keep_filter(request),
+                            ),
                         ) : nothing
                     Base.invokelatest(
                         sample_bugs, model, sampler, warmup, draws, chains, rng;
@@ -1068,7 +1227,9 @@ function handle_request(request)
                         ),
                     )
                 end
-                vnchain_to_wire(chn; keep = keep_patterns(request))
+                vnchain_to_wire(
+                    chn; keep = both_filters(bugs_column_filter(request, model), keep_filter(request)),
+                )
             else
                 sampler, warmup = build_sampler(sampler_conf, modelmod)
                 # The draw streamer assumes chains arrive one at a time; with
@@ -1080,7 +1241,7 @@ function handle_request(request)
                     build_and_sample, entry, data, sampler, draws, chains, rng;
                     callback = cb, extra, parallel,
                 )
-                vnchain_to_wire(chn; keep = keep_patterns(request))
+                vnchain_to_wire(chn; keep = keep_filter(request))
             end
         end
 

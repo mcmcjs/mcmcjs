@@ -1,6 +1,6 @@
 {
   "name": "@mcmcjs/doodleppl",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Turn a DoodlePPL graph into probabilistic model code (BUGS/JuliaBUGS, Stan); the shared codegen for the DoodlePPL editor and the MCMC.js CLI.",
   "keywords": [
     "doodleppl",
@@ -47,6 +47,11 @@
       "types": "./dist/codegen/stan.d.ts",
       "import": "./dist/codegen/stan.js",
       "require": "./dist/codegen/stan.cjs"
+    },
+    "./figure": {
+      "types": "./dist/figure/index.d.ts",
+      "import": "./dist/figure/index.js",
+      "require": "./dist/figure/index.cjs"
     },
     "./graph.schema.json": "./dist/graph.schema.json"
   },

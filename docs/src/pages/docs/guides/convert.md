@@ -46,3 +46,19 @@ mcmc diagnose samples.json
 
 The graph-to-model codegen lives in the `@mcmcjs/doodleppl` package, the single source of truth shared by the DoodlePPL editor and the CLI.
 You can also hand the graph directly to `mcmc run model.json`, which converts and fits in one step.
+
+## Draw it as a figure
+
+`mcmc figure <graph>` draws the same graph as a black-and-white figure for a paper, keeping the node positions saved in the graph.
+Nodes and plates move only as far as needed so nothing overlaps, and an edge curves around any node or label in its way.
+Stochastic nodes are circles, observed nodes are shaded, deterministic nodes are double circles, constants are squares, and plates are boxes labelled with their loop.
+Greek names and indices are typeset as maths, so `mu[i]` is drawn as μ with subscript i.
+
+```bash
+mcmc figure model.json -o model.tex                 # a tikzpicture to \input into a document
+mcmc figure model.json --standalone -o model.tex    # a document pdflatex compiles on its own
+mcmc figure model.json --format svg -o model.svg
+```
+
+The TikZ picture needs `\usepackage{tikz}` and `\usetikzlibrary{arrows.meta}`.
+The DoodlePPL editor offers the same two files in its Export tab.

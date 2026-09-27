@@ -9,15 +9,20 @@ MCMC.js gives you two ways to run inference: `mcmc run` for a zero-config end-to
 ## `mcmc run`: the front door
 
 `mcmc run <input>` runs the whole workflow in one step: it fits, diagnoses, and records the run in the project store.
-The input can be any of three things, and the backend is detected from it:
+The input can be any of four things, and the backend is detected from it:
 
-- a model file (`.jl` for Turing or JuliaBUGS, `.stan` for Stan),
-- a spec file (`.toml` / `.json`), or
-- a DoodleBUGS graph (`.json`), which is converted first.
+- a model file (`.jl` for Turing or JuliaBUGS, `.stan` for Stan, `.bugs` for a program in BUGS syntax),
+- a spec file (`.toml` / `.json`),
+- a DoodleBUGS graph (`.json`), which is converted first, or
+- a BUGS example folder, as the JuliaBUGS repository keeps them: `model.bugs` beside `data.json`, `inits.json`, and `reference.json`.
 
 ```bash
 mcmc run model.jl --data data.csv --seed 42
+mcmc run path/to/BUGSExamples/volume_1/rats
 ```
+
+An example folder runs with its own data and published initial values, and stores the parameters plus the quantities the example published summaries for.
+Its run store is the nearest `.mcmc` above the current directory, never the folder itself, which may be a read-only artifact.
 
 It prints the diagnostics table and verdict, and exits `0` on convergence, `2` if it ran but did not converge, or `1` on error.
 
@@ -40,7 +45,10 @@ Flags are always honored.
 | `--algorithm <name>` | sampler: NUTS, HMC, HMCDA, MH, ESS, SMC, PG, Slice, Gibbs, External, or Prior (default NUTS; Gibbs blocks, PG particles, and the Slice window are spec-only) |
 | `--thin <n>` | keep every thin-th draw |
 | `--adtype <name>` | AD backend for gradient samplers: forwarddiff, reversediff, or mooncake |
-| `--evaluation-mode <mode>` | JuliaBUGS log-density evaluation: graph, generated, or marginalized (default: whatever the model file chose) |
+| `--evaluation-mode <mode>` | JuliaBUGS log-density evaluation: graph, generated, or marginalized (default: whatever the model file chose, with discrete latents marginalized for a gradient sampler when it chose nothing) |
+| `--monitor <name>` | JuliaBUGS deterministic quantity to store with the parameters (repeatable; default: all of them) |
+| `--inits <file>` | JSON object of starting values by variable name, used by every chain; entries holding a missing value are left out |
+| `--timeout <minutes>` | give up on a fit after this long (default 30) |
 | `--parallel <mode>` | chain execution: serial (default), threads, or distributed (Turing-only, one worker process per chain; incompatible with `--stream-out`) |
 | `--seed <n>` | random seed (default: drawn fresh and recorded) |
 | `--backend <id>` | backend, default detected from the model |

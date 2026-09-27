@@ -11,7 +11,7 @@ Run `mcmc <command> --help` for the authoritative, current flags.
 
 | Command | Description | Key flags |
 | --- | --- | --- |
-| `run [input]` | full workflow: fit, diagnose, record a run (omit the input on a terminal to pick a model; `--report` opens the result) | `--data`, `--draws`, `--warmup`, `--chains`, `--adapt-delta`, `--seed`, `--backend`, `--entry`, `-o/--out`, `--stream-out`, `--prior`, `--algorithm`, `--thin`, `--adtype`, `--evaluation-mode`, `--parallel`, `--refit`, `--daemon`, `--julia-version`, `--package`, `--store` |
+| `run [input]` | full workflow: fit, diagnose, record a run (omit the input on a terminal to pick a model; `--report` opens the result) | `--data`, `--draws`, `--warmup`, `--chains`, `--adapt-delta`, `--seed`, `--backend`, `--entry`, `-o/--out`, `--stream-out`, `--prior`, `--algorithm`, `--thin`, `--adtype`, `--evaluation-mode`, `--monitor`, `--inits`, `--timeout`, `--parallel`, `--refit`, `--daemon`, `--julia-version`, `--package`, `--store` |
 | `fit <spec>` | run MCMC inference, write a samples file | `-o/--out`, `--julia-version`, `--versions`, `--package-versions`, `--keep-going`, `--daemon` |
 | `predict <spec> <samples>` | draw posterior-predictive samples | `-o/--out`, `--julia-version`, `--verbose` |
 
@@ -46,6 +46,7 @@ See [Browse interactively](/docs/guides/browse/), [Diagnose convergence](/docs/g
 | `init [dir]` | seed a directory with a runnable example model and data | `--force`, `--json` |
 | `sandbox` | open a throwaway shell seeded with an example model | `--strict`, `--keep`, `--delete`, `--keep-dir`, `--name` |
 | `convert <graph>` | DoodleBUGS graph to a model file plus a fit-able spec | `-o/--out`, `--seed` |
+| `figure <graph>` | DoodleBUGS graph to a black-and-white figure, TikZ for LaTeX or SVG | `--format`, `--standalone`, `-o/--out` |
 
 `sandbox` is the one interactive command; everything else runs unattended.
 See [Convert DoodleBUGS](/docs/guides/convert/).

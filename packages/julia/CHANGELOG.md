@@ -1,5 +1,22 @@
 # @mcmcjs/julia
 
+## 0.19.0
+
+### Minor Changes
+
+- 6bc169b: Fit `.bugs` programs directly, marginalize discrete finite latents for a gradient sampler when the spec sets no evaluation mode, and ignore starting values given for observed or deterministic nodes instead of refusing them.
+
+## 0.18.0
+
+### Minor Changes
+
+- 8486d73: Honour `[model].monitor` for JuliaBUGS fits: the samples file keeps every parameter and only the deterministic quantities the spec names.
+
+### Patch Changes
+
+- Updated dependencies [8486d73]
+  - @mcmcjs/core@0.14.0
+
 ## 0.17.1
 
 ### Patch Changes

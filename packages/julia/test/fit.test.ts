@@ -93,7 +93,11 @@ describe("runFit", () => {
       return { stdout: PROVENANCE, stderr: "", code: 0 };
     };
     const marginalized = spec();
-    marginalized.model = { ...marginalized.model, evaluation_mode: "marginalized" };
+    marginalized.model = {
+      ...marginalized.model,
+      evaluation_mode: "marginalized",
+      monitor: ["sigma", "alpha0"],
+    };
     await runFit(
       marginalized,
       { command: "/bin/julia", args: [] },
@@ -104,6 +108,7 @@ describe("runFit", () => {
       file: "/x/m.jl",
       entry: "build_model",
       evaluation_mode: "marginalized",
+      monitor: ["sigma", "alpha0"],
     });
   });
 
