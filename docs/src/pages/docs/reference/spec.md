@@ -168,7 +168,9 @@ The stan backend refuses such data instead of fitting it: Stan's data block has 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `format` | `"mcmcchains-json"` | `"mcmcchains-json"` | the samples-file format written |
-| `keep` | array of strings | unset | which variables the samples file stores, like BUGS's monitor list; a name keeps every element of an array (`theta`), one element is `theta[2]`, and `*` globs (`mean.*`); unset keeps everything. The sampler's own statistics are always kept. `--keep` on `mcmc fit` and `mcmc run` overrides it |
+| `keep` | array of strings | unset | which variables the samples file stores; a name keeps every element of an array (`theta`), one element is `theta[2]`, and `*` globs (`mean.*`); unset keeps everything. The sampler's own statistics are always kept. `--keep` on `mcmc fit` and `mcmc run` overrides it |
+
+For JuliaBUGS, `[model].monitor` and `keep` both apply, so a column is stored only when both allow it.
 
 ### `[predict]`
 
