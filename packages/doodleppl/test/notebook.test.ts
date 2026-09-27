@@ -177,6 +177,12 @@ describe("generateNotebook", () => {
     );
   });
 
+  it("opens with four chains and a seed when given no settings", () => {
+    const text = sourceOf(parse(input({ settings: undefined })));
+    expect(text).toContain("CHAINS = 4");
+    expect(text).toContain("SEED = 42");
+  });
+
   it("no seed becomes None, which the run turns into no flag", () => {
     const text = sourceOf(
       parse(input({ settings: { n_samples: 10, n_adapts: 5, n_chains: 1, seed: null } })),

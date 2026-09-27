@@ -33,7 +33,10 @@ export interface NotebookInput {
   settings?: NotebookSettings;
 }
 
-const DEFAULTS: NotebookSettings = { n_samples: 1000, n_adapts: 1000, n_chains: 2, seed: 42 };
+// Four chains, as Stan and `mcmc fit` default to: one chain has no R-hat, so
+// `mcmc diagnose` can never pass it, and two leave R-hat noisy enough that a
+// well-mixed model with hundreds of variables can land one just over 1.01.
+const DEFAULTS: NotebookSettings = { n_samples: 1000, n_adapts: 1000, n_chains: 4, seed: 42 };
 
 interface Cell {
   cell_type: "markdown" | "code";
