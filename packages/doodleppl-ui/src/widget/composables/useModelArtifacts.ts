@@ -90,13 +90,11 @@ export function useModelArtifacts(bugsCode: Ref<string>, stanCode: Ref<string>) 
     dataContent: dataStore.dataContent,
   }))
 
+  // The sampler is set in the notebook's settings cell, so the notebook opens
+  // with its own defaults rather than the stored settings, which nothing in the
+  // editor can change any more.
   const notebook = (target: ModelTarget): string =>
-    generateNotebook({
-      target,
-      name: modelName.value,
-      graph: graphDocument.value,
-      settings: settings.value,
-    })
+    generateNotebook({ target, name: modelName.value, graph: graphDocument.value })
 
   /** The model file itself: a BUGS program or a Stan program. */
   const modelArtifact = (target: ModelTarget): Artifact => ({
