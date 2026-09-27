@@ -27,7 +27,7 @@ import { useGraphStore, type GraphContent } from './stores/graphStore'
 import { useUiStore } from './stores/uiStore'
 import { useDataStore } from './stores/dataStore'
 import { useScriptStore } from './stores/scriptStore'
-import { graphJsonForPython } from '@mcmcjs/doodleppl/notebook'
+import { graphJsonForNotebook } from '@mcmcjs/doodleppl/notebook'
 import { type ModelTarget, useModelArtifacts } from './composables/useModelArtifacts'
 import { useGraphElements } from './composables/useGraphElements'
 import { useBugsCodeGenerator } from './composables/useBugsCodeGenerator'
@@ -400,8 +400,9 @@ const { graphDocument, exportGroups, modelArtifact, notebookArtifact } = useMode
 )
 
 // What the Run tab's Copy graph button puts on the clipboard: encoded exactly
-// as the notebook's paste slot needs, so pasting it in just works.
-const graphJsonForNotebook = computed(() => graphJsonForPython(graphDocument.value))
+// as the selected backend's notebook needs it, a Python string for Stan and a
+// Julia one for JuliaBUGS, so pasting it in just works.
+const copiedGraph = computed(() => graphJsonForNotebook(graphDocument.value, modelTarget.value))
 
 // The Run tab talks about the model without showing it, so the code panel
 // comes along when that tab is opened.
@@ -1379,7 +1380,7 @@ watch(showNewGraphModal, (val) => {
             @delete-element="deleteElement"
             @show-validation-issues="showValidationModal = true"
             :language="codePanelLanguage"
-            :graph-json="graphJsonForNotebook"
+            :graph-json="copiedGraph"
             :file-groups="exportGroups"
             @update:language="codePanelLanguage = $event"
             @download="downloadArtifact"
