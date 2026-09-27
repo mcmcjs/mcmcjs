@@ -168,14 +168,12 @@ describe("resolveJulia", () => {
     expect(resolved).toEqual({ command: "julia", args: [], version: "1.12.6" });
   });
 
-  it("names juliaup when the julia on PATH is another version", async () => {
-    await expect(resolveJulia("1.12.6", machine({ pathJulia: "1.11.2" }))).rejects.toThrow(
-      /needs juliaup.*1\.11\.2/,
-    );
-  });
-
-  it("points at mcmc setup when there is no Julia at all", async () => {
-    await expect(resolveJulia("1.12.6", machine({}))).rejects.toThrow(/mcmc setup/);
+  it("otherwise fails as before, pointing at mcmc setup", async () => {
+    for (const tools of [{ pathJulia: "1.11.2" }, {}]) {
+      await expect(resolveJulia("1.12.6", machine(tools))).rejects.toThrow(
+        "juliaup not found. Run `mcmc setup` to install the Julia toolchain.",
+      );
+    }
   });
 });
 

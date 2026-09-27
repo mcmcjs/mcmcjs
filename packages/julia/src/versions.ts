@@ -127,15 +127,10 @@ export async function resolveJulia(
   const juliaup = await detectJuliaup(run);
   if (juliaup.found && juliaup.path) return resolveVersion(juliaup.path, channel, run);
   const julia = await detectJulia(run);
-  if (!julia.found || !julia.path) {
-    throw new Error("Julia not found. Run `mcmc setup` to install the Julia toolchain.");
+  if (julia.found && julia.path && julia.version === channel) {
+    return { command: julia.path, args: [], version: julia.version };
   }
-  if (julia.version !== channel) {
-    throw new Error(
-      `Julia ${channel} needs juliaup, which was not found, and \`julia\` on PATH is ${julia.version}. Install juliaup from https://github.com/JuliaLang/juliaup to add other versions.`,
-    );
-  }
-  return { command: julia.path, args: [], version: julia.version };
+  throw new Error("juliaup not found. Run `mcmc setup` to install the Julia toolchain.");
 }
 
 /** Throws with an actionable message if any requested channel is not installed. */
