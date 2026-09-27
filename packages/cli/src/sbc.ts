@@ -14,14 +14,14 @@ import { createFitRunner, type EngineContext } from "@mcmcjs/engine";
 import {
   ensureProject,
   managedProjectDir,
-  resolveVersion,
+  resolveJulia,
   runFitAuto,
   runPredict,
   validatePins,
 } from "@mcmcjs/julia";
 import type { Command } from "commander";
 import pc from "picocolors";
-import { installRunner, juliaupBin } from "./julia";
+import { installRunner } from "./julia";
 import { parseIntOption } from "./options";
 import { buildRunConfig, type RunCliOptions } from "./run";
 
@@ -209,8 +209,7 @@ export function registerSbc(program: Command, ctx: EngineContext): void {
         if (!opts.json) process.stderr.write(`${line}\n`);
       };
 
-      const bin = await juliaupBin(ctx);
-      const resolved = await resolveVersion(bin, config.channel, ctx.run);
+      const resolved = await resolveJulia(config.channel, ctx.run);
       const pins = spec.backend.packages;
       const projectDir = managedProjectDir(resolved.version, pins);
       await ensureProject(
