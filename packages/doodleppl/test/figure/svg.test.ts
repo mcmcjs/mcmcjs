@@ -1,0 +1,132 @@
+import { describe, expect, it } from "vitest";
+import { nodeLabel } from "../../src/figure/label";
+import { figureLayout } from "../../src/figure/layout";
+import { figureSvg, labelSvg, layoutToSvg, mathSvg } from "../../src/figure/svg";
+import { at, edge, hospitals } from "./helpers";
+
+const PX = 96 / 2.54;
+
+const attrs = (tag: string) =>
+  Object.fromEntries([...tag.matchAll(/([A-Za-z0-9-]+)="([^"]*)"/g)].map((m) => [m[1], m[2]]));
+
+describe("figureSvg", () => {
+  const layout = figureLayout(hospitals());
+  const svg = layoutToSvg(layout);
+
+  it("is one standalone black-and-white SVG", () => {
+    expect(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"')).toBe(true);
+    expect(svg.trimEnd().endsWith("</svg>")).toBe(true);
+    const colours = new Set(
+      [...svg.matchAll(/(?:fill|stroke)="(#[0-9a-f]{3,6})"/g)].map((m) => m[1]),
+    );
+    for (const c of colours) expect(["#000", "#fff", "#ccc", "#666"]).toContain(c);
+  });
+
+  it("draws the node kinds differently", () => {
+    // Four plain circles, one shaded observed circle, two rings for the deterministic node.
+    expect(svg.match(/<circle [^>]*fill="#fff"/g)).toHaveLength(4);
+    expect(svg.match(/<circle [^>]*fill="#ccc"/g)).toHaveLength(1);
+    expect(svg.match(/<circle [^>]*fill="none"/g)).toHaveLength(1);
+    // The plate outline plus the constant's square, besides the page background.
+    expect(svg.match(/<rect [^>]*stroke=/g)).toHaveLength(2);
+  });
+
+  it("sets Greek names as letters and indices as subscripts", () => {
+    expect(svg).toContain('<tspan font-style="italic">μ</tspan>');
+    expect(svg).toMatch(
+      /<tspan font-style="italic">b<\/tspan><tspan dy="0.3em" font-size="70%"><tspan font-style="italic">i<\/tspan><\/tspan>/,
+    );
+    expect(svg).toContain("= 1, …, ");
+  });
+
+  it("ends every arrow on the outline of the node it points at", () => {
+    // Lines come out in edge order, so each line can be checked against its target.
+    const lines = (svg.match(/<line [^>]*>/g) ?? []).map(attrs);
+    expect(lines).toHaveLength(layout.edges.length);
+    layout.edges.forEach((edge, i) => {
+      const target = layout.nodes.find((n) => n.id === edge.to) as (typeof layout.nodes)[number];
+      const line = lines[i] as Record<string, string>;
+      const d = Math.hypot(Number(line.x2) - target.x * PX, Number(line.y2) - target.y * PX);
+      const radius = (layout.nodeSize * PX) / 2;
+      if (target.kind === "deterministic") expect(d, edge.to).toBeCloseTo(radius + 1.5, 1);
+      else if (target.kind !== "constant") expect(d, edge.to).toBeCloseTo(radius, 1);
+    });
+  });
+
+  it("widens a box to fit a long name", () => {
+    const doc = hospitals();
+    const n = doc.elements?.find((el) => el.id === "n");
+    if (n) n.name = "population";
+    const box = (s: string) => attrs(s.match(/<rect [^>]*stroke="#000"[^>]*>/)?.[0] ?? "");
+    const wide = figureSvg(doc);
+    const short = box(svg);
+    const long = box(wide);
+    expect(short.width).toBe(short.height);
+    expect(Number(long.width)).toBeGreaterThan(Number(long.height));
+    expect(long.height).toBe(short.height);
+    // The canvas grows so the wider box is not cut off.
+    const [vx, , vw] = (attrs(wide.slice(0, wide.indexOf(">"))).viewBox ?? "")
+      .split(" ")
+      .map(Number);
+    expect(Number(long.x)).toBeGreaterThanOrEqual(vx as number);
+    expect(Number(long.x) + Number(long.width)).toBeLessThanOrEqual(
+      (vx as number) + (vw as number),
+    );
+  });
+
+  it("draws a bent edge as a curve that ends on its target's outline", () => {
+    const doc = [
+      at("a", { x: 0, y: 0 }),
+      at("b", { x: 100, y: 0 }),
+      at("c", { x: 200, y: 0 }),
+      edge("a", "b"),
+      edge("a", "c"),
+    ];
+    const bent = figureLayout(doc);
+    const out = layoutToSvg(bent);
+    expect(out.match(/<line /g)).toHaveLength(1);
+    const d = attrs(out.match(/<path d="M [^"]* C [^"]*"/)?.[0] ?? "").d ?? "";
+    const [x, y] = d.trim().split(/\s+/).slice(-2).map(Number);
+    const c = bent.nodes.find((n) => n.id === "c") as (typeof bent.nodes)[number];
+    const r = (c.width * PX) / 2;
+    expect(Math.hypot((x as number) - c.x * PX, (y as number) - c.y * PX)).toBeCloseTo(r, 1);
+  });
+
+  it("draws an edge with turned ends as a curve, not a line", () => {
+    const crowded = figureLayout([
+      at("p1", { x: 0, y: 0 }),
+      at("p2", { x: 40, y: 0 }),
+      at("t", { x: 20, y: 600 }),
+      edge("p1", "t"),
+      edge("p2", "t"),
+    ]);
+    expect(crowded.edges.every((e) => e.out !== undefined)).toBe(true);
+    const out = layoutToSvg(crowded);
+    expect(out).not.toContain("<line ");
+    expect(out.match(/<path d="M [^"]* C /g)).toHaveLength(2);
+  });
+
+  it("typesets a name on its own, larger when asked for a sharper image", () => {
+    const one = labelSvg(nodeLabel("mu", "i,j"), { fontSize: 20, color: "#eee" });
+    expect(one.svg).toContain('<tspan font-style="italic">μ</tspan>');
+    expect(one.svg).toContain('font-size="70%"');
+    expect(one.svg).toContain('fill="#eee"');
+    const two = labelSvg(nodeLabel("mu", "i,j"), { fontSize: 20, pixelRatio: 2 });
+    const open = (s: string) => attrs(s.slice(0, s.indexOf(">")));
+    expect(Number(open(two.svg).width)).toBe(2 * one.width);
+    expect(open(two.svg).viewBox).toBe(open(one.svg).viewBox);
+    expect(labelSvg(nodeLabel("population")).width).toBeGreaterThan(labelSvg(nodeLabel("x")).width);
+  });
+
+  it("typesets a plate's loop with letters in italics and numbers upright", () => {
+    const { svg: out } = mathSvg("i = 1, …, N");
+    expect(out).toContain(
+      '<tspan font-style="italic">i</tspan> = 1, …, <tspan font-style="italic">N</tspan>',
+    );
+  });
+
+  it("escapes the graph name", () => {
+    const doc = { ...hospitals(), name: "A < B & C" };
+    expect(figureSvg(doc)).toContain("<title>A &lt; B &amp; C</title>");
+  });
+});

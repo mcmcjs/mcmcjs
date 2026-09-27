@@ -383,6 +383,7 @@ const {
   openExportModal,
   handleConfirmExport,
   handleExportJson,
+  handleExportFigure,
   handleElementSelected,
   handleSelectNodeFromModal,
   handleShare,
@@ -1403,6 +1404,7 @@ watch(showNewGraphModal, (val) => {
             @share="handleShare"
             @open-export-modal="openExportModal"
             @export-json="handleExportJson"
+            @export-figure="handleExportFigure"
             @toggle-fullscreen="toggleFullScreen"
           />
         </div>

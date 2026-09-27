@@ -14,6 +14,7 @@ import {
   extractCensoredFields,
 } from './useStanCodeGenerator'
 import { downloadBlob } from '../utils/downloadBlob'
+import { figureSvg, figureTikz } from '@mcmcjs/doodleppl/figure'
 
 export function useFileExport(generatedCode: Ref<string>, stanCode?: Ref<string>) {
   const graphStore = useGraphStore()
@@ -166,6 +167,31 @@ export function useFileExport(generatedCode: Ref<string>, stanCode?: Ref<string>
     downloadBlob(blob, `${graphMeta.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`)
   }
 
+  const handleExportFigure = (format: 'tikz' | 'svg') => {
+    const graphMeta = projectStore.currentProject?.graphs.find(
+      (g) => g.id === graphStore.currentGraphId
+    )
+    const name = graphMeta?.name ?? 'graph'
+    const model = { name, elements: graphStore.currentGraphElements }
+    const slug = name.replace(/[^a-z0-9]/gi, '_').toLowerCase()
+    try {
+      const blob =
+        format === 'svg'
+          ? new Blob([figureSvg(model)], { type: 'image/svg+xml;charset=utf-8' })
+          : new Blob([figureTikz(model, { standalone: true })], {
+              type: 'application/x-tex;charset=utf-8',
+            })
+      downloadBlob(blob, `${slug}.${format === 'svg' ? 'svg' : 'tex'}`)
+    } catch (err) {
+      toast.add({
+        severity: 'error',
+        summary: 'Export Failed',
+        detail: err instanceof Error ? err.message : 'Could not draw the figure.',
+        life: 3000,
+      })
+    }
+  }
+
   if (stanCode) {
     watch(stanCode, () => {
       if (scriptStore.standaloneStanScript) {
@@ -195,5 +221,6 @@ export function useFileExport(generatedCode: Ref<string>, stanCode?: Ref<string>
     openExportModal,
     handleConfirmExport,
     handleExportJson,
+    handleExportFigure,
   }
 }

@@ -46,6 +46,7 @@ See [Browse interactively](/docs/guides/browse/), [Diagnose convergence](/docs/g
 | `init [dir]` | seed a directory with a runnable example model and data | `--force`, `--json` |
 | `sandbox` | open a throwaway shell seeded with an example model | `--strict`, `--keep`, `--delete`, `--keep-dir`, `--name` |
 | `convert <graph>` | DoodleBUGS graph to a model file plus a fit-able spec | `-o/--out`, `--seed` |
+| `figure <graph>` | DoodleBUGS graph to a black-and-white figure, TikZ for LaTeX or SVG | `--format`, `--standalone`, `-o/--out` |
 
 `sandbox` is the one interactive command; everything else runs unattended.
 See [Convert DoodleBUGS](/docs/guides/convert/).

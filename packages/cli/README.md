@@ -36,6 +36,7 @@ mcmc samples                          # export raw draws as portable JSON
 # Project + toolchain
 mcmc init / sandbox                   # scaffold or try an example model
 mcmc convert graph.json               # DoodleBUGS graph -> model file + spec
+mcmc figure graph.json -o graph.tex   # DoodleBUGS graph -> black-and-white TikZ or SVG figure
 mcmc setup / doctor                   # install and check the Julia toolchain
 mcmc setup --engine stan              # download and build CmdStan instead
 mcmc julia version list               # manage installed Julia versions
