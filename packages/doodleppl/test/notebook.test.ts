@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   colabUrl,
   generateNotebook,
+  graphJsonForNotebook,
   graphJsonForPython,
   type NotebookInput,
   notebookFilename,
@@ -48,17 +49,58 @@ const parse = (i: NotebookInput) => JSON.parse(generateNotebook(i));
 const sourceOf = (nb: { cells: { source: string[] }[] }) =>
   nb.cells.map((c) => c.source.join("")).join("\n");
 
+const PY = "'".repeat(3);
+const JL = '"'.repeat(3);
+
+/** How each backend's notebook reads: its kernel, and the lines that differ by language. */
+const KERNEL = {
+  stan: {
+    kernel: "python3",
+    language: "python",
+    open: `GRAPH = r${PY}\n`,
+    close: `\n${PY}`,
+    writes: 'with open("model.json", "w")',
+    plots: "from IPython.display import SVG, display",
+    run: "!mcmc run model.toml --chains {CHAINS} --draws {DRAWS} --warmup {WARMUP}{seed_flag}",
+    noSeed: "SEED = None",
+    // A Python raw string keeps every character.
+    readBack: (block: string) => block,
+  },
+  juliabugs: {
+    kernel: "julia",
+    language: "julia",
+    open: `GRAPH = raw${JL}\n`,
+    close: `\n${JL}`,
+    writes: 'write("model.json", GRAPH)',
+    plots: 'display("image/svg+xml", read("$kind.svg", String))',
+    run: "run(ignorestatus(`mcmc run model.toml --chains $CHAINS --draws $DRAWS --warmup $WARMUP $seed`))",
+    noSeed: "SEED = nothing",
+    // A Julia raw string halves a run of backslashes in front of a quote.
+    readBack: (block: string) =>
+      block.replace(/\\+(?=")/g, (run) => run.slice(0, Math.floor(run.length / 2))),
+  },
+} as const;
+
+/** The text between a notebook's graph slot delimiters. */
+const embedded = (text: string, k: (typeof KERNEL)[keyof typeof KERNEL]) => {
+  const start = text.indexOf(k.open);
+  expect(start, "graph slot").toBeGreaterThanOrEqual(0);
+  const from = start + k.open.length;
+  return text.slice(from, text.indexOf(k.close, from));
+};
+
 describe("generateNotebook", () => {
   for (const target of ["juliabugs", "stan"] as const) {
     describe(target, () => {
+      const k = KERNEL[target];
       const nb = parse(input({ target }));
       const text = sourceOf(nb);
 
-      it("is a valid nbformat 4 document on the Python kernel", () => {
+      it("is a valid nbformat 4 document on the kernel Colab runs it with", () => {
         expect(nb.nbformat).toBe(4);
-        // Colab gives a Python runtime; both targets have to work on it.
-        expect(nb.metadata.kernelspec.name).toBe("python3");
-        expect(nb.metadata.language_info.name).toBe("python");
+        // Colab opens its Julia runtime only for a kernelspec named exactly `julia`.
+        expect(nb.metadata.kernelspec.name).toBe(k.kernel);
+        expect(nb.metadata.language_info.name).toBe(k.language);
         expect(nb.cells.length).toBeGreaterThan(6);
       });
 
@@ -80,7 +122,11 @@ describe("generateNotebook", () => {
         expect(nb.cells[0].source.join("")).toContain("Rats: growth");
         // The graph document itself, not pre-generated model code.
         expect(text).toContain('"nodeType": "stochastic"');
-        expect(text).toContain('with open("model.json", "w")');
+        expect(text).toContain(k.writes);
+      });
+
+      it("embeds the graph as Copy graph copies it for this backend", () => {
+        expect(embedded(text, k)).toBe(graphJsonForNotebook(GRAPH, target));
       });
 
       it("installs the CLI without needing Node, and the right toolchain", () => {
@@ -98,9 +144,63 @@ describe("generateNotebook", () => {
       });
 
       it("draws plots inline and links the report app", () => {
-        expect(text).toContain("from IPython.display import SVG, display");
+        expect(text).toContain(k.plots);
         for (const kind of ["trace", "density", "forest", "rank"]) expect(text).toContain(kind);
         expect(text).toContain("https://mcmcjs.github.io/report/");
+      });
+
+      // What the kernel reads back from the graph slot must be byte-for-byte
+      // the JSON that went in. Getting this wrong is silent in the notebook
+      // file and only fails when a cell runs, so it is checked directly.
+      it("the embedded graph parses back as the graph that went in", () => {
+        expect(JSON.parse(k.readBack(embedded(text, k)))).toEqual(
+          JSON.parse(JSON.stringify(GRAPH)),
+        );
+      });
+
+      it("a graph carrying quotes, newlines and backslashes survives the round trip", () => {
+        const graph: UnifiedModelData = {
+          ...GRAPH,
+          // Every character that has broken this: a triple quote of either kind
+          // (would close a block), and JSON escapes an interpreted string eats.
+          name: `odd ${PY} and ${JL} name`,
+          dataContent: JSON.stringify({ data: { note: 'a \\ backslash, a "quote", a\nnewline' } }),
+        };
+        const block = embedded(sourceOf(parse(input({ target, graph }))), k);
+        expect(block).not.toContain(k.close.trim());
+        const back = JSON.parse(k.readBack(block)) as UnifiedModelData;
+        expect(back.name).toBe(graph.name);
+        // The inner JSON is still parseable, which is what the notebook relies on.
+        expect(JSON.parse(back.dataContent as string)).toEqual({
+          data: { note: 'a \\ backslash, a "quote", a\nnewline' },
+        });
+      });
+
+      it("a template is an empty paste slot that refuses to run empty", () => {
+        const template = sourceOf(parse(input({ target, graph: undefined })));
+        expect(template).toContain(`${k.open}\n${k.close.slice(1)}`);
+        expect(template).toContain("Paste your graph above");
+        // A template carries no model of its own, and does not claim one.
+        expect(template).not.toContain("# Rats: growth");
+        expect(template).not.toContain("nodeType");
+      });
+
+      it("the settings the notebook opens with drive the run", () => {
+        expect(text).toContain("CHAINS = 2");
+        expect(text).toContain("DRAWS = 500");
+        expect(text).toContain("WARMUP = 250");
+        expect(text).toContain("SEED = 42");
+        // The run reads the variables rather than baking the numbers in again.
+        expect(text).toContain(k.run);
+      });
+
+      it("no seed is the language's empty value, which the run turns into no flag", () => {
+        const noSeed = sourceOf(
+          parse(
+            input({ target, settings: { n_samples: 10, n_adapts: 5, n_chains: 1, seed: null } }),
+          ),
+        );
+        expect(noSeed).toContain(k.noSeed);
       });
     });
   }
@@ -108,41 +208,6 @@ describe("generateNotebook", () => {
   it("converts to Stan only for the Stan target", () => {
     expect(sourceOf(parse(input({ target: "stan" })))).toContain("mcmc convert model.json --stan");
     expect(sourceOf(parse(input()))).not.toContain("--stan");
-  });
-
-  // The embedded graph is a Python raw string, so what Python reads back must
-  // be byte-for-byte the JSON that went in. Getting this wrong is silent in the
-  // notebook file and only fails when a cell runs, so it is checked directly.
-  const embedded = (text: string, name: "GRAPH") => {
-    const quote = "'".repeat(3);
-    const start = text.indexOf(`${name} = r${quote}\n`);
-    expect(start, `${name} raw block`).toBeGreaterThanOrEqual(0);
-    const from = start + `${name} = r${quote}\n`.length;
-    return text.slice(from, text.indexOf(`\n${quote}`, from));
-  };
-
-  it("the embedded graph parses back as the graph that went in", () => {
-    const text = sourceOf(parse(input()));
-    expect(JSON.parse(embedded(text, "GRAPH"))).toEqual(JSON.parse(JSON.stringify(GRAPH)));
-  });
-
-  it("a graph carrying quotes, newlines and backslashes survives the round trip", () => {
-    const quote = "'".repeat(3);
-    const graph: UnifiedModelData = {
-      ...GRAPH,
-      // Every character that has broken this: a triple quote (would close the
-      // block), and JSON escapes that an interpreted string would eat.
-      name: `odd ${quote} name`,
-      dataContent: JSON.stringify({ data: { note: 'a \\ backslash, a "quote", a\nnewline' } }),
-    };
-    const text = sourceOf(parse(input({ graph })));
-    expect(text).not.toContain(`"name": "odd ${quote}`);
-    const back = JSON.parse(embedded(text, "GRAPH")) as UnifiedModelData;
-    expect(back.name).toBe(graph.name);
-    // The inner JSON is still parseable, which is what the notebook relies on.
-    expect(JSON.parse(back.dataContent as string)).toEqual({
-      data: { note: 'a \\ backslash, a "quote", a\nnewline' },
-    });
   });
 
   it("graphJsonForPython emits JSON with no single quote to close a raw block", () => {
@@ -155,40 +220,10 @@ describe("generateNotebook", () => {
     expect(() => generateNotebook(input({ graph: { name: "empty", elements: [] } }))).not.toThrow();
   });
 
-  it("a template is an empty paste slot that refuses to run empty", () => {
-    const quote = "'".repeat(3);
-    const text = sourceOf(parse(input({ graph: undefined })));
-    expect(text).toContain(`GRAPH = r${quote}\n\n${quote}`);
-    expect(text).toContain("Paste your graph above");
-    // A template carries no model of its own, and does not claim one.
-    expect(text).not.toContain("# Rats: growth");
-    expect(text).not.toContain("nodeType");
-  });
-
-  it("the settings the notebook opens with drive the run", () => {
-    const text = sourceOf(parse(input()));
-    expect(text).toContain("CHAINS = 2");
-    expect(text).toContain("DRAWS = 500");
-    expect(text).toContain("WARMUP = 250");
-    expect(text).toContain("SEED = 42");
-    // The run reads the variables rather than baking the numbers in again.
-    expect(text).toContain(
-      "!mcmc run model.toml --chains {CHAINS} --draws {DRAWS} --warmup {WARMUP}{seed_flag}",
-    );
-  });
-
   it("opens with four chains and a seed when given no settings", () => {
     const text = sourceOf(parse(input({ settings: undefined })));
     expect(text).toContain("CHAINS = 4");
     expect(text).toContain("SEED = 42");
-  });
-
-  it("no seed becomes None, which the run turns into no flag", () => {
-    const text = sourceOf(
-      parse(input({ settings: { n_samples: 10, n_adapts: 5, n_chains: 1, seed: null } })),
-    );
-    expect(text).toContain("SEED = None");
-    expect(text).toContain('f" --seed {SEED}" if SEED is not None else ""');
   });
 });
 

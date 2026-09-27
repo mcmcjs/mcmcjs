@@ -1,12 +1,13 @@
 // A runnable Jupyter notebook for a graph, in the flavour Google Colab opens.
 //
 // The notebook's input is the graph document and every step is the mcmc CLI:
-// convert, run, summary, diagnose, plot, export. That is one code path for both
-// backends, and the same workflow the CLI gives you locally, so the notebook
-// cannot drift from the tool it demonstrates.
+// convert, run, summary, diagnose, plot, export. That is one workflow for both
+// backends, and the same one the CLI gives you locally, so the notebook cannot
+// drift from the tool it demonstrates.
 //
-// Cells run on the Python kernel, which is what Colab provides; the CLI is a
-// self-contained binary, so nothing needs Node.
+// A Stan notebook runs on the Python kernel and a JuliaBUGS one on the Julia
+// kernel, both runtimes Colab provides. The CLI is a self-contained binary, so
+// neither needs Node.
 
 import type { UnifiedModelData } from "../core/types";
 
@@ -66,8 +67,6 @@ const code = (text: string): Cell => ({
   source: lines(text),
 });
 
-const QUOTE = "'".repeat(3);
-
 /**
  * A graph as JSON that is safe inside a Python raw triple-quoted string.
  *
@@ -81,6 +80,23 @@ export function graphJsonForPython(graph: unknown): string {
   return JSON.stringify(graph, null, 2).replace(/'/g, "\\u0027");
 }
 
+/**
+ * A graph as JSON that is safe inside a Julia `raw"""..."""` string.
+ *
+ * A raw string keeps every character except that it halves a run of
+ * backslashes in front of a quote, which would turn the JSON's `\"` into `"`.
+ * Doubling each such run undoes that. JSON never has three quotes in a row, so
+ * nothing inside can close the block.
+ */
+export function graphJsonForJulia(graph: unknown): string {
+  return JSON.stringify(graph, null, 2).replace(/\\+(?=")/g, (run) => run + run);
+}
+
+/** The graph as the notebook for `target` embeds it, and so as Copy graph copies it. */
+export function graphJsonForNotebook(graph: unknown, target: NotebookTarget): string {
+  return target === "stan" ? graphJsonForPython(graph) : graphJsonForJulia(graph);
+}
+
 /** A slug safe as a filename, e.g. "Rats: growth" -> "rats_growth". */
 export function notebookFilename(name: string, target: NotebookTarget): string {
   const slug =
@@ -92,58 +108,145 @@ export function notebookFilename(name: string, target: NotebookTarget): string {
 }
 
 const LABEL: Record<NotebookTarget, string> = { juliabugs: "JuliaBUGS", stan: "Stan" };
-const ENGINE: Record<NotebookTarget, string> = { juliabugs: "julia", stan: "stan" };
 
 /** The plots the notebook draws, covering both convergence and shape. */
 const PLOT_KINDS = ["trace", "density", "forest", "rank"];
 
-function modelCells(input: NotebookInput): Cell[] {
-  if (input.graph) {
-    return [
-      markdown(
-        "## Model\n\nThe graph as it was drawn, with its data and initial values.\n\n" +
-          "To fit a different one, press **Copy graph** in the editor's Run tab and replace the " +
-          "JSON below.",
-      ),
-      code(
-        `GRAPH = r${QUOTE}\n${graphJsonForPython(input.graph)}\n${QUOTE}\n` +
-          "\n" +
-          "import json\n" +
-          "\n" +
-          'with open("model.json", "w") as f:\n' +
-          "    f.write(GRAPH)\n" +
-          "\n" +
-          'print("model:", json.loads(GRAPH)["name"])',
-      ),
-    ];
-  }
-  return [
-    markdown(
-      "## Model\n\nIn the editor, open the **Run** tab and press **Copy graph**.\n" +
-        "Paste it between the quotes below, then run every cell in order.",
-    ),
-    code(
-      `GRAPH = r${QUOTE}\n\n${QUOTE}\n` +
-        "\n" +
-        "import json\n" +
-        "\n" +
-        "if not GRAPH.strip():\n" +
+/** The code cells, in the language of the kernel the notebook runs on. */
+interface KernelCode {
+  metadata: Record<string, unknown>;
+  /** The cell that writes the embedded or pasted graph to model.json. */
+  model: (graph: string | undefined) => string;
+  settings: (s: NotebookSettings) => string;
+  install: string;
+  setup: string;
+  convert: string;
+  fit: string;
+  check: string;
+  plots: string;
+  bundle: string;
+  /** How to get the bundle out of Colab once it is written. */
+  download: string;
+}
+
+const PYTHON_QUOTE = "'".repeat(3);
+
+const PYTHON: KernelCode = {
+  metadata: {
+    kernelspec: { display_name: "Python 3", language: "python", name: "python3" },
+    language_info: { name: "python" },
+  },
+  model: (graph) =>
+    `GRAPH = r${PYTHON_QUOTE}\n${graph ?? ""}\n${PYTHON_QUOTE}\n` +
+    "\n" +
+    "import json\n" +
+    "\n" +
+    (graph === undefined
+      ? "if not GRAPH.strip():\n" +
         '    raise SystemExit("Paste your graph above, then run this cell again.")\n' +
-        "\n" +
-        'with open("model.json", "w") as f:\n' +
-        "    f.write(GRAPH)\n" +
-        "\n" +
-        'print("model:", json.loads(GRAPH)["name"])',
-    ),
-  ];
+        "\n"
+      : "") +
+    'with open("model.json", "w") as f:\n' +
+    "    f.write(GRAPH)\n" +
+    "\n" +
+    'print("model:", json.loads(GRAPH)["name"])',
+  settings: (s) =>
+    `CHAINS = ${s.n_chains}\n` +
+    `DRAWS = ${s.n_samples}\n` +
+    `WARMUP = ${s.n_adapts}\n` +
+    `SEED = ${s.seed === undefined || s.seed === null ? "None" : s.seed}`,
+  install:
+    "!curl -fsSL https://mcmcjs.github.io/install.sh | sh\n" +
+    "\n" +
+    "import os\n" +
+    "\n" +
+    'os.environ["PATH"] = os.path.expanduser("~/.local/bin") + ":" + os.environ["PATH"]\n' +
+    "!mcmc --version",
+  setup: "!mcmc setup --engine stan",
+  convert: "!mcmc convert model.json --stan\n!cat model.stan",
+  fit:
+    'seed_flag = f" --seed {SEED}" if SEED is not None else ""\n' +
+    "\n" +
+    "!mcmc run model.toml --chains {CHAINS} --draws {DRAWS} --warmup {WARMUP}{seed_flag}",
+  check: "!mcmc summary\n!mcmc diagnose",
+  plots:
+    "from IPython.display import SVG, display\n" +
+    "\n" +
+    `for kind in ${JSON.stringify(PLOT_KINDS)}:\n` +
+    "    !mcmc plot --kind {kind} --format svg -o {kind}.svg\n" +
+    "    print(kind)\n" +
+    '    display(SVG(f"{kind}.svg"))',
+  bundle:
+    "!mcmc export bundle -o run.mcmcrun.json\n" +
+    "\n" +
+    "from google.colab import files  # Colab only\n" +
+    "\n" +
+    'files.download("run.mcmcrun.json")',
+  download: "Download it",
+};
+
+// Colab opens its Julia runtime only for a kernelspec named exactly `julia`, and
+// a versioned name such as `julia-1.12` falls back to Python.
+const JULIA: KernelCode = {
+  metadata: {
+    kernelspec: { display_name: "Julia", language: "julia", name: "julia" },
+    language_info: { name: "julia", file_extension: ".jl", mimetype: "application/julia" },
+  },
+  model: (graph) =>
+    `GRAPH = raw"""\n${graph ?? ""}\n"""\n` +
+    "\n" +
+    (graph === undefined
+      ? 'isempty(strip(GRAPH)) && error("Paste your graph above, then run this cell again.")\n\n'
+      : "") +
+    'write("model.json", GRAPH)\n' +
+    "\n" +
+    'name = match(r"\\"name\\": \\"(.*?)\\"", GRAPH)\n' +
+    'println("model: ", name === nothing ? "unnamed" : name[1])',
+  settings: (s) =>
+    `CHAINS = ${s.n_chains}\n` +
+    `DRAWS = ${s.n_samples}\n` +
+    `WARMUP = ${s.n_adapts}\n` +
+    `SEED = ${s.seed === undefined || s.seed === null ? "nothing" : s.seed}`,
+  install:
+    "run(pipeline(`curl -fsSL https://mcmcjs.github.io/install.sh`, `sh`))\n" +
+    "\n" +
+    'ENV["PATH"] = joinpath(homedir(), ".local", "bin") * ":" * ENV["PATH"]\n' +
+    "run(`mcmc --version`);",
+  setup: "run(`mcmc setup --engine julia`);",
+  convert: 'run(`mcmc convert model.json`)\nprint(read("model.jl", String))',
+  fit:
+    'seed = SEED === nothing ? String[] : ["--seed", string(SEED)]\n' +
+    "\n" +
+    "# A run that did not converge exits 2, which the next cells report on rather than stop at.\n" +
+    "run(ignorestatus(`mcmc run model.toml --chains $CHAINS --draws $DRAWS --warmup $WARMUP $seed`));",
+  check: "run(`mcmc summary`)\nrun(ignorestatus(`mcmc diagnose`));",
+  plots:
+    `for kind in ${JSON.stringify(PLOT_KINDS)}\n` +
+    "    run(`mcmc plot --kind $kind --format svg -o $kind.svg`)\n" +
+    "    println(kind)\n" +
+    '    display("image/svg+xml", read("$kind.svg", String))\n' +
+    "end",
+  bundle: "run(`mcmc export bundle -o run.mcmcrun.json`);",
+  download: "Download it from the Files panel on the left",
+};
+
+const KERNEL: Record<NotebookTarget, KernelCode> = { stan: PYTHON, juliabugs: JULIA };
+
+function modelMarkdown(embedded: boolean): string {
+  return embedded
+    ? "## Model\n\nThe graph as it was drawn, with its data and initial values.\n\n" +
+        "To fit a different one, press **Copy graph** in the editor's Run tab and replace the " +
+        "JSON below."
+    : "## Model\n\nIn the editor, open the **Run** tab and press **Copy graph**.\n" +
+        "Paste it between the quotes below, then run every cell in order.";
 }
 
 export function generateNotebook(input: NotebookInput): string {
   const { target, name } = input;
   const settings = { ...DEFAULTS, ...input.settings };
   const label = LABEL[target];
-  const convertFlag = target === "stan" ? " --stan" : "";
-  const modelFile = target === "stan" ? "model.stan" : "model.jl";
+  const kernel = KERNEL[target];
+  const graph = input.graph ? graphJsonForNotebook(input.graph, target) : undefined;
 
   const cells: Cell[] = [
     markdown(
@@ -154,83 +257,51 @@ export function generateNotebook(input: NotebookInput): string {
         "packages the run so it can be opened in the report app.",
     ),
 
-    ...modelCells(input),
+    markdown(modelMarkdown(input.graph !== undefined)),
+    code(kernel.model(graph)),
 
     markdown("## Settings\n\nChange these and run again from here."),
-    code(
-      `CHAINS = ${settings.n_chains}\n` +
-        `DRAWS = ${settings.n_samples}\n` +
-        `WARMUP = ${settings.n_adapts}\n` +
-        `SEED = ${settings.seed === undefined || settings.seed === null ? "None" : settings.seed}`,
-    ),
+    code(kernel.settings(settings)),
 
     markdown(
       `## Install\n\n\`mcmc\` is a self-contained binary. \`mcmc setup\` then installs the ` +
         `${label} toolchain, which takes a few minutes on a fresh Colab runtime.`,
     ),
-    code(
-      "!curl -fsSL https://mcmcjs.github.io/install.sh | sh\n" +
-        "\n" +
-        "import os\n" +
-        "\n" +
-        'os.environ["PATH"] = os.path.expanduser("~/.local/bin") + ":" + os.environ["PATH"]\n' +
-        "!mcmc --version",
-    ),
-    code(`!mcmc setup --engine ${ENGINE[target]}`),
+    code(kernel.install),
+    code(kernel.setup),
 
     markdown(`## The ${label} model\n\nWhat the graph becomes as code, and the spec that runs it.`),
-    code(`!mcmc convert model.json${convertFlag}\n!cat ${modelFile}`),
+    code(kernel.convert),
 
     markdown("## Fit\n\n`mcmc run` samples, checks convergence, and records the run."),
-    code(
-      'seed_flag = f" --seed {SEED}" if SEED is not None else ""\n' +
-        "\n" +
-        "!mcmc run model.toml --chains {CHAINS} --draws {DRAWS} --warmup {WARMUP}{seed_flag}",
-    ),
+    code(kernel.fit),
 
     markdown(
       "## Did it converge?\n\n" +
         "R-hat near 1 and a healthy effective sample size for every parameter. " +
         "`mcmc diagnose` exits non-zero when it did not, so read this before the posterior.",
     ),
-    code("!mcmc summary\n!mcmc diagnose"),
+    code(kernel.check),
 
     markdown(
       "## Plots\n\n" +
         "Traces and ranks show the chains mixing, densities and the forest plot show the " +
         "posterior itself.",
     ),
-    code(
-      "from IPython.display import SVG, display\n" +
-        "\n" +
-        `for kind in ${JSON.stringify(PLOT_KINDS)}:\n` +
-        "    !mcmc plot --kind {kind} --format svg -o {kind}.svg\n" +
-        "    print(kind)\n" +
-        '    display(SVG(f"{kind}.svg"))',
-    ),
+    code(kernel.plots),
 
     markdown(
       "## Open the run in the report app\n\n" +
         "A run bundle holds the samples, the spec and the diagnostics in one file. " +
-        "Download it and drop it into [the report app](https://mcmcjs.github.io/report/) to " +
-        "explore every parameter.",
+        `${kernel.download} and drop it into [the report app](https://mcmcjs.github.io/report/) ` +
+        "to explore every parameter.",
     ),
-    code(
-      "!mcmc export bundle -o run.mcmcrun.json\n" +
-        "\n" +
-        "from google.colab import files  # Colab only\n" +
-        "\n" +
-        'files.download("run.mcmcrun.json")',
-    ),
+    code(kernel.bundle),
   ];
 
   const notebook = {
     cells,
-    metadata: {
-      kernelspec: { display_name: "Python 3", language: "python", name: "python3" },
-      language_info: { name: "python" },
-      colab: { provenance: [], name },
-    },
+    metadata: { ...kernel.metadata, colab: { provenance: [], name } },
     nbformat: 4,
     nbformat_minor: 5,
   };
