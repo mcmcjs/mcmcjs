@@ -1,5 +1,11 @@
 # @mcmcjs/doodleppl
 
+## 0.9.0
+
+### Minor Changes
+
+- 9355f12: Add `@mcmcjs/doodleppl/notebook`: `generateNotebook` turns a graph into a runnable Jupyter notebook for Stan on the Python kernel or JuliaBUGS on the Julia kernel, the two runtimes Colab provides.
+
 ## 0.8.0
 
 ### Minor Changes

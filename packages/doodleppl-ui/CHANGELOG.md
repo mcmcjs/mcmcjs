@@ -1,5 +1,16 @@
 # doodleppl
 
+## 0.12.0
+
+### Minor Changes
+
+- 9355f12: Replace the Script tab with Code and Run: the model code is rendered by one component shared with the floating panel, the Run tab offers a Jupyter notebook with an Open in Colab link, and every artifact is derived from the graph instead of generated on a button press and cached.
+
+### Patch Changes
+
+- Updated dependencies [9355f12]
+  - @mcmcjs/doodleppl@0.9.0
+
 ## 0.11.0
 
 ### Minor Changes
