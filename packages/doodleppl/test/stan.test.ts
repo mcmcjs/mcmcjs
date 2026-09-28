@@ -97,3 +97,104 @@ describe("generateStanModel", () => {
     expect(code).toContain("// ERROR: 'dgev' has no Stan equivalent");
   });
 });
+
+// Stan runs a block's assignments in order, so a plate loop that reads a
+// top-level deterministic node has to come after that node's assignment.
+describe("a top-level deterministic node read inside a plate is assigned before the loop", () => {
+  const node = (n: Partial<GraphElement> & { id: string }): GraphElement =>
+    ({ type: "node", name: n.id, ...n }) as GraphElement;
+  const inPlate = (n: Partial<GraphElement> & { id: string }) =>
+    node({ parent: "plate_i", indices: "i", ...n });
+  const edge = (source: string, target: string): GraphElement =>
+    ({ id: `${source}_${target}`, type: "edge", source, target }) as GraphElement;
+  // Listed first and with no edges of its own, which is what used to sort the loop first.
+  const plate = node({ id: "plate_i", nodeType: "plate", loopVariable: "i", loopRange: "1:N" });
+
+  const block = (code: string, name: string): string => {
+    const start = code.indexOf(`${name} {`);
+    expect(start, `${name} block`).toBeGreaterThanOrEqual(0);
+    return code.slice(start, code.indexOf("\n}", start));
+  };
+  const expectAssignedBeforeLoop = (text: string, name: string) => {
+    const assignment = text.indexOf(`${name} = `);
+    expect(assignment, `${name} is assigned`).toBeGreaterThanOrEqual(0);
+    expect(assignment).toBeLessThan(text.indexOf("for (i in 1:N)"));
+  };
+
+  it("in transformed parameters", () => {
+    const code = generateStanModel([
+      plate,
+      node({ id: "tau", nodeType: "stochastic", distribution: "dgamma", param1: "1", param2: "1" }),
+      node({ id: "sigma", nodeType: "deterministic", equation: "1 / sqrt(tau)" }),
+      inPlate({ id: "z", nodeType: "stochastic", distribution: "dnorm", param1: "0", param2: "1" }),
+      inPlate({ id: "b", nodeType: "deterministic", equation: "sigma * z[i]" }),
+      inPlate({
+        id: "y",
+        nodeType: "observed",
+        observed: true,
+        distribution: "dnorm",
+        param1: "b[i]",
+        param2: "1",
+      }),
+      edge("tau", "sigma"),
+      edge("sigma", "b"),
+      edge("z", "b"),
+      edge("b", "y"),
+    ]);
+    expectAssignedBeforeLoop(block(code, "transformed parameters"), "sigma");
+  });
+
+  it("in transformed data", () => {
+    const code = generateStanModel([
+      plate,
+      node({ id: "c", nodeType: "constant" }),
+      node({ id: "scale", nodeType: "deterministic", equation: "2 * c" }),
+      inPlate({ id: "x", nodeType: "constant" }),
+      inPlate({ id: "w", nodeType: "deterministic", equation: "scale * x[i]" }),
+      node({
+        id: "theta",
+        nodeType: "stochastic",
+        distribution: "dnorm",
+        param1: "0",
+        param2: "1",
+      }),
+      inPlate({
+        id: "y",
+        nodeType: "observed",
+        observed: true,
+        distribution: "dnorm",
+        param1: "theta * w[i]",
+        param2: "1",
+      }),
+      edge("c", "scale"),
+      edge("scale", "w"),
+      edge("x", "w"),
+      edge("w", "y"),
+      edge("theta", "y"),
+    ]);
+    expectAssignedBeforeLoop(block(code, "transformed data"), "scale");
+  });
+
+  it("in generated quantities", () => {
+    const code = generateStanModel([
+      plate,
+      node({ id: "tau", nodeType: "stochastic", distribution: "dgamma", param1: "1", param2: "1" }),
+      node({ id: "sigma", nodeType: "deterministic", equation: "1 / sqrt(tau)" }),
+      inPlate({ id: "z", nodeType: "stochastic", distribution: "dnorm", param1: "0", param2: "1" }),
+      inPlate({ id: "pred", nodeType: "deterministic", equation: "sigma * z[i]" }),
+      inPlate({
+        id: "y",
+        nodeType: "observed",
+        observed: true,
+        distribution: "dnorm",
+        param1: "z[i]",
+        param2: "1",
+      }),
+      edge("tau", "sigma"),
+      edge("sigma", "pred"),
+      edge("z", "pred"),
+      edge("z", "y"),
+    ]);
+    expectAssignedBeforeLoop(block(code, "generated quantities"), "sigma");
+  });
+});
