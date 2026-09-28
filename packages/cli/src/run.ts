@@ -618,6 +618,24 @@ export function refitReasons(prev: LedgerEntry, next: RunInputs, seedPinned: boo
   return reasons;
 }
 
+/** The key a run is stored under: a later run with the same key reuses it instead of sampling. */
+export function runKeyFor(
+  spec: Spec,
+  inputs: RunInputs,
+  pins: Record<string, string> | undefined,
+): string {
+  return computeRunKey({
+    backend: { id: spec.backend.id, version: inputs.channel },
+    model_sha256: inputs.model_sha256,
+    entry: spec.model.entry,
+    evaluation_mode: spec.model.evaluation_mode,
+    monitor: spec.model.monitor,
+    sampler: spec.sampler,
+    data_sha256: inputs.data_sha256,
+    packages: pins,
+  });
+}
+
 function fitBanner(config: RunConfig, runtimeLabel: string): string {
   const s = config.spec.sampler;
   const backend = backendLabel(config.spec.backend.id);
@@ -781,14 +799,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
         channel: config.channel,
         seed: config.spec.seed,
       };
-      const runKey = computeRunKey({
-        backend: { id: config.spec.backend.id, version: config.channel },
-        model_sha256: inputs.model_sha256,
-        entry: config.spec.model.entry,
-        sampler: config.spec.sampler,
-        data_sha256: inputs.data_sha256,
-        packages: pins,
-      });
+      const runKey = runKeyFor(config.spec, inputs, pins);
       const seedPinned = opts.seed !== undefined || config.specSource !== "defaults";
       const modelRel = relative(dirname(storeDir), config.modelPath).split(sep).join("/");
 
