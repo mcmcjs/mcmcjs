@@ -26,13 +26,13 @@ import { createFitRunner, type EngineContext } from "@mcmcjs/engine";
 import {
   ensureProject,
   managedProjectDir,
-  resolveVersion,
+  resolveJulia,
   runLogLik,
   validatePins,
 } from "@mcmcjs/julia";
 import type { Command } from "commander";
 import pc from "picocolors";
-import { installRunner, juliaupBin } from "./julia";
+import { installRunner } from "./julia";
 import { locateStore } from "./store-cli";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
@@ -117,8 +117,7 @@ export async function ensureLogLik(
   validatePins(spec.backend.packages);
   spec.data = resolveData(spec.data, spec.dataFilePath).data;
   const channel = spec.backend.version;
-  const bin = await juliaupBin(ctx);
-  const resolved = await resolveVersion(bin, channel, ctx.run);
+  const resolved = await resolveJulia(channel, ctx.run);
   const pins = spec.backend.packages;
   const projectDir = managedProjectDir(resolved.version, pins);
   await ensureProject(

@@ -1,5 +1,17 @@
 # @mcmcjs/julia
 
+## 0.21.0
+
+### Minor Changes
+
+- 82414f6: Add `resolveJulia`, which resolves a channel through juliaup when it is installed and otherwise to the `julia` on PATH when that is exactly the version asked for.
+
+## 0.20.0
+
+### Minor Changes
+
+- 31b3add: JuliaBUGS fits with no evaluation mode or AD backend set pick the fastest gradient whose value at the start matches finite differences, the generated log density under Mooncake for most models and ForwardDiff or Mooncake for marginalized ones, compile from the spec's starting values, and redraw uninitialized parameters uniformly in unconstrained space when the start is not finite.
+
 ## 0.19.0
 
 ### Minor Changes

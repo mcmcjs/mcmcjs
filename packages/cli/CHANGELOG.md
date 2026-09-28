@@ -1,5 +1,20 @@
 # mcmcjs
 
+## 0.36.2
+
+### Patch Changes
+
+- 82414f6: Fits run on a Julia installed without juliaup, such as Colab's Julia runtime, when it is the pinned version, instead of failing with "juliaup not found" after `mcmc setup` reported the toolchain ready.
+- Updated dependencies [82414f6]
+  - @mcmcjs/julia@0.21.0
+
+## 0.36.1
+
+### Patch Changes
+
+- Updated dependencies [31b3add]
+  - @mcmcjs/julia@0.20.0
+
 ## 0.36.0
 
 ### Minor Changes

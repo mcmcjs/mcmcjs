@@ -1,4 +1,5 @@
 import type { CommandRunner, RuntimeVersion } from "@mcmcjs/engine";
+import { detectJulia, detectJuliaup } from "./environment";
 
 interface ChannelInfo {
   Name: string;
@@ -112,6 +113,24 @@ export async function resolveVersion(
     );
   }
   return { command: match.File, args: match.Args ?? [], version: match.Version };
+}
+
+/**
+ * Resolves a channel to the Julia that runs it: through juliaup when it is installed, and
+ * otherwise the `julia` on PATH when that is exactly the version asked for, as on a machine
+ * or notebook runtime that ships Julia without juliaup.
+ */
+export async function resolveJulia(
+  channel: string,
+  run: CommandRunner,
+): Promise<{ command: string; args: string[]; version?: string }> {
+  const juliaup = await detectJuliaup(run);
+  if (juliaup.found && juliaup.path) return resolveVersion(juliaup.path, channel, run);
+  const julia = await detectJulia(run);
+  if (julia.found && julia.path && julia.version === channel) {
+    return { command: julia.path, args: [], version: julia.version };
+  }
+  throw new Error("juliaup not found. Run `mcmc setup` to install the Julia toolchain.");
 }
 
 /** Throws with an actionable message if any requested channel is not installed. */

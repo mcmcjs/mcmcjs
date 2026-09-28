@@ -34,6 +34,7 @@ export {
   gcVersions,
   listVersions,
   removeVersion,
+  resolveJulia,
   resolveVersion,
   setDefaultVersion,
   updateVersion,
