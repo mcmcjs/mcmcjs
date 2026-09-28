@@ -35,3 +35,34 @@ export function buildTopologicalOrder(nodes: GraphNode[], edges: GraphEdge[]): s
   }
   return sorted;
 }
+
+/**
+ * A topological order for emitting statements, in which each plate stands for
+ * everything inside it, nested plates included: a plate sorts after the nodes
+ * its members read and before the nodes that read them. An edge constrains the
+ * two siblings, children of the same plate or of the top level, that its ends
+ * belong to. A returned array shorter than `nodes` means two siblings depend on
+ * each other, which no single pass over a plate can honour.
+ */
+export function buildPlateAwareOrder(nodes: GraphNode[], edges: GraphEdge[]): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  // The plates around a node, outermost first, then the node itself.
+  const nesting = (id: string): string[] => {
+    const chain: string[] = [];
+    for (let n = byId.get(id); n; n = n.parent ? byId.get(n.parent) : undefined) {
+      chain.unshift(n.id);
+    }
+    return chain;
+  };
+  const lifted: GraphEdge[] = [];
+  for (const edge of edges) {
+    const from = nesting(edge.source);
+    const to = nesting(edge.target);
+    let depth = 0;
+    while (depth < from.length && depth < to.length && from[depth] === to[depth]) depth++;
+    const source = from[depth];
+    const target = to[depth];
+    if (source !== undefined && target !== undefined) lifted.push({ ...edge, source, target });
+  }
+  return buildTopologicalOrder(nodes, lifted);
+}
