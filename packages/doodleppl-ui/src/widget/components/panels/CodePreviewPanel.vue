@@ -65,6 +65,7 @@ const toggleLanguage = () => {
 }
 
 const copySuccess = ref(false)
+let resizeObserver: ResizeObserver | null = null
 const editorContainer = ref<HTMLDivElement | null>(null)
 let cmInstance: Editor | null = null
 
@@ -84,9 +85,17 @@ onMounted(() => {
       gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter'],
     })
 
-    if (props.isActive) {
-      nextTick(() => cmInstance?.refresh())
-    }
+    // The panel mounts with v-if, so CodeMirror is created before the floating
+    // panel has laid out. Measuring a zero-height container leaves it blank
+    // until something forces a redraw, so refresh once it actually has a size.
+    resizeObserver = new ResizeObserver(() => {
+      const box = editorContainer.value
+      if (cmInstance && box && box.clientWidth > 0 && box.clientHeight > 0) {
+        cmInstance.refresh()
+      }
+    })
+    resizeObserver.observe(editorContainer.value)
+    nextTick(() => cmInstance?.refresh())
   }
 })
 
@@ -97,6 +106,8 @@ watch(cmMode, (newMode) => {
 })
 
 onUnmounted(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
   if (cmInstance) {
     const editorElement = cmInstance.getWrapperElement()
     editorElement.parentNode?.removeChild(editorElement)
