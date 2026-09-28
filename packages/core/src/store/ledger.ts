@@ -31,7 +31,10 @@ export interface LedgerDiagnostics {
 
 export interface LedgerEntry {
   id: string;
-  /** Same-experiment key: backend + model + entry + sampler + data, seed excluded. */
+  /**
+   * Same-experiment key: backend + model + entry + evaluation mode + monitor +
+   * sampler + data, seed excluded.
+   */
   run_key: string;
   spec_hash: string;
   status: "ok" | "failed" | "cancelled";
