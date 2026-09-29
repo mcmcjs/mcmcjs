@@ -197,4 +197,84 @@ describe("a top-level deterministic node read inside a plate is assigned before 
     ]);
     expectAssignedBeforeLoop(block(code, "generated quantities"), "sigma");
   });
+
+  it("when it is the mean of data the plate holds", () => {
+    const code = generateStanModel([
+      plate,
+      inPlate({ id: "x", nodeType: "constant" }),
+      node({ id: "xbar", nodeType: "deterministic", equation: "mean(x[1:N])" }),
+      inPlate({ id: "xc", nodeType: "deterministic", equation: "x[i] - xbar" }),
+      node({
+        id: "alpha",
+        nodeType: "stochastic",
+        distribution: "dnorm",
+        param1: "0",
+        param2: "1",
+      }),
+      inPlate({
+        id: "y",
+        nodeType: "observed",
+        observed: true,
+        distribution: "dnorm",
+        param1: "alpha + xc[i]",
+        param2: "1",
+      }),
+      edge("x", "xbar"),
+      edge("x", "xc"),
+      edge("xbar", "xc"),
+      edge("xc", "y"),
+      edge("alpha", "y"),
+    ]);
+    expectAssignedBeforeLoop(block(code, "transformed data"), "xbar");
+  });
+
+  it("when it is the mean of parameters the plate holds", () => {
+    const code = generateStanModel([
+      plate,
+      inPlate({ id: "b", nodeType: "stochastic", distribution: "dnorm", param1: "0", param2: "1" }),
+      node({ id: "bbar", nodeType: "deterministic", equation: "mean(b[1:N])" }),
+      inPlate({ id: "bc", nodeType: "deterministic", equation: "b[i] - bbar" }),
+      inPlate({
+        id: "y",
+        nodeType: "observed",
+        observed: true,
+        distribution: "dnorm",
+        param1: "bc[i]",
+        param2: "1",
+      }),
+      edge("b", "bbar"),
+      edge("b", "bc"),
+      edge("bbar", "bc"),
+      edge("bc", "y"),
+    ]);
+    expectAssignedBeforeLoop(block(code, "transformed parameters"), "bbar");
+  });
+
+  it("while a mean of the loop's values that only the likelihood reads comes after it", () => {
+    const code = generateStanModel([
+      plate,
+      node({ id: "tau", nodeType: "stochastic", distribution: "dgamma", param1: "1", param2: "1" }),
+      node({ id: "sigma", nodeType: "deterministic", equation: "1 / sqrt(tau)" }),
+      inPlate({ id: "z", nodeType: "stochastic", distribution: "dnorm", param1: "0", param2: "1" }),
+      inPlate({ id: "m", nodeType: "deterministic", equation: "sigma * z[i]" }),
+      node({ id: "mbar", nodeType: "deterministic", equation: "mean(m[1:N])" }),
+      inPlate({
+        id: "y",
+        nodeType: "observed",
+        observed: true,
+        distribution: "dnorm",
+        param1: "m[i] - mbar",
+        param2: "1",
+      }),
+      edge("tau", "sigma"),
+      edge("sigma", "m"),
+      edge("z", "m"),
+      edge("m", "mbar"),
+      edge("m", "y"),
+      edge("mbar", "y"),
+    ]);
+    const text = block(code, "transformed parameters");
+    expectAssignedBeforeLoop(text, "sigma");
+    expect(text.indexOf("mbar = ")).toBeGreaterThan(text.indexOf("for (i in 1:N)"));
+  });
 });

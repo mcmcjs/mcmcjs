@@ -1617,14 +1617,19 @@ export function generateStanModel(
 
   // Assignments in a transformed block run in order, so a plate loop has to come
   // after every value its members read, which the plain order cannot see since
-  // a plate has no edges of its own. Siblings that depend on each other keep it.
-  const plateAwareOrder = buildPlateAwareOrder(nodes, edges);
-  const assignmentIndex =
-    plateAwareOrder.length === nodes.length
-      ? new Map(plateAwareOrder.map((id, i) => [id, i]))
-      : topoIndex;
-  const sortForAssignment = (a: GraphNode, b: GraphNode) =>
-    (assignmentIndex.get(a.id) ?? 0) - (assignmentIndex.get(b.id) ?? 0);
+  // a plate has no edges of its own. Each block is ordered by the edges between
+  // the values it assigns, and one whose siblings depend on each other keeps the
+  // plain order.
+  const assignmentIndexes = new Map<ReadonlySet<string> | undefined, Map<string, number>>();
+  const assignmentIndex = (assigned?: ReadonlySet<string>): Map<string, number> => {
+    let index = assignmentIndexes.get(assigned);
+    if (!index) {
+      const order = buildPlateAwareOrder(nodes, edges, assigned);
+      index = order.length === nodes.length ? new Map(order.map((id, i) => [id, i])) : topoIndex;
+      assignmentIndexes.set(assigned, index);
+    }
+    return index;
+  };
 
   const dataDeclarations: string[] = [];
   const parameterDeclarations: string[] = [];
@@ -1969,8 +1974,9 @@ export function generateStanModel(
   ): string[] => {
     const lines: string[] = [];
     // Sampling statements add to the target in any order, so the model block keeps the plain one.
+    const index = blockType === "transformed" ? assignmentIndex(detFilter) : topoIndex;
     const sorted = [...nodesToProcess].sort(
-      blockType === "transformed" ? sortForAssignment : sortByTopo,
+      (a, b) => (index.get(a.id) ?? 0) - (index.get(b.id) ?? 0),
     );
 
     for (const node of sorted) {
