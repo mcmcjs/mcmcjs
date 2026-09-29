@@ -6,6 +6,18 @@ import type { GraphEdge, GraphNode } from "./types";
  * `nodes` means the graph has a cycle (the nodes in a cycle are dropped).
  */
 export function buildTopologicalOrder(nodes: GraphNode[], edges: GraphEdge[]): string[] {
+  return kahn(nodes, edges);
+}
+
+/**
+ * Kahn's algorithm. Of the nodes ready at once, the one with the lowest `rank`
+ * goes first, or without `rank` the one listed first.
+ */
+function kahn(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  rank?: ReadonlyMap<string, number>,
+): string[] {
   const inDegree: Record<string, number> = {};
   const adjacency: Record<string, string[]> = {};
   for (const node of nodes) {
@@ -20,9 +32,11 @@ export function buildTopologicalOrder(nodes: GraphNode[], edges: GraphEdge[]): s
       inDegree[edge.target] = deg + 1;
     }
   }
+  const rankOf = (id: string) => rank?.get(id) ?? nodes.length;
   const queue = nodes.filter((n) => inDegree[n.id] === 0).map((n) => n.id);
   const sorted: string[] = [];
   while (queue.length > 0) {
+    if (rank) queue.sort((a, b) => rankOf(a) - rankOf(b));
     const id = queue.shift() as string;
     sorted.push(id);
     for (const child of adjacency[id] ?? []) {
@@ -41,10 +55,17 @@ export function buildTopologicalOrder(nodes: GraphNode[], edges: GraphEdge[]): s
  * everything inside it, nested plates included: a plate sorts after the nodes
  * its members read and before the nodes that read them. An edge constrains the
  * two siblings, children of the same plate or of the top level, that its ends
- * belong to. A returned array shorter than `nodes` means two siblings depend on
- * each other, which no single pass over a plate can honour.
+ * belong to. With `assigned`, only edges between the nodes it names count, since
+ * any other value is ready before those statements run. Where no edge decides,
+ * nodes keep their plain topological order. A returned array shorter than
+ * `nodes` means two siblings depend on each other, which no single pass over a
+ * plate can honour.
  */
-export function buildPlateAwareOrder(nodes: GraphNode[], edges: GraphEdge[]): string[] {
+export function buildPlateAwareOrder(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  assigned?: ReadonlySet<string>,
+): string[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   // The plates around a node, outermost first, then the node itself.
   const nesting = (id: string): string[] => {
@@ -56,6 +77,7 @@ export function buildPlateAwareOrder(nodes: GraphNode[], edges: GraphEdge[]): st
   };
   const lifted: GraphEdge[] = [];
   for (const edge of edges) {
+    if (assigned && !(assigned.has(edge.source) && assigned.has(edge.target))) continue;
     const from = nesting(edge.source);
     const to = nesting(edge.target);
     let depth = 0;
@@ -64,5 +86,6 @@ export function buildPlateAwareOrder(nodes: GraphNode[], edges: GraphEdge[]): st
     const target = to[depth];
     if (source !== undefined && target !== undefined) lifted.push({ ...edge, source, target });
   }
-  return buildTopologicalOrder(nodes, lifted);
+  const plain = buildTopologicalOrder(nodes, edges);
+  return kahn(nodes, lifted, new Map(plain.map((id, i) => [id, i])));
 }

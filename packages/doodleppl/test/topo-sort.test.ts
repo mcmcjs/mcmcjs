@@ -56,4 +56,19 @@ describe("buildPlateAwareOrder", () => {
     const order = buildPlateAwareOrder(nodes, [e("a", "s"), e("s", "b")]);
     expect(order.length).toBeLessThan(nodes.length);
   });
+
+  it("counts only the edges between assigned nodes", () => {
+    // `x` is data in the plate that `s` reads, and `c` in the same plate reads `s`.
+    const nodes = [plate("p"), n("s"), inside("x", "p"), inside("c", "p")];
+    const edges = [e("x", "s"), e("s", "c")];
+    expect(buildPlateAwareOrder(nodes, edges).length).toBeLessThan(nodes.length);
+    expect(before(buildPlateAwareOrder(nodes, edges, new Set(["s", "c"])), "s", "p")).toBe(true);
+  });
+
+  it("keeps the plain order where no counted edge decides", () => {
+    const nodes = [n("t"), n("u"), n("v")];
+    const edges = [e("t", "u")];
+    const order = buildPlateAwareOrder(nodes, edges, new Set(["u", "v"]));
+    expect(order).toEqual(buildTopologicalOrder(nodes, edges));
+  });
 });
