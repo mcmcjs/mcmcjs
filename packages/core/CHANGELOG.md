@@ -1,5 +1,11 @@
 # @mcmcjs/core
 
+## 0.14.1
+
+### Patch Changes
+
+- ffda437: `RunKeyParts` takes the model's `evaluation_mode` and `monitor`, each left out of the key when unset so existing run keys are unchanged.
+
 ## 0.14.0
 
 ### Minor Changes

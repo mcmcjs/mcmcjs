@@ -1,5 +1,12 @@
 # @mcmcjs/plots
 
+## 0.8.7
+
+### Patch Changes
+
+- Updated dependencies [ffda437]
+  - @mcmcjs/core@0.14.1
+
 ## 0.8.6
 
 ### Patch Changes
