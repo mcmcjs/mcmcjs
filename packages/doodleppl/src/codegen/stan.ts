@@ -16,7 +16,7 @@ import {
   type ScalarDagPlan,
   type SupportInfo,
 } from "../core/discrete-analysis";
-import { buildTopologicalOrder } from "../core/topo-sort";
+import { buildPlateAwareOrder, buildTopologicalOrder } from "../core/topo-sort";
 import type { GraphEdge, GraphElement, GraphNode } from "../core/types";
 import { renderTemplate } from "../templates/render";
 import stanRunTemplate from "../templates/stan-run.py.tpl";
@@ -1615,6 +1615,22 @@ export function generateStanModel(
   const sortByTopo = (a: GraphNode, b: GraphNode) =>
     (topoIndex.get(a.id) ?? 0) - (topoIndex.get(b.id) ?? 0);
 
+  // Assignments in a transformed block run in order, so a plate loop has to come
+  // after every value its members read, which the plain order cannot see since
+  // a plate has no edges of its own. Each block is ordered by the edges between
+  // the values it assigns, and one whose siblings depend on each other keeps the
+  // plain order.
+  const assignmentIndexes = new Map<ReadonlySet<string> | undefined, Map<string, number>>();
+  const assignmentIndex = (assigned?: ReadonlySet<string>): Map<string, number> => {
+    let index = assignmentIndexes.get(assigned);
+    if (!index) {
+      const order = buildPlateAwareOrder(nodes, edges, assigned);
+      index = order.length === nodes.length ? new Map(order.map((id, i) => [id, i])) : topoIndex;
+      assignmentIndexes.set(assigned, index);
+    }
+    return index;
+  };
+
   const dataDeclarations: string[] = [];
   const parameterDeclarations: string[] = [];
   const transformedParamLines: string[] = [];
@@ -1957,7 +1973,11 @@ export function generateStanModel(
     detFilter?: Set<string>,
   ): string[] => {
     const lines: string[] = [];
-    const sorted = [...nodesToProcess].sort(sortByTopo);
+    // Sampling statements add to the target in any order, so the model block keeps the plain one.
+    const index = blockType === "transformed" ? assignmentIndex(detFilter) : topoIndex;
+    const sorted = [...nodesToProcess].sort(
+      (a, b) => (index.get(a.id) ?? 0) - (index.get(b.id) ?? 0),
+    );
 
     for (const node of sorted) {
       if (blockType === "model") {
