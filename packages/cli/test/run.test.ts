@@ -15,6 +15,7 @@ import {
   makeDrawsSink,
   type RunInputs,
   refitReasons,
+  runKeyFor,
 } from "../src/run";
 
 const tmp = (): string => mkdtempSync(join(tmpdir(), "mcmcjs-run-"));
@@ -434,6 +435,33 @@ function ledgerEntry(overrides: Partial<LedgerEntry> = {}): LedgerEntry {
     ...overrides,
   };
 }
+
+describe("runKeyFor", () => {
+  const model = writeModel(tmp(), "model.bugs.jl");
+  const key = (opts: Parameters<typeof buildRunConfig>[1]): string => {
+    const config = buildRunConfig(model, { backend: "juliabugs", ...opts });
+    const inputs: RunInputs = {
+      model_sha256: "m1",
+      data_sha256: "d1",
+      sampler: config.spec.sampler,
+      channel: config.channel,
+      seed: config.spec.seed,
+    };
+    return runKeyFor(config.spec, inputs, undefined);
+  };
+
+  it("gives a run with another evaluation mode its own key, so it is not answered from the store", () => {
+    const graph = key({ evaluationMode: "graph" });
+    expect(graph).not.toBe(key({}));
+    expect(graph).not.toBe(key({ evaluationMode: "marginalized" }));
+  });
+
+  it("gives a run with another monitor list its own key", () => {
+    const sigma = key({ monitor: ["sigma"] });
+    expect(sigma).not.toBe(key({}));
+    expect(sigma).not.toBe(key({ monitor: ["p"] }));
+  });
+});
 
 describe("canReuse", () => {
   const prior = ledgerEntry({ seed: 42 });

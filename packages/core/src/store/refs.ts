@@ -6,6 +6,12 @@ export interface RunKeyParts {
   backend: { id: string; version: string };
   model_sha256: string | undefined;
   entry: string;
+  /**
+   * The spec's `model.evaluation_mode` and `model.monitor`, which change what is
+   * sampled and what is stored; each is omitted from the key when unset.
+   */
+  evaluation_mode?: string;
+  monitor?: string[];
   sampler: LedgerSampler;
   data_sha256: string;
   /** Managed-package version pins, when any; omitted from the key when absent. */

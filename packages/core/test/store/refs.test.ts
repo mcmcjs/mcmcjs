@@ -34,6 +34,11 @@ describe("computeRunKey", () => {
     expect(computeRunKey(keyParts({ model_sha256: "m2" }))).not.toBe(base);
     expect(computeRunKey(keyParts({ data_sha256: "d2" }))).not.toBe(base);
   });
+
+  it("leaves the key of a run that set neither unchanged, so stored runs are still reused", () => {
+    const unset = { evaluation_mode: undefined, monitor: undefined };
+    expect(computeRunKey(keyParts(unset))).toBe(computeRunKey(keyParts()));
+  });
 });
 
 describe("makeRunId", () => {
