@@ -1,5 +1,18 @@
 # mcmcjs
 
+## 0.36.4
+
+### Patch Changes
+
+- ffda437: `mcmc run` samples again when `model.evaluation_mode` or `model.monitor` changes, instead of returning a stored run that was evaluated another way or stored other quantities.
+- Updated dependencies [ffda437]
+- Updated dependencies [e67534c]
+  - @mcmcjs/core@0.14.1
+  - @mcmcjs/doodleppl@0.9.1
+  - @mcmcjs/julia@0.21.1
+  - @mcmcjs/plots@0.8.7
+  - @mcmcjs/stan@0.1.10
+
 ## 0.36.3
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @mcmcjs/doodleppl
 
+## 0.9.1
+
+### Patch Changes
+
+- e67534c: The Stan generator assigns a top-level deterministic node before a plate loop that reads it, in transformed data, transformed parameters and generated quantities, instead of after the loop, where every chain failed to initialize.
+
 ## 0.9.0
 
 ### Minor Changes
