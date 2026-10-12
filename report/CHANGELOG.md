@@ -1,5 +1,11 @@
 # mcmcjs-report
 
+## 0.0.14
+
+### Patch Changes
+
+- 30d2ee9: Open a remote bundle of up to 32 MB, up from 8 MB, so the 19 MB LSAT bundle on the JuliaBUGS example pages opens
+
 ## 0.0.13
 
 ### Patch Changes
