@@ -1,5 +1,11 @@
 # @mcmcjs/julia
 
+## 0.21.2
+
+### Patch Changes
+
+- cc5b35f: Resolve the shipped Julia environment against JuliaBUGS 0.18.0, which brings its fixes for the BUGS censoring `C()` and for precision matrices that are a rounding error from symmetric
+
 ## 0.21.1
 
 ### Patch Changes
