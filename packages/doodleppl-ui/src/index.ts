@@ -47,6 +47,8 @@ export interface DoodlePPLOptions {
   mode?: "embedded" | "fullpage";
   /** Show the graph read-only: editing is disabled and the edit toggle is hidden. */
   readOnly?: boolean;
+  /** Open the graph in paper style, as drawn for a figure; View Options can still switch it off. */
+  paperStyle?: boolean;
   theme?: "light" | "dark";
   /** localStorage key for the editor's persistence; omit for the editor default. */
   storageKey?: string;
@@ -133,6 +135,7 @@ export class DoodlePPL {
     if (opts.localModel) el.setAttribute("local-model", opts.localModel);
     if (opts.mode) el.setAttribute("mode", opts.mode);
     if (opts.readOnly) el.setAttribute("read-only", "true");
+    if (opts.paperStyle) el.setAttribute("paper-style", "true");
     if (opts.theme) el.setAttribute("theme-mode", opts.theme);
     if (opts.storageKey) el.setAttribute("storage-key", opts.storageKey);
     if (opts.width) el.setAttribute("width", opts.width);

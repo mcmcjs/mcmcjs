@@ -83,6 +83,15 @@ describe("DoodlePPL", () => {
     expect(plain.el.getAttribute("read-only")).toBeNull();
   });
 
+  it("maps paperStyle, and omits it unless set", async () => {
+    const { el } = await mounted({ element: "#mount", paperStyle: true });
+    expect(el.getAttribute("paper-style")).toBe("true");
+
+    host.innerHTML = "";
+    const plain = await mounted({ element: "#mount" });
+    expect(plain.el.getAttribute("paper-style")).toBeNull();
+  });
+
   it("resolves ready and fires onReady with the parsed state", async () => {
     const onReady = vi.fn();
     const { editor, el } = await mounted({ element: host, onReady });

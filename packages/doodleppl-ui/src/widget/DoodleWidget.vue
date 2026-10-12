@@ -58,6 +58,9 @@ const props = withDefaults(
     // View-only: the graph is shown but cannot be edited, and the edit toggle is
     // hidden. For displaying a model immutably (a gallery entry, a shared link).
     readOnly?: boolean
+    // Opens the graph in paper style, as drawn for a figure. The reader can still
+    // switch it off from View Options.
+    paperStyle?: boolean
     controlsPosition?: string
     controlsMarginTop?: string
     controlsMarginRight?: string
@@ -116,6 +119,14 @@ watch(
     if (mode != null) {
       uiStore.isDarkMode = mode === 'dark'
     }
+  },
+  { immediate: true }
+)
+
+watch(
+  () => props.paperStyle,
+  (paper) => {
+    if (paper) uiStore.isPaperStyle = true
   },
   { immediate: true }
 )
