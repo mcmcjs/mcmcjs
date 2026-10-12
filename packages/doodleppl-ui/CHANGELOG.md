@@ -1,5 +1,11 @@
 # doodleppl
 
+## 0.13.0
+
+### Minor Changes
+
+- a2156e2: Add a `paper-style` attribute, and a `paperStyle` mount option, that open the graph in paper style; View Options can still switch it off.
+
 ## 0.12.1
 
 ### Patch Changes
