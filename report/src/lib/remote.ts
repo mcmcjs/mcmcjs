@@ -8,8 +8,11 @@ import { parseRunBundle, type RunBundle } from "@mcmcjs/core";
  */
 export const TRUSTED_ORIGINS = ["https://turinglang.org", "https://turinglang.github.io"];
 
-/** Past this a bundle is refused rather than left to fill the tab's memory. */
-export const MAX_BUNDLE_BYTES = 8 * 1024 * 1024;
+/**
+ * Past this a bundle is refused rather than left to fill the tab's memory. The
+ * largest published BUGS example bundle, LSAT's, is 19 MB.
+ */
+export const MAX_BUNDLE_BYTES = 32 * 1024 * 1024;
 
 export interface BundleSource {
   url: string;
