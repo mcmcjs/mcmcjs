@@ -115,7 +115,17 @@ function plan(ex)
         String(k) => jsonable(v) for
         (k, v) in pairs(ex.inits) if String(k) in parameters && complete(v)
     )
-    return (; parameters, inits, discrete, continuous)
+    # The chain holds the parameters and the generated quantities, so only these can be
+    # plotted, and it holds an array one element at a time, by these sizes.
+    names = union(
+        parameters,
+        Set(String(JuliaBUGS.AbstractPPL.getsym(vn)) for vn in JuliaBUGS.generated_quantities(model)),
+    )
+    stored = Dict(
+        name => (value isa AbstractArray ? size(value) : nothing) for name in names for
+        value in (getfield(model.evaluation_env, Symbol(name)),)
+    )
+    return (; parameters, inits, discrete, continuous, stored)
 end
 
 """
@@ -134,22 +144,40 @@ function monitored(ex, parameters)
 end
 
 """
-    plotted_variables(ex, parameters)
+    plotted_variables(ex, p)
 
 Which variables the published plots should show. A trace panel per parameter is
 unreadable once a model has dozens, and Rats alone has 65, so this picks the ones
-a reader came for: the parameters the original example published summaries for,
+a reader came for: the quantities the original example published summaries for,
 or failing that the scalar parameters, which are the population-level quantities in
-these models rather than the per-unit ones.
+these models rather than the per-unit ones. A published name is kept only if the
+chain stores it, and is spelled as the chain spells it, `b[1, 2]` rather than `b[1,2]`.
 """
-function plotted_variables(ex, parameters; limit=6)
+function plotted_variables(ex, p; limit=6)
     published = ex.reference_results
     if !isnothing(published) && !isempty(published)
-        return first(String.(collect(keys(published))), limit)
+        names = String[]
+        for k in keys(published)
+            name = String(k)
+            base = base_name(name)
+            haskey(p.stored, base) || continue
+            dims = p.stored[base]
+            if dims === nothing || occursin('[', name)
+                push!(names, replace(name, r",\s*" => ", "))
+            else
+                # A published array is plotted element by element, as the chain stores it.
+                append!(names, ("$base[$(join(Tuple(i), ", "))]" for i in CartesianIndices(dims)))
+            end
+        end
+        isempty(names) || return first(names, limit)
     end
-    scalars = sort([String(k) for (k, v) in pairs(ex.inits) if v isa Number && String(k) in parameters])
-    return first(scalars, limit)
+    return scalar_parameters(ex, p.parameters; limit)
 end
+
+scalar_parameters(ex, parameters; limit=6) = first(
+    sort([String(k) for (k, v) in pairs(ex.inits) if v isa Number && String(k) in parameters]),
+    limit,
+)
 
 """
     write_example(dir, vol, key, ex, p)
@@ -210,7 +238,8 @@ end
 
 function main()
     mkpath(OUT)
-    written = Pair{Symbol,Vector{String}}[]
+    # Each key with the variables to plot and the scalar parameters to plot instead.
+    written = Pair{Symbol,Tuple{Vector{String},Vector{String}}}[]
 
     for (vol, examples) in pairs(BE.volumes()), (key, ex) in pairs(examples)
         vol in WANT_VOL || continue
@@ -221,7 +250,7 @@ function main()
             continue
         end
         write_example(OUT, vol, key, ex, p)
-        push!(written, key => plotted_variables(ex, p.parameters))
+        push!(written, key => (plotted_variables(ex, p), scalar_parameters(ex, p.parameters)))
         how = p.continuous == 0 ? "MH on $(p.discrete) discrete" :
             p.discrete > 0 ? "NUTS on $(p.continuous) continuous, $(p.discrete) discrete marginalized" :
             "NUTS on $(p.continuous)"
@@ -247,24 +276,30 @@ function main()
         println(io, "cd \"\$(dirname \"\$0\")\"")
         println(io, "failed=0")
         println(io)
-        for (key, vars) in written
-            shown = isempty(vars) ? "" : " --var " * join(("'$v'" for v in vars), " ")
+        println(io, "# Trace and density plots of one example, for the variables after its key.")
+        println(io, "plots() {")
+        println(io, "  key=\$1; shift")
+        println(io, "  mcmc plot --kind trace \"\$@\" --format svg -o \"bundles/\$key-trace.svg\" \\")
+        println(io, "    && mcmc plot --kind density \"\$@\" --format svg -o \"bundles/\$key-density.svg\"")
+        println(io, "}")
+        println(io)
+        var_args(vars) = isempty(vars) ? "" : " --var " * join(("'$v'" for v in vars), " ")
+        for (key, (vars, fallback)) in written
             println(io, "echo \"== $key\"")
             println(io, "mcmc run $key.json --timeout $TIMEOUT_MINUTES")
             println(io, "status=\$?")
             println(io, "if [ \"\$status\" -eq 0 ] || [ \"\$status\" -eq 2 ]; then")
-            println(io, "  mcmc export bundle -o bundles/$key.json --force \\")
+            println(io, "  if mcmc export bundle -o bundles/$key.json --force; then")
+            # A name the chain turns out not to store fails the plot, so the scalar
+            # parameters, which it always stores, are tried before giving up on plots.
             println(
                 io,
-                "    && mcmc plot --kind trace$shown --format svg",
-                " -o bundles/$key-trace.svg \\",
+                "    plots $key$(var_args(vars)) || plots $key$(var_args(fallback))",
+                " || echo \"   $key: no plots\"",
             )
-            println(
-                io,
-                "    && mcmc plot --kind density$shown --format svg",
-                " -o bundles/$key-density.svg \\",
-            )
-            println(io, "    || { echo \"   $key FAILED\"; failed=\$((failed + 1)); }")
+            println(io, "  else")
+            println(io, "    echo \"   $key FAILED\"; failed=\$((failed + 1))")
+            println(io, "  fi")
             println(io, "else")
             println(io, "  echo \"   $key FAILED\"; failed=\$((failed + 1))")
             println(io, "fi")
