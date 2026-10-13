@@ -84,6 +84,8 @@ driver rejects a name it does not know and several examples initialise data-like
 nodes too, and only where they are complete, since the spec is stored as TOML, which
 has no missing value. A model that is discrete throughout has nothing left for a
 gradient sampler and gets Metropolis-Hastings, which moves the discrete values itself.
+A model with nothing observed has its prior as its posterior, so it is simulated
+forward, which draws from it exactly, as BUGS does for Hips2.
 
 The gradient is left to the driver, which checks each candidate against finite
 differences at the starting values and keeps the fastest one that agrees.
@@ -113,6 +115,8 @@ function plan(ex)
     cache = marginalized.marginalization_cache
     discrete = cache === nothing ? 0 : cache.n_discrete_finite
     continuous = Base.invokelatest(LogDensityProblems.dimension, marginalized)
+    gd = model.graph_evaluation_data
+    observed = any(gd.is_stochastic_vals .& gd.is_observed_vals)
 
     complete(v) = v isa AbstractArray ? !any(ismissing, v) : !ismissing(v)
     inits = Dict(
@@ -129,7 +133,7 @@ function plan(ex)
         name => (value isa AbstractArray ? size(value) : nothing) for name in names for
         value in (getfield(model.evaluation_env, Symbol(name)),)
     )
-    return (; parameters, inits, discrete, continuous, stored)
+    return (; parameters, inits, discrete, continuous, observed, stored)
 end
 
 """
@@ -228,6 +232,11 @@ function write_example(dir, vol, key, ex, p)
     # The driver marginalizes discrete latents and picks the gradient itself when the
     # spec leaves the mode unset, so the mode is set only where no gradient can work.
     p.continuous == 0 && (sampler["algorithm"] = "MH")
+    if !p.observed
+        sampler["algorithm"] = "Prior"
+        # Forward draws are independent, so the kept ones need no thinning.
+        delete!(sampler, "thin")
+    end
     spec = Dict(
         "schema_version" => "0",
         "seed" => 42,
