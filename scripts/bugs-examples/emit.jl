@@ -40,6 +40,10 @@ const TIMEOUT_MINUTES = parse(Int, get(ENV, "FIT_TIMEOUT_MINUTES", "60"))
 # NUTS at the default 0.8 target diverges there, as Stan does on the same programs.
 # A 0.99 target clears Blockers and leaves a few divergences in Dyes and Magnesium.
 const ADAPT_DELTA = Dict(:blockers => 0.99, :dyes => 0.99, :magnesium => 0.99)
+# The Fun Shapes are uniform on a region of the square [-1, 1]^2 with hard edges. NUTS
+# diverges at every edge and cannot cross between the corners of Square minus Circle.
+# A slice sampler one coordinate at a time with the square's width covers each region.
+const SHAPES = (:circle, :hollow_square, :parallelogram, :ring, :square_minus_circle)
 
 length(ARGS) >= 1 ||
     error("usage: emit.jl <out-dir> [volume_1|volume_2|volume_3|all|<key>[,<key>...]]")
@@ -222,6 +226,10 @@ function write_example(dir, vol, key, ex, p)
     )
     isempty(p.inits) || (sampler["initial_params"] = p.inits)
     haskey(ADAPT_DELTA, key) && (sampler["adapt_delta"] = ADAPT_DELTA[key])
+    if key in SHAPES
+        sampler["algorithm"] = "Slice"
+        sampler["slice_width"] = 2
+    end
     model = Dict{String,Any}(
         "kind" => "file", "path" => "$(key).jl", "monitor" => monitored(ex, p.parameters)
     )
