@@ -36,6 +36,10 @@ const KEEP = 1000
 # Short enough that a volume still fits in one six-hour job, which only publishes at its
 # end. The marginalized models need longer and get their own run with a larger value.
 const TIMEOUT_MINUTES = parse(Int, get(ENV, "FIT_TIMEOUT_MINUTES", "60"))
+# These random effects models let the spread of their effects shrink towards zero, and
+# NUTS at the default 0.8 target diverges there, as Stan does on the same programs.
+# A 0.99 target clears Blockers and leaves a few divergences in Dyes and Magnesium.
+const ADAPT_DELTA = Dict(:blockers => 0.99, :dyes => 0.99, :magnesium => 0.99)
 
 length(ARGS) >= 1 ||
     error("usage: emit.jl <out-dir> [volume_1|volume_2|volume_3|all|<key>[,<key>...]]")
@@ -217,6 +221,7 @@ function write_example(dir, vol, key, ex, p)
         "chains" => CHAINS, "warmup" => WARMUP, "draws" => KEEP, "thin" => UPDATES ÷ KEEP
     )
     isempty(p.inits) || (sampler["initial_params"] = p.inits)
+    haskey(ADAPT_DELTA, key) && (sampler["adapt_delta"] = ADAPT_DELTA[key])
     model = Dict{String,Any}(
         "kind" => "file", "path" => "$(key).jl", "monitor" => monitored(ex, p.parameters)
     )
