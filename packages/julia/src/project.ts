@@ -1,4 +1,11 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { canonicalJson, DEFAULT_JULIA_CHANNEL } from "@mcmcjs/core";
@@ -181,5 +188,42 @@ export async function ensureProject(
     await run(juliaBin, ["--startup-file=no", `--project=${dir}`, "-e", code]);
   }
   writeFileSync(sentinelPath(dir), expectedSentinel(pins));
+  return dir;
+}
+
+/** Instantiates an existing Julia Project and Manifest, then precompiles it. */
+export async function instantiateProject(
+  juliaBin: string,
+  dir: string,
+  opts: {
+    run?: CommandRunner;
+    beforePrecompile?: (dir: string) => void | Promise<void>;
+  } = {},
+): Promise<string> {
+  for (const name of ["Project.toml", "Manifest.toml"]) {
+    if (!existsSync(join(dir, name))) throw new Error(`${name} is missing from ${dir}`);
+  }
+  const override = readdirSync(dir).find(
+    (name) =>
+      name === "JuliaProject.toml" ||
+      name === "JuliaManifest.toml" ||
+      /^(JuliaManifest|Manifest)-v\d+\.\d+\.toml$/.test(name),
+  );
+  if (override)
+    throw new Error(`${override} would override Project.toml or Manifest.toml in ${dir}`);
+  const run = opts.run ?? createRunner(30 * 60_000);
+  const args = ["--startup-file=no", `--project=${dir}`, "-e"];
+  await run(juliaBin, [
+    ...args,
+    `using Pkg, TOML
+manifest = TOML.parsefile(joinpath(dirname(Base.active_project()), "Manifest.toml"))
+resolved = get(manifest, "julia_version", nothing)
+resolved === nothing && error("Manifest.toml is missing julia_version")
+version = VersionNumber(resolved)
+(version.major, version.minor) == (VERSION.major, VERSION.minor) || error("Manifest.toml was resolved for Julia $(resolved), not $(VERSION)")
+Pkg.instantiate(; allow_autoprecomp=false)`,
+  ]);
+  await opts.beforePrecompile?.(dir);
+  await run(juliaBin, [...args, "using Pkg; Pkg.precompile()"]);
   return dir;
 }
