@@ -33,6 +33,26 @@ describe("SpecSchema", () => {
     ).toThrow();
   });
 
+  it("accepts a bounded NUTS tree depth and rejects it for other samplers", () => {
+    const nuts = SpecSchema.parse({ ...VALID, sampler: { draws: 10, max_depth: 8 } });
+    expect(nuts.sampler.max_depth).toBe(8);
+    for (const max_depth of [0, 21, 2.5]) {
+      expect(() => SpecSchema.parse({ ...VALID, sampler: { draws: 10, max_depth } })).toThrow();
+    }
+    expect(() =>
+      SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "MH", max_depth: 8 } }),
+    ).toThrow(/NUTS only/);
+    const gibbs = SpecSchema.parse({
+      ...VALID,
+      sampler: {
+        draws: 10,
+        algorithm: "Gibbs",
+        blocks: [{ variables: ["mu"], max_depth: 8 }],
+      },
+    });
+    expect(gibbs.sampler.blocks?.[0]?.max_depth).toBe(8);
+  });
+
   it("accepts the Prior algorithm and rejects an unknown one", () => {
     const spec = SpecSchema.parse({ ...VALID, sampler: { draws: 10, algorithm: "Prior" } });
     expect(spec.sampler.algorithm).toBe("Prior");

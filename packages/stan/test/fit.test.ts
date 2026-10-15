@@ -84,6 +84,14 @@ describe("chainArgs", () => {
       "refresh=1",
     ]);
   });
+
+  it("passes an explicit NUTS depth to CmdStan", () => {
+    const dir = mkdtempSync(join(tmpdir(), "stan-fit-"));
+    const spec = makeSpec(dir);
+    spec.sampler.max_depth = 8;
+    const args = chainArgs(spec, 1, "/tmp/data.json", "/tmp/chain_1.csv");
+    expect(args.slice(3, 6)).toEqual(["algorithm=hmc", "engine=nuts", "max_depth=8"]);
+  });
 });
 
 describe("runFit", () => {

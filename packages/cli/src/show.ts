@@ -46,7 +46,7 @@ export function formatRunDetail(
   );
   row(
     "sampler",
-    `${s.algorithm}, ${s.chains} chains x ${s.draws} draws + ${s.warmup} warmup, adapt_delta ${s.adapt_delta}, seed ${entry.seed}`,
+    `${s.algorithm}, ${s.chains} chains x ${s.draws} draws + ${s.warmup} warmup, adapt_delta ${s.adapt_delta}${s.max_depth === undefined ? "" : `, max_depth ${s.max_depth}`}, seed ${entry.seed}`,
   );
   row("data", `sha256 ${entry.data_sha256.slice(0, 12)}`);
   if (entry.status === "failed") {

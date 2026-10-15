@@ -130,7 +130,8 @@ function build_sampler(sampler, modelmod = nothing)
     algorithm == "SMC" && return Turing.SMC(), warmup
     algorithm == "PG" && return Turing.PG(Int(sampler["particles"])), warmup
     adkw = haskey(sampler, "adtype") ? (; adtype = build_adtype(sampler["adtype"])) : (;)
-    algorithm == "NUTS" && return Turing.NUTS(warmup, adapt_delta; adkw...), warmup
+    depthkw = haskey(sampler, "max_depth") ? (; max_depth = Int(sampler["max_depth"])) : (;)
+    algorithm == "NUTS" && return Turing.NUTS(warmup, adapt_delta; depthkw..., adkw...), warmup
     algorithm == "HMC" &&
         return Turing.HMC(Float64(sampler["step_size"]), Int(sampler["leapfrog_steps"]); adkw...),
         warmup
@@ -155,7 +156,8 @@ function block_sampler(block, adkw, warmup)
     algorithm == "MH" && return Turing.MH()
     algorithm == "ESS" && return Turing.ESS()
     algorithm == "PG" && return Turing.PG(Int(block["particles"]))
-    algorithm == "NUTS" && return Turing.NUTS(warmup, adapt_delta; adkw...)
+    depthkw = haskey(block, "max_depth") ? (; max_depth = Int(block["max_depth"])) : (;)
+    algorithm == "NUTS" && return Turing.NUTS(warmup, adapt_delta; depthkw..., adkw...)
     algorithm == "HMC" &&
         return Turing.HMC(Float64(block["step_size"]), Int(block["leapfrog_steps"]); adkw...)
     algorithm == "HMCDA" &&
@@ -714,7 +716,8 @@ end
 function bugs_hmc_sampler(conf)
     algorithm = get(conf, "algorithm", "NUTS")
     adapt_delta = Float64(get(conf, "adapt_delta", 0.8))
-    algorithm == "NUTS" && return AdvancedHMC.NUTS(adapt_delta)
+    depthkw = haskey(conf, "max_depth") ? (; max_depth = Int(conf["max_depth"])) : (;)
+    algorithm == "NUTS" && return AdvancedHMC.NUTS(adapt_delta; depthkw...)
     algorithm == "HMC" &&
         return AdvancedHMC.HMC(Float64(conf["step_size"]), Int(conf["leapfrog_steps"]))
     algorithm == "HMCDA" && return AdvancedHMC.HMCDA(adapt_delta, Float64(conf["lambda"]))

@@ -79,4 +79,9 @@ describe("formatRunDetail", () => {
     const text = formatRunDetail(failed, join(dir, "missing"), undefined);
     expect(text).toContain("failed: model did not compile");
   });
+
+  it("shows the configured NUTS tree depth", () => {
+    const withDepth = { ...entry, sampler: { ...entry.sampler, max_depth: 8 } };
+    expect(formatRunDetail(withDepth, join(dir, "missing"), undefined)).toContain("max_depth 8");
+  });
 });

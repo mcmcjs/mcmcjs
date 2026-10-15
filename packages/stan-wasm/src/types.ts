@@ -4,6 +4,8 @@ export type SamplingOpts = {
   num_samples: number;
   init_radius: number;
   seed?: number;
+  delta?: number;
+  max_depth?: number;
 };
 
 export type StanVariableInputs = Record<string, unknown>;
