@@ -211,19 +211,39 @@ export async function instantiateProject(
   );
   if (override)
     throw new Error(`${override} would override Project.toml or Manifest.toml in ${dir}`);
+  const manifestPath = join(dir, "Manifest.toml");
+  const originalManifest = readFileSync(manifestPath);
+  const assertManifestUnchanged = (): void => {
+    if (readFileSync(manifestPath).equals(originalManifest)) return;
+    writeFileSync(manifestPath, originalManifest);
+    throw new Error("Pkg changed the supplied Manifest.toml during instantiate or precompile");
+  };
   const run = opts.run ?? createRunner(30 * 60_000);
   const args = ["--startup-file=no", `--project=${dir}`, "-e"];
-  await run(juliaBin, [
-    ...args,
-    `using Pkg, TOML
+  try {
+    await run(juliaBin, [
+      ...args,
+      `using Pkg, TOML
 manifest = TOML.parsefile(joinpath(dirname(Base.active_project()), "Manifest.toml"))
 resolved = get(manifest, "julia_version", nothing)
 resolved === nothing && error("Manifest.toml is missing julia_version")
 version = VersionNumber(resolved)
 (version.major, version.minor) == (VERSION.major, VERSION.minor) || error("Manifest.toml was resolved for Julia $(resolved), not $(VERSION)")
+Pkg.Operations.is_manifest_current(Pkg.Types.EnvCache(Base.active_project())) === true || error("Manifest.toml does not match Project.toml; resolve the environment before instantiating")
 Pkg.instantiate(; allow_autoprecomp=false)`,
-  ]);
-  await opts.beforePrecompile?.(dir);
-  await run(juliaBin, [...args, "using Pkg; Pkg.precompile()"]);
+    ]);
+  } finally {
+    assertManifestUnchanged();
+  }
+  try {
+    await opts.beforePrecompile?.(dir);
+  } finally {
+    assertManifestUnchanged();
+  }
+  try {
+    await run(juliaBin, [...args, "using Pkg; Pkg.precompile()"]);
+  } finally {
+    assertManifestUnchanged();
+  }
   return dir;
 }

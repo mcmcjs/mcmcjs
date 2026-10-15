@@ -1,7 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CommandRunner } from "@mcmcjs/engine";
+import { type CommandRunner, createRunner } from "@mcmcjs/engine";
 import { describe, expect, it } from "vitest";
 import {
   ensureProject,
@@ -114,6 +114,33 @@ describe("ensureProject", () => {
 });
 
 describe("instantiateProject", () => {
+  it.skipIf(process.env.MCMC_PROJECT_E2E !== "1")(
+    "rejects a Manifest that was resolved for a different Project",
+    async () => {
+      const dir = freshDir();
+      const julia = process.env.MCMC_JULIA_BIN ?? "julia";
+      const run = createRunner(120_000);
+      try {
+        await run(julia, [
+          "--startup-file=no",
+          `--project=${dir}`,
+          "-e",
+          'using Pkg; Pkg.add("JSON")',
+        ]);
+        const originalManifest = readFileSync(join(dir, "Manifest.toml"), "utf8");
+        await expect(instantiateProject(julia, dir, { run })).resolves.toBe(dir);
+        appendFileSync(join(dir, "Project.toml"), '\n[compat]\nJSON = "0.21"\n');
+        await expect(instantiateProject(julia, dir, { run })).rejects.toThrow(
+          /Manifest.toml does not match Project.toml/,
+        );
+        expect(readFileSync(join(dir, "Manifest.toml"), "utf8")).toBe(originalManifest);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    120_000,
+  );
+
   it("instantiates a supplied Manifest before the cache hook and precompile", async () => {
     const dir = freshDir();
     const project = "[deps]\n";
@@ -194,6 +221,25 @@ describe("instantiateProject", () => {
       }),
     ).rejects.toThrow("instantiate failed");
     expect(calls).toEqual(["instantiate"]);
+  });
+
+  it("rejects and restores a Manifest rewritten during instantiate", async () => {
+    const dir = freshDir();
+    const manifestPath = join(dir, "Manifest.toml");
+    const manifest = 'julia_version = "1.12.6"\n';
+    writeFileSync(join(dir, "Project.toml"), "[deps]\n");
+    writeFileSync(manifestPath, manifest);
+    let calls = 0;
+    const run: CommandRunner = async () => {
+      calls += 1;
+      writeFileSync(manifestPath, "changed\n");
+      return "";
+    };
+    await expect(instantiateProject("/bin/julia", dir, { run })).rejects.toThrow(
+      /changed the supplied Manifest.toml/,
+    );
+    expect(calls).toBe(1);
+    expect(readFileSync(manifestPath, "utf8")).toBe(manifest);
   });
 });
 
