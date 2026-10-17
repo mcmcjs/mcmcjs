@@ -4,7 +4,7 @@
 
 ### Minor Changes
 
-- db71dec: - `runFit` can save immutable per-chain Turing NUTS checkpoints with each draw batch and resume a chain with verified state and RNG.
+- db71dec: `runFit` can save per-chain Turing NUTS checkpoints with draw batches and resume a chain from its saved state and RNG.
 
 ### Patch Changes
 
