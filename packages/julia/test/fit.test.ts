@@ -110,6 +110,71 @@ describe("runFit", () => {
     });
   });
 
+  it("passes verified checkpoint paths to the Julia driver", async () => {
+    const outPath = out();
+    let request: Record<string, unknown> = {};
+    const spawn: FitRunner = async (_command, args) => {
+      request = JSON.parse(readFileSync(args.at(-1) as string, "utf8"));
+      writeFileSync(outPath, SAMPLES);
+      return { stdout: PROVENANCE, stderr: "", code: 0 };
+    };
+    await runFit(
+      spec(),
+      { command: "/bin/julia", args: [] },
+      {
+        spawn,
+        projectDir: "/proj",
+        outPath,
+        checkpointDir: "/checkpoints",
+        checkpointScopeSha256: "a".repeat(64),
+        resumeFrom: "/checkpoints/chain-0.bin",
+        resumeSha256: "expected-hash",
+      },
+    );
+    expect(request.checkpoint_dir).toBe("/checkpoints");
+    expect(request.checkpoint_scope_sha256).toBe("a".repeat(64));
+    expect(request.resume_from).toBe("/checkpoints/chain-0.bin");
+    expect(request.resume_sha256).toBe("expected-hash");
+    expect(request.data_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(request.stream_draws).toBe(true);
+  });
+
+  it("rejects a resume without a trusted checksum", async () => {
+    const spawn: FitRunner = async () => {
+      throw new Error("driver should not be started");
+    };
+    await expect(
+      runFit(
+        spec(),
+        { command: "/bin/julia", args: [] },
+        {
+          spawn,
+          projectDir: "/proj",
+          outPath: out(),
+          resumeFrom: "/checkpoints/chain-0.bin",
+        },
+      ),
+    ).rejects.toThrow("resumeSha256 is required");
+  });
+
+  it("requires an immutable source and runtime scope for checkpoints", async () => {
+    const spawn: FitRunner = async () => {
+      throw new Error("driver should not be started");
+    };
+    await expect(
+      runFit(
+        spec(),
+        { command: "/bin/julia", args: [] },
+        {
+          spawn,
+          projectDir: "/proj",
+          outPath: out(),
+          checkpointDir: "/checkpoints",
+        },
+      ),
+    ).rejects.toThrow("checkpointScopeSha256 is required");
+  });
+
   it("reports the driver stage and message on failure", async () => {
     const outPath = out();
     const spawn: FitRunner = async () => ({

@@ -124,6 +124,8 @@ export interface DrawBatch {
   iteration: number | null;
   /** Parameter leaf name -> the values produced in this batch. */
   draws: Record<string, number[]>;
+  /** Immutable checkpoint for this batch boundary, when requested. */
+  checkpoint?: { path: string; sha256: string };
 }
 
 /** Captures stdout, stderr, and exit code without throwing on a nonzero exit. */
@@ -179,11 +181,15 @@ export function parseDrawBatchLine(line: string): DrawBatch | undefined {
     draws[name] = Array.isArray(values) ? values.map(Number) : [];
   }
   const iteration = record.iteration;
+  const checkpoint = record.checkpoint as Record<string, unknown> | undefined;
   return {
     chain: Number(record.chain ?? 0),
     seq: Number(record.seq ?? 0),
     iteration: iteration === null || iteration === undefined ? null : Number(iteration),
     draws,
+    ...(checkpoint && typeof checkpoint.path === "string" && typeof checkpoint.sha256 === "string"
+      ? { checkpoint: { path: checkpoint.path, sha256: checkpoint.sha256 } }
+      : {}),
   };
 }
 

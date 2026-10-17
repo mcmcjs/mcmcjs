@@ -28,6 +28,14 @@ export interface FitIo {
   onLog?: (line: string, stream: "stdout" | "stderr") => void;
   /** Draws per streamed batch (driver default 25); lower it when models have many leaves. */
   drawBatchSize?: number;
+  /** Write a checkpoint for each chain at every streamed draw-batch boundary. */
+  checkpointDir?: string;
+  /** Digest of the immutable model source bundle and runtime image. */
+  checkpointScopeSha256?: string;
+  /** Resume one NUTS chain from a checkpoint written by this runtime. */
+  resumeFrom?: string;
+  /** Expected SHA-256 of the checkpoint bytes, checked before deserialization. */
+  resumeSha256?: string;
   /** Aborts an in-progress fit; the run then ends with a "cancelled" status. */
   signal?: AbortSignal;
   /** Source path when the data came from a referenced file; recorded, not copied. */
@@ -48,7 +56,14 @@ export function makeRequestDir(kind: string): string {
 export function fitRequest(
   spec: ResolvedSpec,
   outPath: string,
-  opts?: { streamDraws?: boolean; drawBatchSize?: number },
+  opts?: {
+    streamDraws?: boolean;
+    drawBatchSize?: number;
+    checkpointDir?: string;
+    checkpointScopeSha256?: string;
+    resumeFrom?: string;
+    resumeSha256?: string;
+  },
 ): Record<string, unknown> {
   return {
     schema_version: spec.schema_version,
@@ -65,6 +80,13 @@ export function fitRequest(
     out: outPath,
     ...(opts?.streamDraws ? { stream_draws: true } : {}),
     ...(opts?.drawBatchSize ? { draw_batch_size: opts.drawBatchSize } : {}),
+    ...(opts?.checkpointDir ? { checkpoint_dir: opts.checkpointDir } : {}),
+    ...(opts?.checkpointScopeSha256 ? { checkpoint_scope_sha256: opts.checkpointScopeSha256 } : {}),
+    ...(opts?.resumeFrom ? { resume_from: opts.resumeFrom } : {}),
+    ...(opts?.resumeSha256 ? { resume_sha256: opts.resumeSha256 } : {}),
+    ...(opts?.checkpointDir || opts?.resumeFrom
+      ? { data_sha256: sha256(canonicalJson(spec.data)) }
+      : {}),
   };
 }
 
@@ -144,6 +166,15 @@ export async function runFit(
   if (io.signal?.aborted) {
     return { status: "cancelled", runtimeRequested, elapsedMs: 0 };
   }
+  if (io.resumeFrom && !io.resumeSha256) {
+    throw new Error("resumeSha256 is required when resuming a checkpoint");
+  }
+  if (
+    (io.checkpointDir || io.resumeFrom) &&
+    !/^[0-9a-f]{64}$/.test(io.checkpointScopeSha256 ?? "")
+  ) {
+    throw new Error("checkpointScopeSha256 is required for checkpoints");
+  }
 
   const ownTmp = io.tmpDir === undefined;
   const tmp = io.tmpDir ?? makeRequestDir("fit");
@@ -152,8 +183,12 @@ export async function runFit(
     requestPath,
     JSON.stringify(
       fitRequest(spec, io.outPath, {
-        streamDraws: io.onDraws !== undefined,
+        streamDraws: io.onDraws !== undefined || io.checkpointDir !== undefined,
         drawBatchSize: io.drawBatchSize,
+        checkpointDir: io.checkpointDir,
+        checkpointScopeSha256: io.checkpointScopeSha256,
+        resumeFrom: io.resumeFrom,
+        resumeSha256: io.resumeSha256,
       }),
     ),
   );

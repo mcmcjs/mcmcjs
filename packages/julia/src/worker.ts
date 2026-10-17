@@ -251,6 +251,9 @@ export async function runFitViaWorker(
   resolved: { command: string; args: string[] },
   io: FitIo & { notify?: (line: string) => void },
 ): Promise<FitResult> {
+  if (io.checkpointDir || io.resumeFrom) {
+    throw new Error("checkpoint fits require the one-shot Julia driver");
+  }
   const startedAt = new Date().toISOString();
   const start = performance.now();
   if (io.signal?.aborted) {
@@ -341,7 +344,13 @@ export async function runFitAuto(
   }
   // Distributed sampling spawns worker processes and includes the model into
   // Main; the persistent worker's isolation cannot host that, so it runs one-shot.
-  if (io.daemon && process.platform !== "win32" && spec.sampler.parallel !== "distributed") {
+  if (
+    io.daemon &&
+    !io.checkpointDir &&
+    !io.resumeFrom &&
+    process.platform !== "win32" &&
+    spec.sampler.parallel !== "distributed"
+  ) {
     const start = performance.now();
     try {
       return await runFitViaWorker(spec, resolved, io);
