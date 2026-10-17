@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -135,6 +136,97 @@ afterAll(() => {
 const d = ENV ? describe : describe.skip;
 
 d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", () => {
+  it("restores both threaded NUTS chains from batch-boundary checkpoints", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const invocation = { command: env.command, args: env.args };
+    const fullSpec = spec(60, 2);
+    fullSpec.sampler.warmup = 20;
+    fullSpec.sampler.parallel = "threads";
+    const fullPath = join(dir, "checkpoint-full.json");
+    const full = await runFit(fullSpec, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: fullPath,
+    });
+    expect(full.status, full.error).toBe("ok");
+
+    const partialSpec = spec(40, 2);
+    partialSpec.sampler.warmup = 20;
+    partialSpec.sampler.parallel = "threads";
+    const partialPath = join(dir, "checkpoint-partial.json");
+    const checkpointDir = join(dir, "checkpoints");
+    const batches: DrawBatch[] = [];
+    const partial = await runFit(partialSpec, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: partialPath,
+      checkpointDir,
+      drawBatchSize: 10,
+      onDraws: (batch) => batches.push(batch),
+    });
+    expect(partial.status, partial.error).toBe("ok");
+
+    const fullSamples = parseSamples(readFileSync(fullPath, "utf8"));
+    const partialSamples = parseSamples(readFileSync(partialPath, "utf8"));
+    const leaves = [...fullSamples.variables, ...fullSamples.sampleStats.keys()];
+    expect(batches).toHaveLength(8);
+    for (const batch of batches) {
+      const checkpoint = batch.checkpoint;
+      expect(checkpoint).toBeDefined();
+      if (!checkpoint) continue;
+      expect(checkpoint.path).toBe(
+        join(checkpointDir, `chain-${batch.chain}-iteration-${batch.iteration}.bin`),
+      );
+      expect(checkpoint.sha256).toBe(
+        createHash("sha256").update(readFileSync(checkpoint.path)).digest("hex"),
+      );
+    }
+    const rejected = await runFit(spec(1, 1), invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: join(dir, "checkpoint-rejected.json"),
+      resumeFrom: join(checkpointDir, "chain-0-iteration-40.bin"),
+      resumeSha256: "0".repeat(64),
+    });
+    expect(rejected.status).toBe("error");
+    expect(rejected.error).toContain("checkpoint SHA-256 does not match");
+    for (const chain of [0, 1]) {
+      const checkpoint = join(checkpointDir, `chain-${chain}-iteration-40.bin`);
+      expect(existsSync(join(checkpointDir, `chain-${chain}-iteration-10.bin`))).toBe(true);
+      expect(existsSync(checkpoint)).toBe(true);
+      const resumedSpec = spec(20, 1);
+      resumedSpec.sampler.warmup = 20;
+      const resumedPath = join(dir, `checkpoint-resumed-${chain}.json`);
+      const resumedBatches: DrawBatch[] = [];
+      const resumed = await runFit(resumedSpec, invocation, {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath: resumedPath,
+        resumeFrom: checkpoint,
+        resumeSha256: createHash("sha256").update(readFileSync(checkpoint)).digest("hex"),
+        checkpointDir: join(dir, `resumed-${chain}`),
+        drawBatchSize: 10,
+        onDraws: (batch) => resumedBatches.push(batch),
+      });
+      expect(resumed.status, resumed.error).toBe("ok");
+      expect(existsSync(join(dir, `resumed-${chain}`, `chain-${chain}-iteration-60.bin`))).toBe(
+        true,
+      );
+      expect(
+        resumedBatches.map(({ chain: id, seq, iteration }) => ({ id, seq, iteration })),
+      ).toEqual([
+        { id: chain, seq: 4, iteration: 50 },
+        { id: chain, seq: 5, iteration: 60 },
+      ]);
+      const tail = parseSamples(readFileSync(resumedPath, "utf8"));
+      for (const leaf of leaves) {
+        const expected = Array.from(chainView(fullSamples, leaf, chain));
+        expect(Array.from(chainView(partialSamples, leaf, chain))).toEqual(expected.slice(0, 40));
+        expect(Array.from(chainView(tail, leaf, 0))).toEqual(expected.slice(40));
+      }
+    }
+  }, 900_000);
+
   it("streams threaded Turing draws from both chains", async () => {
     const env = ENV as NonNullable<typeof ENV>;
     const outPath = join(dir, "threaded-turing.samples.json");

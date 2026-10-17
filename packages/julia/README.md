@@ -10,6 +10,7 @@ It detects and bootstraps the Julia toolchain via juliaup, manages a pinned, per
 - **Managed project** — provision an isolated Julia project with Turing.jl and JuliaBUGS (and friends) and precompile it (`ensureProject`).
 - **Existing project** — instantiate and precompile a matching `Project.toml` and `Manifest.toml` with `instantiateProject`. The Manifest must have been resolved for the Project and Julia minor version, and it stays unchanged. Its `beforePrecompile` hook runs after package installation, so callers can populate a Julia depot cache before precompilation.
 - **Driver** — the `fit` and `predict` runner (`driver.jl`) that runs Turing or JuliaBUGS and writes the MCMCChains-JSON samples file plus a run record.
+- **NUTS checkpoints** — `runFit` writes an immutable checkpoint for each Turing chain at each draw-batch boundary. The matching batch carries its path and SHA-256. A chain can resume after verification with the same Julia version, Project, Manifest, model file, data, NUTS settings, and seed. Julia serialization is not a portable archive format.
 
 > Early alpha: the API is not yet stable.
 

@@ -102,6 +102,20 @@ describe("parseDrawBatchLine", () => {
     });
   });
 
+  it("keeps the checkpoint attached to its draw batch", () => {
+    expect(
+      parseDrawBatchLine(
+        '{"mcmcjs":"draws","chain":1,"seq":3,"iteration":40,"draws":{"mu":[1]},"checkpoint":{"path":"/tmp/chain-1-iteration-40.bin","sha256":"abc"}}',
+      ),
+    ).toEqual({
+      chain: 1,
+      seq: 3,
+      iteration: 40,
+      draws: { mu: [1] },
+      checkpoint: { path: "/tmp/chain-1-iteration-40.bin", sha256: "abc" },
+    });
+  });
+
   it("ignores progress lines and other content", () => {
     expect(parseDrawBatchLine('{"mcmcjs":"progress","chain":1}')).toBeUndefined();
     expect(parseDrawBatchLine("plain note")).toBeUndefined();

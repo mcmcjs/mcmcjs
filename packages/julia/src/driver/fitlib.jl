@@ -12,6 +12,7 @@ using Turing
 using Turing: VarName
 using SHA
 using Pkg
+import Serialization
 # Imported (not `using`) so they do not pull `@model` etc. into Main and clash
 # with Turing's exports, which would break Turing model files on include.
 import JuliaBUGS
@@ -351,21 +352,26 @@ end
 DrawStreamState() = DrawStreamState(ReentrantLock(), 0, String[], Dict{String,Vector{Float64}}(), 0)
 
 function draw_streamer(
-    draws_per_chain::Int, batch_size::Int, chains::Int; report_progress = false,
+    draws_per_chain::Int, batch_size::Int, chains::Int;
+    report_progress = false, checkpoint = nothing,
+    chain_base = 0, iteration_offset = 0, seq_offset = 0,
 )
     states = [DrawStreamState() for _ in 1:chains]
-    function emit(state, chain, iteration)
+    for state in states
+        state.seq = seq_offset
+    end
+    function emit(state, chain, iteration, checkpoint_info)
         state.filled == 0 && return
         cols = Dict{String,Vector{Float64}}(n => copy(state.buffer[n]) for n in state.names)
-        emit_wire(
-            Dict(
-                "mcmcjs" => "draws",
-                "chain" => chain,
-                "seq" => state.seq,
-                "iteration" => iteration,
-                "draws" => cols,
-            ),
+        payload = Dict(
+            "mcmcjs" => "draws",
+            "chain" => chain + chain_base,
+            "seq" => state.seq,
+            "iteration" => iteration + iteration_offset,
+            "draws" => cols,
         )
+        checkpoint_info === nothing || (payload["checkpoint"] = checkpoint_info)
+        emit_wire(payload)
         if report_progress
             emit_wire(
                 Dict(
@@ -397,7 +403,8 @@ function draw_streamer(
             end
             state.filled += 1
             if state.filled >= batch_size || iteration >= draws_per_chain
-                emit(state, c, iteration)
+                info = checkpoint === nothing ? nothing : checkpoint(_rng, _state, c, iteration, state.seq)
+                emit(state, c, iteration, info)
             end
         end
     end
@@ -426,7 +433,8 @@ end
 # this (older) world would fail with "method too new". invokelatest fixes that.
 # Returns Turing's default chain type, a FlexiChain. With a callback, draws stream.
 function build_and_sample(
-    entry, data, sampler, draws, chains, rng; callback = nothing, extra = (;), parallel = "serial"
+    entry, data, sampler, draws, chains, rng;
+    callback = nothing, extra = (;), parallel = "serial", resume = nothing,
 )
     model = condition_on_data(entry(data), data)
     kw = callback === nothing ? extra : merge(extra, (; callback))
@@ -434,7 +442,15 @@ function build_and_sample(
         parallel == "distributed" ? MCMCDistributed() : MCMCSerial()
     progress_enabled = !(parallel == "threads" && callback !== nothing)
     return Logging.with_logger(JSONProgressLogger()) do
-        sample(rng, model, sampler, ensemble, draws, chains; progress = progress_enabled, kw...)
+        if resume === nothing
+            sample(rng, model, sampler, ensemble, draws, chains; progress = progress_enabled, kw...)
+        else
+            sample(
+                resume["rng"], model, sampler, draws;
+                initial_state = resume["state"], nadapts = 0, discard_adapt = false,
+                progress = progress_enabled, kw...,
+            )
+        end
     end
 end
 
@@ -1104,8 +1120,15 @@ function build_bugs_model(entry, data, sampler)
     return entry(data, bugs_namedtuple(sampler["initial_params"]))
 end
 
-function load_model_module(path)
-    mod = Module(gensym(:UserModel))
+function load_model_module(path; checkpoint = false)
+    mod = if checkpoint
+        name = Symbol("MCMCJSModel_", bytes2hex(sha256(read(abspath(path))))[1:24])
+        isdefined(Main, name) && error("checkpoint model module already loaded in this process")
+        Core.eval(Main, :(module $name end))
+        getfield(Main, name)
+    else
+        Module(gensym(:UserModel))
+    end
     if endswith(lowercase(path), ".bugs")
         # A bare BUGS program, parsed as the string form of `@bugs` parses it with
         # dotted names kept, and given the entry a Julia model file would define.
@@ -1119,6 +1142,67 @@ function load_model_module(path)
         Base.include(mod, abspath(path))
     end
     return mod
+end
+
+function checkpoint_identity(request)
+    project = Base.active_project()
+    manifest = joinpath(dirname(project), "Manifest.toml")
+    return Dict(
+        "format" => 1,
+        "julia_version" => string(VERSION),
+        "model_sha256" => bytes2hex(sha256(read(abspath(request["model"]["file"])))),
+        "model_entry" => get(request["model"], "entry", nothing),
+        "data_sha256" => request["data_sha256"],
+        "project_sha256" => bytes2hex(sha256(read(project))),
+        "manifest_sha256" => bytes2hex(sha256(read(manifest))),
+        "sampler_config" => Dict(
+            k => v for (k, v) in request["sampler"] if !(k in ("draws", "chains", "parallel"))
+        ),
+        "seed" => Int(request["seed"]),
+    )
+end
+
+function read_checkpoint(request, identity)
+    path = request["resume_from"]
+    expected = get(request, "resume_sha256", nothing)
+    expected isa AbstractString || error("resume_sha256 is required to verify a checkpoint")
+    bytes = read(path)
+    bytes2hex(sha256(bytes)) == expected || error("checkpoint SHA-256 does not match")
+    saved = Serialization.deserialize(IOBuffer(bytes))
+    for (key, value) in identity
+        get(saved, key, nothing) == value || error("checkpoint $key does not match this fit")
+    end
+    get(saved, "iteration", 0) > 0 || error("checkpoint has no completed draws")
+    get(saved, "chain", -1) >= 0 || error("checkpoint has no chain identity")
+    get(saved, "next_seq", -1) >= 0 || error("checkpoint has no batch sequence")
+    return saved
+end
+
+function checkpoint_writer(dir, identity; offset = 0, chain_base = 0)
+    mkpath(dir)
+    return function (rng, state, chain, iteration, seq)
+        chain_id = chain + chain_base
+        absolute_iteration = iteration + offset
+        path = joinpath(dir, "chain-$(chain_id)-iteration-$(absolute_iteration).bin")
+        isfile(path) && error("checkpoint already exists: $path")
+        tmp = tempname(dir)
+        saved = merge(
+            identity,
+            Dict(
+                "chain" => chain_id, "iteration" => absolute_iteration,
+                "next_seq" => seq + 1,
+                "rng" => deepcopy(rng), "state" => state,
+            ),
+        )
+        try
+            Serialization.serialize(tmp, saved)
+            digest = bytes2hex(sha256(read(tmp)))
+            mv(tmp, path)
+            return Dict("path" => path, "sha256" => digest)
+        finally
+            isfile(tmp) && rm(tmp)
+        end
+    end
 end
 
 function resolve_entry(mod, requested)
@@ -1141,9 +1225,22 @@ function handle_request(request)
     backend = get(get(request, "backend", Dict()), "id", "turing")
     stage = "compile"
     try
+        checkpointing = haskey(request, "checkpoint_dir") || haskey(request, "resume_from")
+        if checkpointing
+            sampler = request["sampler"]
+            mode == "fit" && backend == "turing" && get(sampler, "algorithm", "NUTS") == "NUTS" ||
+                error("checkpoints currently support Turing NUTS fits only")
+            get(sampler, "parallel", "serial") != "distributed" ||
+                error("distributed sampling cannot write checkpoints")
+            Int(get(sampler, "thin", 1)) == 1 || error("checkpoint fits require thin = 1")
+            if haskey(request, "resume_from")
+                Int(get(sampler, "chains", 1)) == 1 ||
+                    error("resume one chain at a time")
+            end
+        end
         Random.seed!(Int(request["seed"]))
         rng = StableRNG(Int(request["seed"]))
-        modelmod = load_model_module(request["model"]["file"])
+        modelmod = load_model_module(request["model"]["file"]; checkpoint = checkpointing)
         entry = resolve_entry(modelmod, get(request["model"], "entry", nothing))
 
         wire = if mode == "loglik"
@@ -1230,15 +1327,29 @@ function handle_request(request)
                 vnchain_to_wire(chn; keep = bugs_column_filter(request, model))
             else
                 sampler, warmup = build_sampler(sampler_conf, modelmod)
-                cb = get(request, "stream_draws", false) && parallel != "distributed" ?
+                identity = checkpointing ? checkpoint_identity(request) : nothing
+                resumed = haskey(request, "resume_from") ? read_checkpoint(request, identity) : nothing
+                checkpoint = haskey(request, "checkpoint_dir") ?
+                    checkpoint_writer(
+                        request["checkpoint_dir"], identity;
+                        offset = resumed === nothing ? 0 : resumed["iteration"],
+                        chain_base = resumed === nothing ? 0 : resumed["chain"],
+                    ) : nothing
+                cb = (get(request, "stream_draws", false) || checkpoint !== nothing) && parallel != "distributed" ?
                     draw_streamer(
                         draws, Int(get(request, "draw_batch_size", 25)), chains;
-                        report_progress = parallel == "threads",
+                        report_progress = parallel == "threads", checkpoint,
+                        chain_base = resumed === nothing ? 0 : resumed["chain"],
+                        iteration_offset = resumed === nothing ? 0 : resumed["iteration"],
+                        seq_offset = resumed === nothing ? 0 : resumed["next_seq"],
                     ) : nothing
                 extra = sampling_kwargs(request["sampler"], warmup, chains)
+                if resumed !== nothing
+                    extra = (; (k => v for (k, v) in pairs(extra) if k != :initial_params)...)
+                end
                 chn = Base.invokelatest(
                     build_and_sample, entry, data, sampler, draws, chains, rng;
-                    callback = cb, extra, parallel,
+                    callback = cb, extra, parallel, resume = resumed,
                 )
                 vnchain_to_wire(chn)
             end
