@@ -8,7 +8,7 @@ import {
   type ResolvedSpec,
   type Samples,
 } from "@mcmcjs/core";
-import { createFitRunner, createRunner, type DrawBatch } from "@mcmcjs/engine";
+import { createFitRunner, createRunner, type DrawBatch, type FitProgress } from "@mcmcjs/engine";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { detectJuliaup } from "../src/environment";
 import { runFit } from "../src/fit";
@@ -135,6 +135,39 @@ afterAll(() => {
 const d = ENV ? describe : describe.skip;
 
 d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", () => {
+  it("streams threaded Turing draws from both chains", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const outPath = join(dir, "threaded-turing.samples.json");
+    const batches: DrawBatch[] = [];
+    const progress: FitProgress[] = [];
+    const configured = spec(60, 2);
+    configured.sampler.warmup = 60;
+    configured.sampler.parallel = "threads";
+    const result = await runFit(
+      configured,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        onDraws: (b) => batches.push(b),
+        onProgress: (p) => progress.push(p),
+      },
+    );
+    expect(result.status, result.error).toBe("ok");
+    expect([...new Set(progress.map((p) => p.chain))].sort((a, b) => a - b)).toEqual([1, 2]);
+    const samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect([...new Set(batches.map((b) => b.chain))].sort((a, b) => a - b)).toEqual([0, 1]);
+    for (const chain of [0, 1]) {
+      const seqs = batches.filter((b) => b.chain === chain).map((b) => b.seq);
+      expect(seqs).toEqual(seqs.map((_, i) => i));
+      const columns = reconstructChain(batches, chain);
+      for (const leaf of [...samples.variables, ...samples.sampleStats.keys()]) {
+        expect(columns[leaf]).toEqual(Array.from(chainView(samples, leaf, chain)));
+      }
+    }
+  }, 600_000);
+
   it("caps Turing NUTS tree depth in a real fit", async () => {
     const env = ENV as NonNullable<typeof ENV>;
     const outPath = join(dir, "depth.samples.json");
@@ -407,6 +440,47 @@ d("julia e2e: turing predict recovers the posterior predictive via FlexiChains",
 });
 
 d("julia e2e: juliabugs streams draws that reconstruct the final samples", () => {
+  it("streams threaded JuliaBUGS draws from both chains", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const model = join(dir, "threaded-bugs.jl");
+    writeFileSync(model, BUGS_MODEL);
+    const configured: ResolvedSpec = {
+      ...spec(60, 2),
+      backend: { id: "juliabugs", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
+      model: { kind: "file", path: model, entry: "build_model" },
+      modelPath: model,
+      data: { N: TABLE_DATA.y.length, ...TABLE_DATA },
+    };
+    configured.sampler.warmup = 60;
+    configured.sampler.parallel = "threads";
+    const outPath = join(dir, "threaded-bugs.samples.json");
+    const batches: DrawBatch[] = [];
+    const progress: FitProgress[] = [];
+    const result = await runFit(
+      configured,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        onDraws: (b) => batches.push(b),
+        onProgress: (p) => progress.push(p),
+      },
+    );
+    expect(result.status, result.error).toBe("ok");
+    const samples = parseSamples(readFileSync(outPath, "utf8"));
+    expect([...new Set(batches.map((b) => b.chain))].sort((a, b) => a - b)).toEqual([0, 1]);
+    expect([...new Set(progress.map((p) => p.chain))].sort((a, b) => a - b)).toEqual([1, 2]);
+    for (const chain of [0, 1]) {
+      const seqs = batches.filter((b) => b.chain === chain).map((b) => b.seq);
+      expect(seqs).toEqual(seqs.map((_, i) => i));
+      const columns = reconstructChain(batches, chain);
+      for (const leaf of [...samples.variables, ...samples.sampleStats.keys()]) {
+        expect(columns[leaf]).toEqual(Array.from(chainView(samples, leaf, chain)));
+      }
+    }
+  }, 600_000);
+
   it("streams named, constrained draws (parameters, generated quantities, stats)", async () => {
     const env = ENV as NonNullable<typeof ENV>;
     const bugsModelPath = join(dir, "normal_bugs_stream.jl");
