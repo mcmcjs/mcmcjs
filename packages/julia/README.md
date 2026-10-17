@@ -8,6 +8,7 @@ It detects and bootstraps the Julia toolchain via juliaup, manages a pinned, per
 
 - **Toolchain** — detect juliaup and Julia (`detectJulia`/`detectJuliaup`), install them (`planSetup`/`runSetup`), and manage versions (`list`/`add`/`remove`/`default`/`update`/`gc`) over juliaup channels.
 - **Managed project** — provision an isolated Julia project with Turing.jl and JuliaBUGS (and friends) and precompile it (`ensureProject`).
+- **Existing project** — instantiate and precompile a matching `Project.toml` and `Manifest.toml` with `instantiateProject`. The Manifest must have been resolved for the Project and Julia minor version, and it stays unchanged. Its `beforePrecompile` hook runs after package installation, so callers can populate a Julia depot cache before precompilation.
 - **Driver** — the `fit` and `predict` runner (`driver.jl`) that runs Turing or JuliaBUGS and writes the MCMCChains-JSON samples file plus a run record.
 
 > Early alpha: the API is not yet stable.

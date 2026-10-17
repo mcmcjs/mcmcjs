@@ -11,6 +11,7 @@ export { predictData, runPredict } from "./predict";
 export type { PackagePins } from "./project";
 export {
   ensureProject,
+  instantiateProject,
   managedProjectDir,
   managedProjectReady,
   validatePins,
