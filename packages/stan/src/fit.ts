@@ -76,6 +76,9 @@ export function chainArgs(
     `num_samples=${s.draws}`,
     `num_warmup=${s.warmup}`,
     ...(s.thin > 1 ? [`thin=${s.thin}`] : []),
+    ...(s.max_depth === undefined
+      ? []
+      : ["algorithm=hmc", "engine=nuts", `max_depth=${s.max_depth}`]),
     "adapt",
     `delta=${s.adapt_delta}`,
     "data",

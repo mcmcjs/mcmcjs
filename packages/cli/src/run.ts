@@ -131,6 +131,7 @@ export interface RunCliOptions {
   chains?: number;
   seed?: number;
   adaptDelta?: number;
+  maxDepth?: number;
   prior?: boolean;
   algorithm?: string;
   thin?: number;
@@ -223,6 +224,7 @@ function applyOverrides(spec: Spec, opts: RunCliOptions): Spec {
       ...(opts.warmup !== undefined ? { warmup: opts.warmup } : {}),
       ...(opts.chains !== undefined ? { chains: opts.chains } : {}),
       ...(opts.adaptDelta !== undefined ? { adapt_delta: opts.adaptDelta } : {}),
+      ...(opts.maxDepth !== undefined ? { max_depth: opts.maxDepth } : {}),
     },
   });
 }
@@ -347,6 +349,7 @@ function fromExampleFolder(dir: string, opts: RunCliOptions): RunConfig {
     warmup: opts.warmup ?? 1000,
     chains: opts.chains ?? 4,
     ...(opts.adaptDelta !== undefined ? { adapt_delta: opts.adaptDelta } : {}),
+    ...(opts.maxDepth !== undefined ? { max_depth: opts.maxDepth } : {}),
   };
   const initsPath = join(dir, "inits.json");
   if (!opts.inits && !opts.prior && existsSync(initsPath)) {
@@ -499,6 +502,7 @@ function buildRunConfigWithoutInits(inputPath: string, opts: RunCliOptions): Run
       warmup: opts.warmup ?? 1000,
       chains: opts.chains ?? 4,
       ...(opts.adaptDelta !== undefined ? { adapt_delta: opts.adaptDelta } : {}),
+      ...(opts.maxDepth !== undefined ? { max_depth: opts.maxDepth } : {}),
     },
   });
   // With no spec and no --data, fall back to a sibling data file (e.g. data.csv
@@ -611,6 +615,11 @@ export function refitReasons(prev: LedgerEntry, next: RunInputs, seedPinned: boo
       reasons.push(`${field} ${prev.sampler[field]} -> ${next.sampler[field]}`);
     }
   }
+  if (prev.sampler.max_depth !== next.sampler.max_depth) {
+    reasons.push(
+      `max_depth ${prev.sampler.max_depth ?? "default"} -> ${next.sampler.max_depth ?? "default"}`,
+    );
+  }
   if (prev.backend.version !== next.channel) {
     reasons.push(`runtime ${prev.backend.version} -> ${next.channel}`);
   }
@@ -668,6 +677,7 @@ export function registerRun(program: Command, ctx: EngineContext): void {
     .option("--warmup <n>", "warmup iterations (default 1000)", parseIntOption)
     .option("--chains <n>", "number of chains (default 4)", parseIntOption)
     .option("--adapt-delta <x>", "NUTS target acceptance rate (default 0.8)", parseFloatOption)
+    .option("--max-depth <n>", "NUTS tree depth limit (default 10)", parseIntOption)
     .option("--prior", "draw from the prior instead of running MCMC (no warmup)")
     .option(
       "--algorithm <name>",

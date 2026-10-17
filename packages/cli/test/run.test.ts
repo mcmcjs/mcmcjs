@@ -134,6 +134,7 @@ describe("buildRunConfig: model file with no spec", () => {
       chains: 2,
       seed: 7,
       adaptDelta: 0.95,
+      maxDepth: 8,
       data: dataPath,
     });
     expect(config.spec.sampler).toMatchObject({
@@ -141,6 +142,7 @@ describe("buildRunConfig: model file with no spec", () => {
       warmup: 100,
       chains: 2,
       adapt_delta: 0.95,
+      max_depth: 8,
     });
     expect(config.spec.seed).toBe(7);
     // --data is recorded as a reference; the contents are loaded at run time.
@@ -512,6 +514,11 @@ describe("refitReasons", () => {
 
   it("ignores the seed when it is unpinned", () => {
     expect(refitReasons(ledgerEntry({ seed: 7 }), next, false)).toEqual([]);
+  });
+
+  it("names a changed NUTS depth", () => {
+    const prev = ledgerEntry({ sampler: { ...SAMPLER, max_depth: 8 } });
+    expect(refitReasons(prev, next, true)).toEqual(["max_depth 8 -> default"]);
   });
 });
 

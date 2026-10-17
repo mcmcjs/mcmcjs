@@ -135,6 +135,24 @@ afterAll(() => {
 const d = ENV ? describe : describe.skip;
 
 d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", () => {
+  it("caps Turing NUTS tree depth in a real fit", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const outPath = join(dir, "depth.samples.json");
+    const configured = spec(30, 1);
+    configured.sampler.warmup = 30;
+    configured.sampler.max_depth = 1;
+    const result = await runFit(
+      configured,
+      { command: env.command, args: env.args },
+      { spawn: createFitRunner(), projectDir: env.projectDir, outPath },
+    );
+    expect(result.status).toBe("ok");
+    const samples = parseSamples(readFileSync(outPath, "utf8"));
+    const depths = samples.sampleStats.get("tree_depth");
+    expect(depths).toBeDefined();
+    expect([...(depths ?? [])].every((depth) => depth <= 1)).toBe(true);
+  }, 300_000);
+
   it("streams draw batches that reconstruct the final samples exactly", async () => {
     const env = ENV as NonNullable<typeof ENV>;
     const outPath = join(dir, "reconstruct.samples.json");
@@ -1067,6 +1085,19 @@ d("julia e2e: juliabugs discrete latents through every sampler", () => {
     );
     return { result, outPath };
   };
+
+  it("caps JuliaBUGS NUTS tree depth in a real fit", async () => {
+    const { result, outPath } = await fitMixture(
+      "bugs_depth",
+      nuts({ draws: 30, warmup: 30, chains: 1, max_depth: 1 }),
+      "marginalized",
+    );
+    expect(result.status).toBe("ok");
+    const samples = parseSamples(readFileSync(outPath, "utf8"));
+    const depths = samples.sampleStats.get("tree_depth");
+    expect(depths).toBeDefined();
+    expect([...(depths ?? [])].every((depth) => depth <= 1)).toBe(true);
+  }, 300_000);
 
   it("marginalizes the latents out under NUTS and still reports them", async () => {
     const { result, outPath } = await fitMixture("mix_marginal", nuts(), "marginalized");

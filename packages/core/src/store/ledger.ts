@@ -18,6 +18,7 @@ export interface LedgerSampler {
   warmup: number;
   chains: number;
   adapt_delta: number;
+  max_depth?: number;
 }
 
 /** Convergence summary cached at fit time so listing never recomputes. */

@@ -70,4 +70,35 @@ describe("StanSampler.compile", () => {
     });
     expect(sampler.isReady).toBe(true);
   });
+
+  it("passes the NUTS depth and target acceptance to the sampling worker", async () => {
+    const sampler = new StanSampler({
+      compileServerUrl: "https://stan-wasm.example.com",
+      workerUrl: "worker.js",
+    });
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ model_id: "abc123", main_js_url: "https://cdn.example.com/main.js" }),
+        {
+          status: 200,
+        },
+      )) as typeof fetch;
+    await sampler.compile("parameters { real theta; } model { theta ~ normal(0, 1); }");
+    void sampler
+      .sample({
+        data: {},
+        num_chains: 1,
+        num_warmup: 10,
+        num_samples: 10,
+        init_radius: 2,
+        delta: 0.9,
+        max_depth: 8,
+      })
+      .catch(() => {});
+    expect(FakeWorker.instances[0]?.posted[1]).toMatchObject({
+      kind: WorkerRequest.Sample,
+      sampleConfig: { delta: 0.9, max_depth: 8 },
+    });
+    sampler.cancel();
+  });
 });

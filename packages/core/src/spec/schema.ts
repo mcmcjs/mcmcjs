@@ -58,6 +58,7 @@ const Backend = z
 
 interface ParamRules {
   algorithm: string;
+  max_depth?: number;
   step_size?: number;
   leapfrog_steps?: number;
   lambda?: number;
@@ -68,6 +69,9 @@ interface ParamRules {
 /** Per-algorithm parameter rules, shared by the sampler and its Gibbs blocks. */
 function samplerParamIssues(s: ParamRules): { path: string; message: string }[] {
   const issues: { path: string; message: string }[] = [];
+  if (s.algorithm !== "NUTS" && s.max_depth !== undefined) {
+    issues.push({ path: "max_depth", message: "max_depth applies to NUTS only" });
+  }
   if (s.algorithm === "HMC") {
     if (s.step_size === undefined)
       issues.push({ path: "step_size", message: "HMC requires step_size" });
@@ -110,6 +114,7 @@ const GibbsBlock = z
     variables: z.array(z.string().min(1)).min(1),
     algorithm: z.enum(["NUTS", "HMC", "HMCDA", "MH", "PG", "ESS", "Slice"]).default("NUTS"),
     adapt_delta: z.number().gt(0).lt(1).default(0.8),
+    max_depth: z.number().int().min(1).max(20).optional(),
     step_size: z.number().positive().optional(),
     leapfrog_steps: z.number().int().positive().optional(),
     lambda: z.number().positive().optional(),
@@ -160,6 +165,7 @@ const Sampler = z
     warmup: z.number().int().nonnegative().default(1000),
     chains: z.number().int().positive().default(4),
     adapt_delta: z.number().gt(0).lt(1).default(0.8),
+    max_depth: z.number().int().min(1).max(20).optional(),
     /** Leapfrog integrator step size (HMC only; NUTS and HMCDA adapt theirs). */
     step_size: z.number().positive().optional(),
     /** Leapfrog steps per proposal (HMC only). */
