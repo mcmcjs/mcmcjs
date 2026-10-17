@@ -86,6 +86,7 @@ A model that computes large deterministic arrays at every draw needs this to kee
 | `warmup` | non-negative integer | `1000` | NUTS/HMCDA adaptation; burn-in discarded for MH and HMC |
 | `chains` | positive integer | `4` | number of chains |
 | `adapt_delta` | number in (0, 1) | `0.8` | NUTS/HMCDA target acceptance rate |
+| `max_depth` | integer from 1 to 20 | backend default | NUTS tree depth limit |
 | `step_size` | positive number | required for HMC | leapfrog integrator step size |
 | `leapfrog_steps` | positive integer | required for HMC | leapfrog steps per proposal |
 | `lambda` | positive number | required for HMCDA | target simulation length |
