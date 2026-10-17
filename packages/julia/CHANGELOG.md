@@ -1,5 +1,11 @@
 # @mcmcjs/julia
 
+## 0.22.1
+
+### Patch Changes
+
+- 2125c63: Threaded Turing and JuliaBUGS chains stream live draw batches, and `mcmc run --stream-out` accepts threaded fits.
+
 ## 0.22.0
 
 ### Minor Changes
