@@ -1,5 +1,11 @@
 # @mcmcjs/engine
 
+## 0.7.0
+
+### Minor Changes
+
+- db71dec: - `runFit` can save immutable per-chain Turing NUTS checkpoints with each draw batch and resume a chain with verified state and RNG.
+
 ## 0.6.1
 
 ### Patch Changes
