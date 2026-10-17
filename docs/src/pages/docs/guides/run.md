@@ -41,6 +41,7 @@ Flags are always honored.
 | `--warmup <n>` | warmup iterations (default 1000) |
 | `--chains <n>` | number of chains (default 4) |
 | `--adapt-delta <x>` | NUTS target acceptance rate (default 0.8) |
+| `--max-depth <n>` | NUTS tree depth limit from 1 to 20 (default 10) |
 | `--prior` | draw from the prior instead of running MCMC (no warmup) |
 | `--algorithm <name>` | sampler: NUTS, HMC, HMCDA, MH, ESS, SMC, PG, Slice, Gibbs, External, or Prior (default NUTS; Gibbs blocks, PG particles, and the Slice window are spec-only) |
 | `--thin <n>` | keep every thin-th draw |
