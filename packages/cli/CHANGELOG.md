@@ -1,5 +1,14 @@
 # mcmcjs
 
+## 0.36.8
+
+### Patch Changes
+
+- Updated dependencies [db71dec]
+  - @mcmcjs/julia@0.23.0
+  - @mcmcjs/engine@0.7.0
+  - @mcmcjs/stan@0.1.12
+
 ## 0.36.7
 
 ### Patch Changes

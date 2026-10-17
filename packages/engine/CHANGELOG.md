@@ -1,5 +1,11 @@
 # @mcmcjs/engine
 
+## 0.7.0
+
+### Minor Changes
+
+- db71dec: `DrawBatch` carries a checkpoint path and SHA-256 digest when the sampler writes one.
+
 ## 0.6.1
 
 ### Patch Changes
