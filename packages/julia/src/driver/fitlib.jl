@@ -37,6 +37,15 @@ const ProgressLogging = Turing.AbstractMCMC.ProgressLogging
 # Where progress JSON lines go: the driver leaves this on stderr; the worker
 # points it at the client socket for the duration of a request.
 const PROGRESS_IO = Ref{IO}(stderr)
+const PROGRESS_IO_LOCK = ReentrantLock()
+
+function emit_wire(payload)
+    line = JSON.json(payload)
+    lock(PROGRESS_IO_LOCK) do
+        println(PROGRESS_IO[], line)
+        flush(PROGRESS_IO[])
+    end
+end
 
 # Translates ProgressLogging records into one JSON line per update
 # ({"mcmcjs":"progress",...}). The TypeScript side filters these out of the
@@ -45,9 +54,10 @@ const PROGRESS_IO = Ref{IO}(stderr)
 struct JSONProgressLogger <: Logging.AbstractLogger
     fallback::Logging.AbstractLogger
     last::Dict{Int,Float64}
+    lock::ReentrantLock
 end
 JSONProgressLogger() =
-    JSONProgressLogger(Logging.ConsoleLogger(stderr, Logging.Info), Dict{Int,Float64}())
+    JSONProgressLogger(Logging.ConsoleLogger(stderr, Logging.Info), Dict{Int,Float64}(), ReentrantLock())
 
 Logging.min_enabled_level(::JSONProgressLogger) = Logging.BelowMinLevel
 Logging.shouldlog(::JSONProgressLogger, args...) = true
@@ -59,11 +69,10 @@ function emit_progress(logger::JSONProgressLogger, name, fraction, done)
     of = m === nothing ? 1 : parse(Int, m.captures[2])
     f = done ? 1.0 : fraction === nothing ? 0.0 : Float64(fraction)
     # AbstractMCMC already steps by 1%; the dedupe guards chattier emitters.
-    if done || f - get(logger.last, chain, -1.0) >= 0.01
-        logger.last[chain] = f
-        println(
-            PROGRESS_IO[],
-            JSON.json(
+    lock(logger.lock) do
+        if done || f - get(logger.last, chain, -1.0) >= 0.01
+            logger.last[chain] = f
+            emit_wire(
                 Dict(
                     "mcmcjs" => "progress",
                     "chain" => chain,
@@ -71,9 +80,8 @@ function emit_progress(logger::JSONProgressLogger, name, fraction, done)
                     "fraction" => round(f; digits = 4),
                     "done" => done,
                 ),
-            ),
-        )
-        flush(PROGRESS_IO[])
+            )
+        end
     end
 end
 
@@ -331,55 +339,66 @@ end
 # A per-draw callback that emits {"mcmcjs":"draws",...} batches on PROGRESS_IO as
 # sampling proceeds. AbstractMCMC passes the 1-based chain index as `chain_number`;
 # each batch carries a per-chain monotonic seq, and a chain's batches concatenate
-# (by leaf name) to the final samples file. Assumes the callback is not invoked
-# concurrently across chains (true for the MCMCSerial path build_and_sample uses).
-function draw_streamer(draws_per_chain::Int, batch_size::Int)
-    chain = Ref(-1)
-    seq = Ref(0)
-    names = String[]
-    buffer = Dict{String,Vector{Float64}}()
-    filled = Ref(0)
-    function emit(iteration)
-        filled[] == 0 && return
-        cols = Dict{String,Vector{Float64}}(n => copy(buffer[n]) for n in names)
-        println(
-            PROGRESS_IO[],
-            JSON.json(
-                Dict(
-                    "mcmcjs" => "draws",
-                    "chain" => chain[],
-                    "seq" => seq[],
-                    "iteration" => iteration,
-                    "draws" => cols,
-                ),
+# (by leaf name) to the final samples file. Each chain owns its buffer because
+# threaded callbacks can run at the same time.
+mutable struct DrawStreamState
+    lock::ReentrantLock
+    seq::Int
+    names::Vector{String}
+    buffer::Dict{String,Vector{Float64}}
+    filled::Int
+end
+DrawStreamState() = DrawStreamState(ReentrantLock(), 0, String[], Dict{String,Vector{Float64}}(), 0)
+
+function draw_streamer(
+    draws_per_chain::Int, batch_size::Int, chains::Int; report_progress = false,
+)
+    states = [DrawStreamState() for _ in 1:chains]
+    function emit(state, chain, iteration)
+        state.filled == 0 && return
+        cols = Dict{String,Vector{Float64}}(n => copy(state.buffer[n]) for n in state.names)
+        emit_wire(
+            Dict(
+                "mcmcjs" => "draws",
+                "chain" => chain,
+                "seq" => state.seq,
+                "iteration" => iteration,
+                "draws" => cols,
             ),
         )
-        flush(PROGRESS_IO[])
-        seq[] += 1
-        for n in names
-            empty!(buffer[n])
+        if report_progress
+            emit_wire(
+                Dict(
+                    "mcmcjs" => "progress", "chain" => chain + 1, "of" => chains,
+                    "fraction" => round(min(1, iteration / draws_per_chain); digits = 4),
+                    "done" => iteration >= draws_per_chain,
+                ),
+            )
         end
-        filled[] = 0
+        state.seq += 1
+        for n in state.names
+            empty!(state.buffer[n])
+        end
+        state.filled = 0
     end
     return function (_rng, _model, _sampler, transition, _state, iteration; chain_number = 1, _kwargs...)
         c = Int(chain_number) - 1
-        if c != chain[]
-            chain[] = c
-            seq[] = 0
-        end
-        leaves = flatten_draw(transition)
-        if isempty(names)
-            for (n, _) in leaves
-                push!(names, n)
-                buffer[n] = Float64[]
+        state = states[c + 1]
+        lock(state.lock) do
+            leaves = flatten_draw(transition)
+            if isempty(state.names)
+                for (n, _) in leaves
+                    push!(state.names, n)
+                    state.buffer[n] = Float64[]
+                end
             end
-        end
-        for (n, v) in leaves
-            push!(get!(buffer, n, Float64[]), v)
-        end
-        filled[] += 1
-        if filled[] >= batch_size || iteration >= draws_per_chain
-            emit(iteration)
+            for (n, v) in leaves
+                push!(get!(state.buffer, n, Float64[]), v)
+            end
+            state.filled += 1
+            if state.filled >= batch_size || iteration >= draws_per_chain
+                emit(state, c, iteration)
+            end
         end
     end
 end
@@ -413,8 +432,9 @@ function build_and_sample(
     kw = callback === nothing ? extra : merge(extra, (; callback))
     ensemble = parallel == "threads" ? MCMCThreads() :
         parallel == "distributed" ? MCMCDistributed() : MCMCSerial()
+    progress_enabled = !(parallel == "threads" && callback !== nothing)
     return Logging.with_logger(JSONProgressLogger()) do
-        sample(rng, model, sampler, ensemble, draws, chains; progress = true, kw...)
+        sample(rng, model, sampler, ensemble, draws, chains; progress = progress_enabled, kw...)
     end
 end
 
@@ -812,11 +832,13 @@ function sample_bugs(
     initial_params === nothing ||
         (kw = merge(kw, (; initial_params = fill(initial_params, chains))))
     ensemble = threads ? JuliaBUGS.AbstractMCMC.MCMCThreads() : JuliaBUGS.AbstractMCMC.MCMCSerial()
+    # The threaded callback path passes ChannelProgress to a JuliaBUGS Bool check.
+    progress_enabled = !(threads && callback !== nothing)
     return Logging.with_logger(JSONProgressLogger()) do
         JuliaBUGS.AbstractMCMC.sample(
             rng, model, sampler, ensemble, draws, chains;
             chain_type = FlexiChains.VNChain, n_adapts = warmup, discard_initial = warmup,
-            progress = true, kw...,
+            progress = progress_enabled, kw...,
         )
     end
 end
@@ -857,49 +879,54 @@ end
 # passes the 1-based chain index as chain_number; each chain's batches carry a
 # per-chain monotonic seq.
 function bugs_draw_streamer(
-    model, sampler, draws_per_chain::Int, batch_size::Int; keep = nothing,
+    model, sampler, draws_per_chain::Int, batch_size::Int, chains::Int;
+    keep = nothing, report_progress = false,
 )
-    recon = deepcopy(model)
-    side_rng = StableRNG(0)
-    chain = Ref(-1)
-    seq = Ref(0)
-    transitions = Any[]
-    function emit(iteration)
-        isempty(transitions) && return
+    states = [
+        (;
+            lock = ReentrantLock(), recon = deepcopy(model), side_rng = StableRNG(0),
+            seq = Ref(0), transitions = Any[],
+        ) for _ in 1:chains
+    ]
+    function emit(state, chain, iteration)
+        isempty(state.transitions) && return
         chn = JuliaBUGS.bundle_transitions(
-            FlexiChains.VNChain, recon, transitions, sampler; rng = side_rng,
+            FlexiChains.VNChain, state.recon, state.transitions, sampler; rng = state.side_rng,
         )
         wire = vnchain_to_wire(chn; keep)
         nIter, total, _ = wire["size"]
         flat = wire["value_flat"]
         params = wire["parameters"]
         cols = Dict(params[p] => [flat[i + (p - 1) * nIter] for i in 1:nIter] for p in 1:total)
-        println(
-            PROGRESS_IO[],
-            JSON.json(
-                Dict(
-                    "mcmcjs" => "draws",
-                    "chain" => chain[],
-                    "seq" => seq[],
-                    "iteration" => iteration,
-                    "draws" => cols,
-                ),
+        emit_wire(
+            Dict(
+                "mcmcjs" => "draws",
+                "chain" => chain,
+                "seq" => state.seq[],
+                "iteration" => iteration,
+                "draws" => cols,
             ),
         )
-        flush(PROGRESS_IO[])
-        seq[] += 1
-        empty!(transitions)
+        if report_progress
+            emit_wire(
+                Dict(
+                    "mcmcjs" => "progress", "chain" => chain + 1, "of" => chains,
+                    "fraction" => round(min(1, iteration / draws_per_chain); digits = 4),
+                    "done" => iteration >= draws_per_chain,
+                ),
+            )
+        end
+        state.seq[] += 1
+        empty!(state.transitions)
     end
     return function (_rng, _model, _sampler, transition, _state, iteration; chain_number = 1, _kwargs...)
         c = Int(chain_number) - 1
-        if c != chain[]
-            chain[] = c
-            seq[] = 0
-            empty!(transitions)
-        end
-        push!(transitions, deepcopy(transition))
-        if length(transitions) >= batch_size || iteration >= draws_per_chain
-            emit(iteration)
+        state = states[c + 1]
+        lock(state.lock) do
+            push!(state.transitions, deepcopy(transition))
+            if length(state.transitions) >= batch_size || iteration >= draws_per_chain
+                emit(state, c, iteration)
+            end
         end
     end
 end
@@ -1185,11 +1212,12 @@ function handle_request(request)
                     warmup = Int(get(sampler_conf, "warmup", 1000))
                     threads = parallel == "threads"
                     # Reconstruction reads the plain BUGSModel; a gradient sampler runs wrapped.
-                    cb = get(request, "stream_draws", false) && !threads ?
+                    cb = get(request, "stream_draws", false) ?
                         bugs_draw_streamer(
                             base_bugs(model), sampler, draws,
-                            Int(get(request, "draw_batch_size", 25));
+                            Int(get(request, "draw_batch_size", 25)), chains;
                             keep = bugs_column_filter(request, model),
+                            report_progress = threads,
                         ) : nothing
                     Base.invokelatest(
                         sample_bugs, model, sampler, warmup, draws, chains, rng;
@@ -1202,10 +1230,11 @@ function handle_request(request)
                 vnchain_to_wire(chn; keep = bugs_column_filter(request, model))
             else
                 sampler, warmup = build_sampler(sampler_conf, modelmod)
-                # The draw streamer assumes chains arrive one at a time; with
-                # concurrent chains the caller must not request streaming.
-                cb = get(request, "stream_draws", false) && parallel == "serial" ?
-                    draw_streamer(draws, Int(get(request, "draw_batch_size", 25))) : nothing
+                cb = get(request, "stream_draws", false) && parallel != "distributed" ?
+                    draw_streamer(
+                        draws, Int(get(request, "draw_batch_size", 25)), chains;
+                        report_progress = parallel == "threads",
+                    ) : nothing
                 extra = sampling_kwargs(request["sampler"], warmup, chains)
                 chn = Base.invokelatest(
                     build_and_sample, entry, data, sampler, draws, chains, rng;

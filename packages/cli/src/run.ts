@@ -756,9 +756,9 @@ export function registerRun(program: Command, ctx: EngineContext): void {
       }
       const inputPath = resolve(target);
       const config = buildRunConfig(inputPath, opts);
-      if (opts.streamOut && config.spec.sampler.parallel !== "serial") {
+      if (opts.streamOut && config.spec.sampler.parallel === "distributed") {
         throw new Error(
-          "--stream-out needs chains sampled one at a time; drop it or use --parallel serial",
+          "--stream-out is unavailable for distributed chains; use serial or threaded chains",
         );
       }
       for (const note of config.notes) say(note);
