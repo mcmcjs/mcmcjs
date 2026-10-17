@@ -1,5 +1,17 @@
 # @mcmcjs/julia
 
+## 0.22.0
+
+### Minor Changes
+
+- f41a05d: `instantiateProject` provisions an existing Julia Project and Manifest and lets callers seed the depot before precompilation.
+
+### Patch Changes
+
+- af6e349: NUTS max_depth is configurable for Julia, CmdStan, and browser Stan runs.
+- Updated dependencies [af6e349]
+  - @mcmcjs/core@0.14.2
+
 ## 0.21.2
 
 ### Patch Changes
