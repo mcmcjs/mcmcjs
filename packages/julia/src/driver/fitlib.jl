@@ -1148,8 +1148,9 @@ function checkpoint_identity(request)
     project = Base.active_project()
     manifest = joinpath(dirname(project), "Manifest.toml")
     return Dict(
-        "format" => 1,
+        "format" => 2,
         "julia_version" => string(VERSION),
+        "checkpoint_scope_sha256" => request["checkpoint_scope_sha256"],
         "model_sha256" => bytes2hex(sha256(read(abspath(request["model"]["file"])))),
         "model_entry" => get(request["model"], "entry", nothing),
         "data_sha256" => request["data_sha256"],

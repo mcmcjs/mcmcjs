@@ -30,6 +30,8 @@ export interface FitIo {
   drawBatchSize?: number;
   /** Write a checkpoint for each chain at every streamed draw-batch boundary. */
   checkpointDir?: string;
+  /** Digest of the immutable model source bundle and runtime image. */
+  checkpointScopeSha256?: string;
   /** Resume one NUTS chain from a checkpoint written by this runtime. */
   resumeFrom?: string;
   /** Expected SHA-256 of the checkpoint bytes, checked before deserialization. */
@@ -58,6 +60,7 @@ export function fitRequest(
     streamDraws?: boolean;
     drawBatchSize?: number;
     checkpointDir?: string;
+    checkpointScopeSha256?: string;
     resumeFrom?: string;
     resumeSha256?: string;
   },
@@ -78,6 +81,7 @@ export function fitRequest(
     ...(opts?.streamDraws ? { stream_draws: true } : {}),
     ...(opts?.drawBatchSize ? { draw_batch_size: opts.drawBatchSize } : {}),
     ...(opts?.checkpointDir ? { checkpoint_dir: opts.checkpointDir } : {}),
+    ...(opts?.checkpointScopeSha256 ? { checkpoint_scope_sha256: opts.checkpointScopeSha256 } : {}),
     ...(opts?.resumeFrom ? { resume_from: opts.resumeFrom } : {}),
     ...(opts?.resumeSha256 ? { resume_sha256: opts.resumeSha256 } : {}),
     ...(opts?.checkpointDir || opts?.resumeFrom
@@ -165,6 +169,12 @@ export async function runFit(
   if (io.resumeFrom && !io.resumeSha256) {
     throw new Error("resumeSha256 is required when resuming a checkpoint");
   }
+  if (
+    (io.checkpointDir || io.resumeFrom) &&
+    !/^[0-9a-f]{64}$/.test(io.checkpointScopeSha256 ?? "")
+  ) {
+    throw new Error("checkpointScopeSha256 is required for checkpoints");
+  }
 
   const ownTmp = io.tmpDir === undefined;
   const tmp = io.tmpDir ?? makeRequestDir("fit");
@@ -176,6 +186,7 @@ export async function runFit(
         streamDraws: io.onDraws !== undefined || io.checkpointDir !== undefined,
         drawBatchSize: io.drawBatchSize,
         checkpointDir: io.checkpointDir,
+        checkpointScopeSha256: io.checkpointScopeSha256,
         resumeFrom: io.resumeFrom,
         resumeSha256: io.resumeSha256,
       }),

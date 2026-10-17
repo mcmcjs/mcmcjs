@@ -155,12 +155,14 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
     partialSpec.sampler.parallel = "threads";
     const partialPath = join(dir, "checkpoint-partial.json");
     const checkpointDir = join(dir, "checkpoints");
+    const checkpointScopeSha256 = "a".repeat(64);
     const batches: DrawBatch[] = [];
     const partial = await runFit(partialSpec, invocation, {
       spawn: createFitRunner(),
       projectDir: env.projectDir,
       outPath: partialPath,
       checkpointDir,
+      checkpointScopeSha256,
       drawBatchSize: 10,
       onDraws: (batch) => batches.push(batch),
     });
@@ -187,9 +189,24 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
       outPath: join(dir, "checkpoint-rejected.json"),
       resumeFrom: join(checkpointDir, "chain-0-iteration-40.bin"),
       resumeSha256: "0".repeat(64),
+      checkpointScopeSha256,
     });
     expect(rejected.status).toBe("error");
     expect(rejected.error).toContain("checkpoint SHA-256 does not match");
+    const scopeMismatchSpec = spec(1, 1);
+    scopeMismatchSpec.sampler.warmup = 20;
+    const scopeMismatch = await runFit(scopeMismatchSpec, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: join(dir, "checkpoint-scope-rejected.json"),
+      resumeFrom: join(checkpointDir, "chain-0-iteration-40.bin"),
+      resumeSha256: createHash("sha256")
+        .update(readFileSync(join(checkpointDir, "chain-0-iteration-40.bin")))
+        .digest("hex"),
+      checkpointScopeSha256: "b".repeat(64),
+    });
+    expect(scopeMismatch.status).toBe("error");
+    expect(scopeMismatch.error).toContain("checkpoint checkpoint_scope_sha256 does not match");
     for (const chain of [0, 1]) {
       const checkpoint = join(checkpointDir, `chain-${chain}-iteration-40.bin`);
       expect(existsSync(join(checkpointDir, `chain-${chain}-iteration-10.bin`))).toBe(true);
@@ -205,6 +222,7 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
         resumeFrom: checkpoint,
         resumeSha256: createHash("sha256").update(readFileSync(checkpoint)).digest("hex"),
         checkpointDir: join(dir, `resumed-${chain}`),
+        checkpointScopeSha256,
         drawBatchSize: 10,
         onDraws: (batch) => resumedBatches.push(batch),
       });
