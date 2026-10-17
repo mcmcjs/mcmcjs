@@ -1,5 +1,17 @@
 # mcmcjs
 
+## 0.36.6
+
+### Patch Changes
+
+- af6e349: NUTS max_depth is configurable for Julia, CmdStan, and browser Stan runs.
+- Updated dependencies [f41a05d]
+- Updated dependencies [af6e349]
+  - @mcmcjs/julia@0.22.0
+  - @mcmcjs/core@0.14.2
+  - @mcmcjs/stan@0.1.11
+  - @mcmcjs/plots@0.8.8
+
 ## 0.36.5
 
 ### Patch Changes
