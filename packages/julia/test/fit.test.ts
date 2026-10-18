@@ -175,6 +175,43 @@ describe("runFit", () => {
     ).rejects.toThrow("checkpointScopeSha256 is required");
   });
 
+  it("forwards a valid original chain selection and rejects invalid indexes", async () => {
+    const outPath = out();
+    let request: Record<string, unknown> = {};
+    const spawn: FitRunner = async (_command, args) => {
+      request = JSON.parse(readFileSync(args.at(-1) as string, "utf8"));
+      writeFileSync(outPath, SAMPLES);
+      return { stdout: PROVENANCE, stderr: "", code: 0 };
+    };
+    await runFit(
+      spec(),
+      { command: "/bin/julia", args: [] },
+      {
+        spawn,
+        projectDir: "/proj",
+        outPath,
+        checkpointDir: "/checkpoints",
+        checkpointScopeSha256: "a".repeat(64),
+        chainSelection: { index: 1, count: 2 },
+      },
+    );
+    expect(request.chain_selection).toEqual({ index: 1, count: 2 });
+    await expect(
+      runFit(
+        spec(),
+        { command: "/bin/julia", args: [] },
+        {
+          spawn,
+          projectDir: "/proj",
+          outPath,
+          checkpointDir: "/checkpoints",
+          checkpointScopeSha256: "a".repeat(64),
+          chainSelection: { index: 2, count: 2 },
+        },
+      ),
+    ).rejects.toThrow("chainSelection requires one checkpointed chain");
+  });
+
   it("reports the driver stage and message on failure", async () => {
     const outPath = out();
     const spawn: FitRunner = async () => ({

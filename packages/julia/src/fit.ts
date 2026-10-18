@@ -37,6 +37,8 @@ export interface FitIo {
   resumeFrom?: string;
   /** Expected SHA-256 of the checkpoint bytes, checked before deserialization. */
   resumeSha256?: string;
+  /** Run one original chain by its zero-based index and original chain count. */
+  chainSelection?: { index: number; count: number };
   /** Aborts an in-progress fit; the run then ends with a "cancelled" status. */
   signal?: AbortSignal;
   /** Source path when the data came from a referenced file; recorded, not copied. */
@@ -64,6 +66,7 @@ export function fitRequest(
     checkpointScopeSha256?: string;
     resumeFrom?: string;
     resumeSha256?: string;
+    chainSelection?: { index: number; count: number };
   },
 ): Record<string, unknown> {
   return {
@@ -85,6 +88,7 @@ export function fitRequest(
     ...(opts?.checkpointScopeSha256 ? { checkpoint_scope_sha256: opts.checkpointScopeSha256 } : {}),
     ...(opts?.resumeFrom ? { resume_from: opts.resumeFrom } : {}),
     ...(opts?.resumeSha256 ? { resume_sha256: opts.resumeSha256 } : {}),
+    ...(opts?.chainSelection ? { chain_selection: opts.chainSelection } : {}),
     ...(opts?.checkpointDir || opts?.resumeFrom
       ? { data_sha256: sha256(canonicalJson(spec.data)) }
       : {}),
@@ -171,6 +175,19 @@ export async function runFit(
     throw new Error("resumeSha256 is required when resuming a checkpoint");
   }
   if (
+    io.chainSelection &&
+    (!Number.isInteger(io.chainSelection.index) ||
+      !Number.isInteger(io.chainSelection.count) ||
+      io.chainSelection.count < 1 ||
+      io.chainSelection.index < 0 ||
+      io.chainSelection.index >= io.chainSelection.count ||
+      spec.sampler.chains !== 1 ||
+      !io.checkpointDir ||
+      io.resumeFrom)
+  ) {
+    throw new Error("chainSelection requires one checkpointed chain and a valid original index");
+  }
+  if (
     (io.checkpointDir || io.resumeFrom) &&
     !/^[0-9a-f]{64}$/.test(io.checkpointScopeSha256 ?? "")
   ) {
@@ -190,6 +207,7 @@ export async function runFit(
         checkpointScopeSha256: io.checkpointScopeSha256,
         resumeFrom: io.resumeFrom,
         resumeSha256: io.resumeSha256,
+        chainSelection: io.chainSelection,
       }),
     ),
   );

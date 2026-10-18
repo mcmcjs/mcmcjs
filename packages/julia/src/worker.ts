@@ -288,7 +288,7 @@ export async function runFitViaWorker(
   resolved: { command: string; args: string[] },
   io: FitIo & { notify?: (line: string) => void },
 ): Promise<FitResult> {
-  if (io.checkpointDir || io.resumeFrom) {
+  if (io.checkpointDir || io.resumeFrom || io.chainSelection) {
     throw new Error("checkpoint fits require the one-shot Julia driver");
   }
   const startedAt = new Date().toISOString();
@@ -389,6 +389,7 @@ export async function runFitAuto(
     io.daemon &&
     !io.checkpointDir &&
     !io.resumeFrom &&
+    !io.chainSelection &&
     process.platform !== "win32" &&
     spec.sampler.parallel !== "distributed"
   ) {
