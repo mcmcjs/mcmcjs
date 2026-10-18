@@ -347,6 +347,43 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
     }
   }, 300_000);
 
+  it("waits for an asynchronous draw consumer in a real fit", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const outPath = join(dir, "async-stream.samples.json");
+    const batches: DrawBatch[] = [];
+    const configured = spec(80, 1);
+    configured.sampler.warmup = 20;
+    let active = 0;
+    let maxActive = 0;
+    const result = await runFit(
+      configured,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath,
+        drawBatchSize: 10,
+        onDraws: async (batch) => {
+          active++;
+          maxActive = Math.max(maxActive, active);
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          batches.push(batch);
+          active--;
+        },
+      },
+    );
+
+    expect(result.status, result.error).toBe("ok");
+    expect(maxActive).toBe(1);
+    expect(active).toBe(0);
+    expect(batches).toHaveLength(8);
+    const samples = parseSamples(readFileSync(outPath, "utf8"));
+    const columns = reconstructChain(batches, 0);
+    for (const leaf of [...samples.variables, ...samples.sampleStats.keys()]) {
+      expect(columns[leaf]).toEqual(Array.from(chainView(samples, leaf, 0)));
+    }
+  }, 300_000);
+
   it("cancels a long run mid-flight with a clean cancelled outcome", async () => {
     const env = ENV as NonNullable<typeof ENV>;
     const outPath = join(dir, "cancel.samples.json");

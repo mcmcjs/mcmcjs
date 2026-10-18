@@ -135,7 +135,8 @@ export type FitRunner = (
   opts?: {
     timeoutMs?: number;
     onProgress?: (progress: FitProgress) => void;
-    onDraws?: (batch: DrawBatch) => void;
+    /** A returned Promise holds the producer until the batch is consumed. */
+    onDraws?: (batch: DrawBatch) => unknown;
     /** Raw console lines from the sampler (the structured progress/draws lines
      * are filtered out), as they arrive. For surfacing solver logs live. */
     onLog?: (line: string, stream: "stdout" | "stderr") => void;
@@ -210,6 +211,10 @@ export function createFitRunner(timeoutMs = 30 * 60_000): FitRunner {
       let timedOut = false;
       let cancelled = false;
       let settled = false;
+      let draining = false;
+      let closed = false;
+      let exitCode = 1;
+      let streamError: Error | undefined;
 
       const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], detached: DETACHED });
       // When the caller passes a signal it owns interruption (it can abort on
@@ -245,7 +250,7 @@ export function createFitRunner(timeoutMs = 30 * 60_000): FitRunner {
         killTree(child);
       }, opts?.timeoutMs ?? timeoutMs);
 
-      const takeLine = (line: string) => {
+      const takeLine = async (line: string) => {
         const progress = parseProgressLine(line);
         if (progress) {
           opts?.onProgress?.(progress);
@@ -253,7 +258,7 @@ export function createFitRunner(timeoutMs = 30 * 60_000): FitRunner {
         }
         const batch = parseDrawBatchLine(line);
         if (batch) {
-          opts?.onDraws?.(batch);
+          await opts?.onDraws?.(batch);
           return;
         }
         opts?.onLog?.(line, "stderr");
@@ -263,26 +268,52 @@ export function createFitRunner(timeoutMs = 30 * 60_000): FitRunner {
       child.stdout.on("data", (chunk: Buffer) => {
         if (stdout.length < MAX_CAPTURE) stdout += chunk.toString("utf8");
       });
+      const drain = async () => {
+        if (draining) return;
+        if (streamError) {
+          if (closed) settle({ stdout, stderr: streamError.message, code: 1, cancelled });
+          return;
+        }
+        draining = true;
+        child.stderr.pause();
+        try {
+          for (;;) {
+            const at = pending.indexOf("\n");
+            if (at === -1 && (!closed || !pending)) break;
+            const line = at === -1 ? pending : pending.slice(0, at);
+            pending = at === -1 ? "" : pending.slice(at + 1);
+            await takeLine(line);
+          }
+        } catch (error) {
+          streamError = error instanceof Error ? error : new Error(String(error));
+          killTree(child);
+        } finally {
+          draining = false;
+          if (closed) {
+            settle({
+              stdout,
+              stderr:
+                streamError?.message ??
+                (timedOut ? `${stderr}process timed out and was killed\n` : stderr),
+              code: streamError ? 1 : exitCode,
+              cancelled,
+            });
+          } else if (!streamError) {
+            child.stderr.resume();
+          }
+        }
+      };
       child.stderr.on("data", (chunk: Buffer) => {
         pending += chunk.toString("utf8");
-        for (;;) {
-          const at = pending.indexOf("\n");
-          if (at === -1) break;
-          takeLine(pending.slice(0, at));
-          pending = pending.slice(at + 1);
-        }
+        void drain();
       });
       child.on("error", (error) => {
         settle({ stdout, stderr: stderr || error.message, code: 1, cancelled });
       });
       child.on("close", (code) => {
-        if (pending) takeLine(pending);
-        settle({
-          stdout,
-          stderr: timedOut ? `${stderr}process timed out and was killed\n` : stderr,
-          code: code ?? 1,
-          cancelled,
-        });
+        closed = true;
+        exitCode = code ?? 1;
+        void drain();
       });
     });
 }

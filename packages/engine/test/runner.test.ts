@@ -124,6 +124,57 @@ describe("parseDrawBatchLine", () => {
 });
 
 describe("createFitRunner (streaming)", () => {
+  it("waits for an asynchronous draw sink before reading the next batch or finishing", async () => {
+    const script = [0, 1]
+      .map(
+        (seq) =>
+          `process.stderr.write(${JSON.stringify(`{"mcmcjs":"draws","chain":0,"seq":${seq},"iteration":${seq + 1},"draws":{"mu":[${seq}]}}\n`)});`,
+      )
+      .join("");
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let firstSeen!: () => void;
+    const first = new Promise<void>((resolve) => {
+      firstSeen = resolve;
+    });
+    const seen: number[] = [];
+    let finished = false;
+    const fit = createFitRunner()(process.execPath, ["-e", script], {
+      onDraws: async (batch) => {
+        seen.push(batch.seq);
+        if (batch.seq === 0) {
+          firstSeen();
+          await gate;
+        }
+      },
+    }).then((result) => {
+      finished = true;
+      return result;
+    });
+    await first;
+    expect(seen).toEqual([0]);
+    expect(finished).toBe(false);
+    release();
+    expect((await fit).code).toBe(0);
+    expect(seen).toEqual([0, 1]);
+  });
+
+  it("stops the sampler when an asynchronous draw sink fails", async () => {
+    const script = [
+      'process.stderr.write(\'{"mcmcjs":"draws","chain":0,"seq":0,"iteration":1,"draws":{"mu":[0.1]}}\\n\');',
+      "setInterval(() => {}, 1000);",
+    ].join("");
+    const result = await createFitRunner(500)(process.execPath, ["-e", script], {
+      onDraws: async () => {
+        throw new Error("sink failed");
+      },
+    });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toBe("sink failed");
+  });
+
   it("routes draw-batch lines to onDraws and keeps them out of stderr", async () => {
     const script = [
       'process.stderr.write(\'{"mcmcjs":"draws","chain":0,"seq":0,"iteration":2,"draws":{"mu":[0.1,0.2]}}\\n\');',
