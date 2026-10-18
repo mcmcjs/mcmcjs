@@ -1,5 +1,11 @@
 # @mcmcjs/julia
 
+## 0.23.1
+
+### Patch Changes
+
+- 127008b: Checkpointed Turing fits and resumed chains no longer emitted Julia 1.12 world-age warnings.
+
 ## 0.23.0
 
 ### Minor Changes
