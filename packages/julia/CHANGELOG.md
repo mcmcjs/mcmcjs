@@ -1,5 +1,13 @@
 # @mcmcjs/julia
 
+## 0.23.2
+
+### Patch Changes
+
+- b9932a5: Draw streaming now waits for asynchronous consumers before reading more batches, keeping long fits bounded by the consumer's pace.
+- Updated dependencies [b9932a5]
+  - @mcmcjs/engine@0.7.1
+
 ## 0.23.1
 
 ### Patch Changes
