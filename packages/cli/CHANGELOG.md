@@ -1,5 +1,14 @@
 # mcmcjs
 
+## 0.36.10
+
+### Patch Changes
+
+- Updated dependencies [b9932a5]
+  - @mcmcjs/engine@0.7.1
+  - @mcmcjs/julia@0.23.2
+  - @mcmcjs/stan@0.1.13
+
 ## 0.36.9
 
 ### Patch Changes
