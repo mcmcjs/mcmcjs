@@ -22,7 +22,8 @@ export interface FitIo {
   /** Streamed per-chain sampling progress. */
   onProgress?: (progress: FitProgress) => void;
   /** Streamed draw batches as sampling proceeds. */
-  onDraws?: (batch: DrawBatch) => void;
+  /** A returned Promise holds the producer until the batch is consumed. */
+  onDraws?: (batch: DrawBatch) => unknown;
   /** Raw console lines from the sampler as they arrive (structured progress/draws
    * lines are filtered out), for surfacing solver logs live. */
   onLog?: (line: string, stream: "stdout" | "stderr") => void;

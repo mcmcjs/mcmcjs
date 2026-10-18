@@ -24,6 +24,12 @@ class WorkerTimeoutError extends Error {}
 /** The caller aborted the fit; the worker is killed and the run ends cancelled. */
 class FitCancelledError extends Error {}
 
+class DrawSinkError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+  }
+}
+
 /** The pidfile a worker writes beside its socket so a fit can be killed cross-process. */
 function workerPidPath(socket: string): string {
   return `${socket}.pid`;
@@ -186,6 +192,8 @@ function readWorkerResponse(
   return new Promise((resolve, reject) => {
     let pending = "";
     let settled = false;
+    let draining = false;
+    let closed = false;
     const onAbort = () => {
       settle(() => {
         sock.destroy();
@@ -212,36 +220,65 @@ function readWorkerResponse(
         reject(error);
       });
     });
+    const drain = async () => {
+      if (draining || settled) return;
+      draining = true;
+      sock.pause();
+      sock.setTimeout(0);
+      try {
+        for (;;) {
+          const at = pending.indexOf("\n");
+          if (at === -1) break;
+          const line = pending.slice(0, at).trim();
+          pending = pending.slice(at + 1);
+          if (!line) continue;
+          const progress = parseProgressLine(line);
+          if (progress) {
+            onProgress?.(progress);
+            continue;
+          }
+          const batch = parseDrawBatchLine(line);
+          if (batch) {
+            try {
+              await onDraws?.(batch);
+            } catch (error) {
+              throw new DrawSinkError(error);
+            }
+            if (settled) return;
+            continue;
+          }
+          try {
+            const doc = JSON.parse(line) as Record<string, unknown>;
+            settle(() => {
+              sock.end();
+              resolve(doc);
+            });
+            return;
+          } catch {}
+        }
+      } catch (error) {
+        settle(() => {
+          sock.destroy();
+          reject(error);
+        });
+      } finally {
+        draining = false;
+        if (closed && !settled) settle(() => reject(new Error("worker closed the connection")));
+        if (!settled) {
+          sock.setTimeout(inactivityMs);
+          sock.resume();
+        }
+      }
+    };
     sock.on("data", (chunk: Buffer) => {
       pending += chunk.toString("utf8");
-      for (;;) {
-        const at = pending.indexOf("\n");
-        if (at === -1) break;
-        const line = pending.slice(0, at).trim();
-        pending = pending.slice(at + 1);
-        if (!line) continue;
-        const progress = parseProgressLine(line);
-        if (progress) {
-          onProgress?.(progress);
-          continue;
-        }
-        const batch = parseDrawBatchLine(line);
-        if (batch) {
-          onDraws?.(batch);
-          continue;
-        }
-        try {
-          const doc = JSON.parse(line) as Record<string, unknown>;
-          settle(() => {
-            sock.end();
-            resolve(doc);
-          });
-          return;
-        } catch {}
-      }
+      void drain();
     });
     sock.on("error", (error) => settle(() => reject(error)));
-    sock.on("close", () => settle(() => reject(new Error("worker closed the connection"))));
+    sock.on("close", () => {
+      closed = true;
+      void drain();
+    });
   });
 }
 
@@ -291,6 +328,10 @@ export async function runFitViaWorker(
   try {
     final = await readWorkerResponse(sock, io.onProgress, io.onDraws, io.signal);
   } catch (error) {
+    if (error instanceof DrawSinkError) {
+      killWorker(workerSocketPath(resolved.command, io.projectDir));
+      throw error;
+    }
     if (error instanceof FitCancelledError) {
       // The worker is mid-sample and cannot answer a polite stop; kill it so it
       // stops promptly and the next fit cold-starts a fresh one.
@@ -355,6 +396,7 @@ export async function runFitAuto(
     try {
       return await runFitViaWorker(spec, resolved, io);
     } catch (error) {
+      if (error instanceof DrawSinkError) throw error;
       if (error instanceof WorkerTimeoutError) {
         return {
           status: "error",

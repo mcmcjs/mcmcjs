@@ -77,6 +77,51 @@ function stubWorkersDir(): void {
 }
 
 describe("runFitViaWorker", () => {
+  it("waits for an asynchronous draw sink before reading the next worker batch", async () => {
+    stubWorkersDir();
+    const socket = workerSocketPath("/bin/julia", "/proj");
+    const outPath = join(dir, "samples.json");
+    fakeWorker(socket, () => {
+      writeFileSync(outPath, SAMPLES);
+      return [
+        '{"mcmcjs":"draws","chain":0,"seq":0,"iteration":1,"draws":{"mu":[0.1]}}',
+        '{"mcmcjs":"draws","chain":0,"seq":1,"iteration":2,"draws":{"mu":[0.2]}}',
+        JSON.stringify({ ok: true, provenance: { julia_version: "1.12.6", packages: {} } }),
+      ];
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let firstSeen!: () => void;
+    const first = new Promise<void>((resolve) => {
+      firstSeen = resolve;
+    });
+    const seen: number[] = [];
+    const fit = runFitViaWorker(
+      spec(dir),
+      { command: "/bin/julia", args: [] },
+      {
+        spawn: async () => ({ stdout: "", stderr: "", code: 1 }),
+        projectDir: "/proj",
+        outPath,
+        recordPath: join(dir, "run.json"),
+        onDraws: async (batch) => {
+          seen.push(batch.seq);
+          if (batch.seq === 0) {
+            firstSeen();
+            await gate;
+          }
+        },
+      },
+    );
+    await first;
+    expect(seen).toEqual([0]);
+    release();
+    expect((await fit).status).toBe("ok");
+    expect(seen).toEqual([0, 1]);
+  });
+
   it("streams progress and finalizes an ok fit with a run record", async () => {
     stubWorkersDir();
     const socket = workerSocketPath("/bin/julia", "/proj");
@@ -258,6 +303,32 @@ describe("runFitViaWorker", () => {
       },
     );
     expect(result.status).toBe("cancelled");
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("does not rerun a fit when its draw sink fails", async () => {
+    stubWorkersDir();
+    const socket = workerSocketPath("/bin/julia", "/proj");
+    fakeWorker(socket, () => [
+      '{"mcmcjs":"draws","chain":0,"seq":0,"iteration":1,"draws":{"mu":[0.1]}}',
+      JSON.stringify({ ok: true, provenance: { julia_version: "1.12.6", packages: {} } }),
+    ]);
+    const spawn = vi.fn(async () => ({ stdout: "", stderr: "", code: 1 }));
+    await expect(
+      runFitAuto(
+        spec(dir),
+        { command: "/bin/julia", args: [] },
+        {
+          spawn,
+          projectDir: "/proj",
+          outPath: join(dir, "samples.json"),
+          daemon: true,
+          onDraws: async () => {
+            throw new Error("sink failed");
+          },
+        },
+      ),
+    ).rejects.toThrow("sink failed");
     expect(spawn).not.toHaveBeenCalled();
   });
 
