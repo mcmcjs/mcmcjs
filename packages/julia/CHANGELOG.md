@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- 867146d: - `chainSelection` runs one Turing NUTS chain with its original seed and chain number from a multi-chain fit.
+- `chainSelection` runs one Turing NUTS chain with its original seed and chain number from a multi-chain fit.
 
 ## 0.23.2
 
