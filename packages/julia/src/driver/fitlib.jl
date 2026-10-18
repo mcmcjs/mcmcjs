@@ -1125,7 +1125,8 @@ function load_model_module(path; checkpoint = false)
         name = Symbol("MCMCJSModel_", bytes2hex(sha256(read(abspath(path))))[1:24])
         isdefined(Main, name) && error("checkpoint model module already loaded in this process")
         Core.eval(Main, :(module $name end))
-        getfield(Main, name)
+        # Julia 1.12 requires this new binding to be read in its definition world.
+        Base.invokelatest(getfield, Main, name)
     else
         Module(gensym(:UserModel))
     end
@@ -1329,7 +1330,9 @@ function handle_request(request)
             else
                 sampler, warmup = build_sampler(sampler_conf, modelmod)
                 identity = checkpointing ? checkpoint_identity(request) : nothing
-                resumed = haskey(request, "resume_from") ? read_checkpoint(request, identity) : nothing
+                # Deserialization reads the model module and its new function bindings.
+                resumed = haskey(request, "resume_from") ?
+                    Base.invokelatest(read_checkpoint, request, identity) : nothing
                 checkpoint = haskey(request, "checkpoint_dir") ?
                     checkpoint_writer(
                         request["checkpoint_dir"], identity;

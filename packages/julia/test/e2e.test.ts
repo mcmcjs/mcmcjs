@@ -139,6 +139,7 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
   it("restores both threaded NUTS chains from batch-boundary checkpoints", async () => {
     const env = ENV as NonNullable<typeof ENV>;
     const invocation = { command: env.command, args: env.args };
+    const strictInvocation = { command: env.command, args: [...env.args, "--depwarn=error"] };
     const fullSpec = spec(60, 2);
     fullSpec.sampler.warmup = 20;
     fullSpec.sampler.parallel = "threads";
@@ -157,7 +158,7 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
     const checkpointDir = join(dir, "checkpoints");
     const checkpointScopeSha256 = "a".repeat(64);
     const batches: DrawBatch[] = [];
-    const partial = await runFit(partialSpec, invocation, {
+    const partial = await runFit(partialSpec, strictInvocation, {
       spawn: createFitRunner(),
       projectDir: env.projectDir,
       outPath: partialPath,
@@ -215,7 +216,7 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
       resumedSpec.sampler.warmup = 20;
       const resumedPath = join(dir, `checkpoint-resumed-${chain}.json`);
       const resumedBatches: DrawBatch[] = [];
-      const resumed = await runFit(resumedSpec, invocation, {
+      const resumed = await runFit(resumedSpec, strictInvocation, {
         spawn: createFitRunner(),
         projectDir: env.projectDir,
         outPath: resumedPath,
