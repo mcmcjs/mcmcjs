@@ -435,6 +435,7 @@ end
 function build_and_sample(
     entry, data, sampler, draws, chains, rng;
     callback = nothing, extra = (;), parallel = "serial", resume = nothing,
+    chain_selection = nothing,
 )
     model = condition_on_data(entry(data), data)
     kw = callback === nothing ? extra : merge(extra, (; callback))
@@ -442,7 +443,13 @@ function build_and_sample(
         parallel == "distributed" ? MCMCDistributed() : MCMCSerial()
     progress_enabled = !(parallel == "threads" && callback !== nothing)
     return Logging.with_logger(JSONProgressLogger()) do
-        if resume === nothing
+        if chain_selection !== nothing
+            seeds = rand(rng, UInt, chain_selection["count"])
+            Random.seed!(rng, seeds[chain_selection["index"] + 1])
+            selected_kw = haskey(kw, :initial_params) ?
+                merge(kw, (; initial_params = only(kw.initial_params))) : kw
+            sample(rng, model, sampler, draws; progress = progress_enabled, selected_kw...)
+        elseif resume === nothing
             sample(rng, model, sampler, ensemble, draws, chains; progress = progress_enabled, kw...)
         else
             sample(
@@ -1228,6 +1235,7 @@ function handle_request(request)
     stage = "compile"
     try
         checkpointing = haskey(request, "checkpoint_dir") || haskey(request, "resume_from")
+        chain_selection = get(request, "chain_selection", nothing)
         if checkpointing
             sampler = request["sampler"]
             mode == "fit" && backend == "turing" && get(sampler, "algorithm", "NUTS") == "NUTS" ||
@@ -1239,6 +1247,15 @@ function handle_request(request)
                 Int(get(sampler, "chains", 1)) == 1 ||
                     error("resume one chain at a time")
             end
+        end
+        if chain_selection !== nothing
+            mode == "fit" && backend == "turing" && haskey(request, "checkpoint_dir") &&
+                !haskey(request, "resume_from") && Int(get(request["sampler"], "chains", 1)) == 1 ||
+                error("chain selection requires one checkpointed Turing fit")
+            index = Int(chain_selection["index"])
+            count = Int(chain_selection["count"])
+            count > 0 && 0 <= index < count || error("invalid chain selection")
+            chain_selection = Dict("index" => index, "count" => count)
         end
         Random.seed!(Int(request["seed"]))
         rng = StableRNG(Int(request["seed"]))
@@ -1337,13 +1354,15 @@ function handle_request(request)
                     checkpoint_writer(
                         request["checkpoint_dir"], identity;
                         offset = resumed === nothing ? 0 : resumed["iteration"],
-                        chain_base = resumed === nothing ? 0 : resumed["chain"],
+                        chain_base = resumed !== nothing ? resumed["chain"] :
+                            chain_selection === nothing ? 0 : chain_selection["index"],
                     ) : nothing
                 cb = (get(request, "stream_draws", false) || checkpoint !== nothing) && parallel != "distributed" ?
                     draw_streamer(
                         draws, Int(get(request, "draw_batch_size", 25)), chains;
                         report_progress = parallel == "threads", checkpoint,
-                        chain_base = resumed === nothing ? 0 : resumed["chain"],
+                        chain_base = resumed !== nothing ? resumed["chain"] :
+                            chain_selection === nothing ? 0 : chain_selection["index"],
                         iteration_offset = resumed === nothing ? 0 : resumed["iteration"],
                         seq_offset = resumed === nothing ? 0 : resumed["next_seq"],
                     ) : nothing
@@ -1353,7 +1372,7 @@ function handle_request(request)
                 end
                 chn = Base.invokelatest(
                     build_and_sample, entry, data, sampler, draws, chains, rng;
-                    callback = cb, extra, parallel, resume = resumed,
+                    callback = cb, extra, parallel, resume = resumed, chain_selection,
                 )
                 vnchain_to_wire(chn)
             end

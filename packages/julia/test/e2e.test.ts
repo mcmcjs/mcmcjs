@@ -136,6 +136,47 @@ afterAll(() => {
 const d = ENV ? describe : describe.skip;
 
 d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", () => {
+  it("replays one original threaded chain without sampling its siblings", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const invocation = { command: env.command, args: env.args };
+    const fullSpec = spec(8, 2);
+    fullSpec.sampler.warmup = 10;
+    fullSpec.sampler.parallel = "threads";
+    const fullPath = join(dir, "selected-full.json");
+    const full = await runFit(fullSpec, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: fullPath,
+    });
+    expect(full.status, full.error).toBe("ok");
+
+    const selectedSpec = spec(8, 1);
+    selectedSpec.sampler.warmup = 10;
+    const selectedPath = join(dir, "selected-chain.json");
+    const checkpointDir = join(dir, "selected-checkpoints");
+    const batches: DrawBatch[] = [];
+    const selected = await runFit(selectedSpec, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: selectedPath,
+      checkpointDir,
+      checkpointScopeSha256: "c".repeat(64),
+      chainSelection: { index: 1, count: 2 },
+      onDraws: (batch) => batches.push(batch),
+    });
+    expect(selected.status, selected.error).toBe("ok");
+    expect(batches.map((batch) => [batch.chain, batch.seq, batch.iteration])).toEqual([[1, 0, 8]]);
+    expect(existsSync(join(checkpointDir, "chain-1-iteration-8.bin"))).toBe(true);
+
+    const baseline = parseSamples(readFileSync(fullPath, "utf8"));
+    const replayed = parseSamples(readFileSync(selectedPath, "utf8"));
+    for (const leaf of [...baseline.variables, ...baseline.sampleStats.keys()]) {
+      expect(Array.from(chainView(replayed, leaf, 0))).toEqual(
+        Array.from(chainView(baseline, leaf, 1)),
+      );
+    }
+  }, 900_000);
+
   it("restores both threaded NUTS chains from batch-boundary checkpoints", async () => {
     const env = ENV as NonNullable<typeof ENV>;
     const invocation = { command: env.command, args: env.args };
