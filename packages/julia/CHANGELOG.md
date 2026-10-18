@@ -1,5 +1,11 @@
 # @mcmcjs/julia
 
+## 0.23.3
+
+### Patch Changes
+
+- `chainSelection` runs one Turing NUTS chain with its original seed and chain number from a multi-chain fit.
+
 ## 0.23.2
 
 ### Patch Changes
