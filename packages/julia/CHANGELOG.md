@@ -1,5 +1,11 @@
 # @mcmcjs/julia
 
+## 0.23.5
+
+### Patch Changes
+
+- 0dc21e3: JuliaBUGS NUTS chains can continue from verified draw-batch checkpoints and replay an unsaved chain from its original seed.
+
 ## 0.23.4
 
 ### Patch Changes
