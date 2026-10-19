@@ -179,7 +179,10 @@ export function parseDrawBatchLine(line: string): DrawBatch | undefined {
   if (record.mcmcjs !== "draws") return undefined;
   const draws: Record<string, number[]> = {};
   for (const [name, values] of Object.entries((record.draws ?? {}) as Record<string, unknown>)) {
-    draws[name] = Array.isArray(values) ? values.map(Number) : [];
+    // JSON null denotes a missing draw; Number(null) would invent zero.
+    draws[name] = Array.isArray(values)
+      ? values.map((value) => (typeof value === "number" ? value : Number.NaN))
+      : [];
   }
   const iteration = record.iteration;
   const checkpoint = record.checkpoint as Record<string, unknown> | undefined;
