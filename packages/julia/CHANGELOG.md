@@ -1,5 +1,13 @@
 # @mcmcjs/julia
 
+## 0.23.6
+
+### Patch Changes
+
+- 303a6aa: Turing NUTS fits interrupted during warmup could resume from their saved sampler state.
+- Updated dependencies [303a6aa]
+  - @mcmcjs/engine@0.7.3
+
 ## 0.23.5
 
 ### Patch Changes

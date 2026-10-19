@@ -1,5 +1,11 @@
 # @mcmcjs/engine
 
+## 0.7.3
+
+### Patch Changes
+
+- 303a6aa: Turing NUTS fits interrupted during warmup could resume from their saved sampler state.
+
 ## 0.7.2
 
 ### Patch Changes
