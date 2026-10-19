@@ -847,22 +847,41 @@ end
 function sample_bugs(
     model, sampler, warmup, draws, chains, rng;
     callback = nothing, thin = 1, threads = false, initial_params = nothing,
+    resume = nothing, chain_selection = nothing,
 )
     kw = callback === nothing ? (;) : (; callback)
     thin > 1 && (kw = merge(kw, (; thinning = thin)))
     # Ensemble sampling wants one starting point per chain; every chain starts from
     # the values the spec named, and diverges from there through its own stream.
-    initial_params === nothing ||
-        (kw = merge(kw, (; initial_params = fill(initial_params, chains))))
+    if initial_params !== nothing && resume === nothing
+        selected = chain_selection === nothing ? fill(initial_params, chains) : initial_params
+        kw = merge(kw, (; initial_params = selected))
+    end
     ensemble = threads ? JuliaBUGS.AbstractMCMC.MCMCThreads() : JuliaBUGS.AbstractMCMC.MCMCSerial()
     # The threaded callback path passes ChannelProgress to a JuliaBUGS Bool check.
     progress_enabled = !(threads && callback !== nothing)
     return Logging.with_logger(JSONProgressLogger()) do
-        JuliaBUGS.AbstractMCMC.sample(
-            rng, model, sampler, ensemble, draws, chains;
-            chain_type = FlexiChains.VNChain, n_adapts = warmup, discard_initial = warmup,
-            progress = progress_enabled, kw...,
-        )
+        if chain_selection !== nothing
+            seeds = rand(rng, UInt, chain_selection["count"])
+            Random.seed!(rng, seeds[chain_selection["index"] + 1])
+            JuliaBUGS.AbstractMCMC.sample(
+                rng, model, sampler, draws;
+                chain_type = FlexiChains.VNChain, n_adapts = warmup, discard_initial = warmup,
+                progress = progress_enabled, kw...,
+            )
+        elseif resume === nothing
+            JuliaBUGS.AbstractMCMC.sample(
+                rng, model, sampler, ensemble, draws, chains;
+                chain_type = FlexiChains.VNChain, n_adapts = warmup, discard_initial = warmup,
+                progress = progress_enabled, kw...,
+            )
+        else
+            JuliaBUGS.AbstractMCMC.sample(
+                resume["rng"], model, sampler, draws;
+                chain_type = FlexiChains.VNChain, n_adapts = 0, discard_initial = 0,
+                initial_state = resume["state"], progress = progress_enabled, kw...,
+            )
+        end
     end
 end
 
@@ -903,15 +922,18 @@ end
 # per-chain monotonic seq.
 function bugs_draw_streamer(
     model, sampler, draws_per_chain::Int, batch_size::Int, chains::Int;
-    keep = nothing, report_progress = false,
+    keep = nothing, report_progress = false, checkpoint = nothing, resume = nothing,
+    chain_base = 0,
 )
     states = [
         (;
-            lock = ReentrantLock(), recon = deepcopy(model), side_rng = StableRNG(0),
-            seq = Ref(0), transitions = Any[],
+            lock = ReentrantLock(),
+            recon = resume === nothing ? deepcopy(model) : resume["recon"],
+            side_rng = resume === nothing ? StableRNG(0) : resume["side_rng"],
+            seq = Ref(resume === nothing ? 0 : resume["next_seq"]), transitions = Any[],
         ) for _ in 1:chains
     ]
-    function emit(state, chain, iteration)
+    function emit(state, chain, iteration, rng, sampler_state)
         isempty(state.transitions) && return
         chn = JuliaBUGS.bundle_transitions(
             FlexiChains.VNChain, state.recon, state.transitions, sampler; rng = state.side_rng,
@@ -921,15 +943,19 @@ function bugs_draw_streamer(
         flat = wire["value_flat"]
         params = wire["parameters"]
         cols = Dict(params[p] => [flat[i + (p - 1) * nIter] for i in 1:nIter] for p in 1:total)
-        emit_wire(
-            Dict(
-                "mcmcjs" => "draws",
-                "chain" => chain,
-                "seq" => state.seq[],
-                "iteration" => iteration,
-                "draws" => cols,
-            ),
+        info = checkpoint === nothing ? nothing : checkpoint(
+            rng, sampler_state, chain, iteration, state.seq[];
+            extra = Dict("recon" => state.recon, "side_rng" => deepcopy(state.side_rng)),
         )
+        payload = Dict(
+            "mcmcjs" => "draws",
+            "chain" => chain + chain_base,
+            "seq" => state.seq[],
+            "iteration" => iteration + (resume === nothing ? 0 : resume["iteration"]),
+            "draws" => cols,
+        )
+        info === nothing || (payload["checkpoint"] = info)
+        emit_wire(payload)
         if report_progress
             emit_wire(
                 Dict(
@@ -948,7 +974,7 @@ function bugs_draw_streamer(
         lock(state.lock) do
             push!(state.transitions, deepcopy(transition))
             if length(state.transitions) >= batch_size || iteration >= draws_per_chain
-                emit(state, c, iteration)
+                emit(state, c, iteration, _rng, _state)
             end
         end
     end
@@ -1155,8 +1181,10 @@ end
 function checkpoint_identity(request)
     project = Base.active_project()
     manifest = joinpath(dirname(project), "Manifest.toml")
-    return Dict(
-        "format" => 2,
+    backend = get(get(request, "backend", Dict()), "id", "turing")
+    # Keep Turing's format 2 identity unchanged so earlier checkpoints still restore.
+    identity = Dict(
+        "format" => backend == "juliabugs" ? 3 : 2,
         "julia_version" => string(VERSION),
         "checkpoint_scope_sha256" => request["checkpoint_scope_sha256"],
         "model_sha256" => bytes2hex(sha256(read(abspath(request["model"]["file"])))),
@@ -1169,6 +1197,12 @@ function checkpoint_identity(request)
         ),
         "seed" => Int(request["seed"]),
     )
+    if backend == "juliabugs"
+        identity["backend"] = backend
+        identity["evaluation_mode"] = get(request["model"], "evaluation_mode", nothing)
+        identity["monitor"] = get(request["model"], "monitor", nothing)
+    end
+    return identity
 end
 
 function read_checkpoint(request, identity)
@@ -1189,7 +1223,7 @@ end
 
 function checkpoint_writer(dir, identity; offset = 0, chain_base = 0)
     mkpath(dir)
-    return function (rng, state, chain, iteration, seq)
+    return function (rng, state, chain, iteration, seq; extra = Dict())
         chain_id = chain + chain_base
         absolute_iteration = iteration + offset
         path = joinpath(dir, "chain-$(chain_id)-iteration-$(absolute_iteration).bin")
@@ -1202,6 +1236,7 @@ function checkpoint_writer(dir, identity; offset = 0, chain_base = 0)
                 "next_seq" => seq + 1,
                 "rng" => deepcopy(rng), "state" => state,
             ),
+            extra,
         )
         try
             Serialization.serialize(tmp, saved)
@@ -1238,8 +1273,9 @@ function handle_request(request)
         chain_selection = get(request, "chain_selection", nothing)
         if checkpointing
             sampler = request["sampler"]
-            mode == "fit" && backend == "turing" && get(sampler, "algorithm", "NUTS") == "NUTS" ||
-                error("checkpoints currently support Turing NUTS fits only")
+            mode == "fit" && backend in ("turing", "juliabugs") &&
+                get(sampler, "algorithm", "NUTS") == "NUTS" ||
+                error("checkpoints currently support Turing and JuliaBUGS NUTS fits only")
             get(sampler, "parallel", "serial") != "distributed" ||
                 error("distributed sampling cannot write checkpoints")
             Int(get(sampler, "thin", 1)) == 1 || error("checkpoint fits require thin = 1")
@@ -1249,9 +1285,9 @@ function handle_request(request)
             end
         end
         if chain_selection !== nothing
-            mode == "fit" && backend == "turing" && haskey(request, "checkpoint_dir") &&
+            mode == "fit" && backend in ("turing", "juliabugs") && haskey(request, "checkpoint_dir") &&
                 !haskey(request, "resume_from") && Int(get(request["sampler"], "chains", 1)) == 1 ||
-                error("chain selection requires one checkpointed Turing fit")
+                error("chain selection requires one checkpointed NUTS fit")
             index = Int(chain_selection["index"])
             count = Int(chain_selection["count"])
             count > 0 && 0 <= index < count || error("invalid chain selection")
@@ -1327,17 +1363,30 @@ function handle_request(request)
                     sampler = Base.invokelatest(build_bugs_sampler, sampler_conf, model)
                     warmup = Int(get(sampler_conf, "warmup", 1000))
                     threads = parallel == "threads"
+                    identity = checkpointing ? checkpoint_identity(request) : nothing
+                    resumed = haskey(request, "resume_from") ?
+                        Base.invokelatest(read_checkpoint, request, identity) : nothing
+                    checkpoint = haskey(request, "checkpoint_dir") ?
+                        checkpoint_writer(
+                            request["checkpoint_dir"], identity;
+                            offset = resumed === nothing ? 0 : resumed["iteration"],
+                            chain_base = resumed !== nothing ? resumed["chain"] :
+                                chain_selection === nothing ? 0 : chain_selection["index"],
+                        ) : nothing
                     # Reconstruction reads the plain BUGSModel; a gradient sampler runs wrapped.
-                    cb = get(request, "stream_draws", false) ?
+                    cb = (get(request, "stream_draws", false) || checkpoint !== nothing) ?
                         bugs_draw_streamer(
                             base_bugs(model), sampler, draws,
                             Int(get(request, "draw_batch_size", 25)), chains;
                             keep = bugs_column_filter(request, model),
-                            report_progress = threads,
+                            report_progress = threads, checkpoint, resume = resumed,
+                            chain_base = resumed !== nothing ? resumed["chain"] :
+                                chain_selection === nothing ? 0 : chain_selection["index"],
                         ) : nothing
                     Base.invokelatest(
                         sample_bugs, model, sampler, warmup, draws, chains, rng;
                         callback = cb, thin = Int(get(request["sampler"], "thin", 1)), threads,
+                        resume = resumed, chain_selection,
                         initial_params = Base.invokelatest(
                             bugs_initial_params, model, sampler_conf,
                         ),
