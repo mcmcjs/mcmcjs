@@ -93,6 +93,14 @@ describe("parseDrawBatchLine", () => {
     ).toEqual({ chain: 0, seq: 2, iteration: 75, draws: { mu: [0.1, 0.2], "theta[1]": [1, 2] } });
   });
 
+  it("keeps missing draw values as NaN", () => {
+    const batch = parseDrawBatchLine(
+      '{"mcmcjs":"draws","chain":0,"seq":0,"iteration":2,"draws":{"mu":[null,1]}}',
+    );
+    expect(batch?.draws.mu?.[0]).toBeNaN();
+    expect(batch?.draws.mu?.[1]).toBe(1);
+  });
+
   it("allows a null iteration and defaults missing fields", () => {
     expect(parseDrawBatchLine('{"mcmcjs":"draws","chain":1,"seq":0,"iteration":null}')).toEqual({
       chain: 1,
