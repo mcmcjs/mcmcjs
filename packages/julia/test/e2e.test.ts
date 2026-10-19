@@ -1213,6 +1213,52 @@ d("julia e2e: prior sampling and the prior predictive", () => {
 });
 
 d("julia e2e: pointwise log-likelihood", () => {
+  it("rejects unnamed observations instead of exporting an incomplete observed set", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const modelFile = join(dir, "observed_literal.jl");
+    writeFileSync(
+      modelFile,
+      `using Turing
+@model function build_model(data)
+    mu ~ Normal()
+    y = data["y"]
+    y ~ Normal(mu)
+    0.0 ~ Normal(mu)
+end
+`,
+    );
+    const samplesPath = join(dir, "observed_literal.post.json");
+    writeFileSync(
+      samplesPath,
+      JSON.stringify({
+        size: [1, 1, 1],
+        value_flat: [0.5],
+        parameters: ["mu"],
+        name_map: { parameters: ["mu"], internals: [] },
+      }),
+    );
+    const literalSpec: ResolvedSpec = {
+      ...spec(1, 1),
+      model: { kind: "file", path: modelFile, entry: "build_model" },
+      modelPath: modelFile,
+      data: { y: 1.5 },
+    };
+    const result = await runObserved(
+      literalSpec,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath: join(dir, "observed_literal.json"),
+        samplesPath,
+      },
+    );
+    expect(result.status).toBe("error");
+    expect(result.status === "error" ? result.error : "").toMatch(
+      /observed site has no variable name/,
+    );
+  }, 300_000);
+
   it("records vector and scalar observed sites by their model term names", async () => {
     const env = ENV as NonNullable<typeof ENV>;
     const vectorModelPath = join(dir, "observed_vector.jl");
