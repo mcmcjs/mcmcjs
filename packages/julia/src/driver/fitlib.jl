@@ -1078,6 +1078,75 @@ function loglik_bugs(model, posterior)
     )
 end
 
+mutable struct ObservedSites <: Turing.DynamicPPL.AbstractAccumulator
+    values::Vector{Pair{String,Any}}
+end
+
+Turing.DynamicPPL.accumulator_name(::ObservedSites) = :ObservedSites
+Base.copy(acc::ObservedSites) = ObservedSites(deepcopy(acc.values))
+Turing.DynamicPPL.reset(::ObservedSites) = ObservedSites(Pair{String,Any}[])
+Turing.DynamicPPL.split(acc::ObservedSites) = Turing.DynamicPPL.reset(acc)
+Turing.DynamicPPL.combine(a::ObservedSites, b::ObservedSites) =
+    ObservedSites(vcat(a.values, b.values))
+Turing.DynamicPPL.accumulate_assume!!(acc::ObservedSites, _args...) = acc
+function Turing.DynamicPPL.accumulate_observe!!(acc::ObservedSites, _right, left, vn, _template)
+    vn isa VarName && push!(acc.values, string(vn) => deepcopy(left))
+    return acc
+end
+
+function observed_value(value, name)
+    if value isa AbstractArray
+        return map(v -> observed_value(v, name), value)
+    elseif value isa Bool || value isa AbstractString
+        return value
+    elseif value isa Real && isfinite(value)
+        return value
+    end
+    error("observed value for $name is not a finite JSON scalar or array")
+end
+
+function observed_terms(values)
+    seen = Set{String}()
+    terms = Dict{String,Any}[]
+    for (name, value) in values
+        name in seen && error("observed site $name was recorded more than once")
+        push!(seen, name)
+        push!(terms, Dict("name" => name, "value" => observed_value(value, name)))
+    end
+    isempty(terms) && error("the model has no observed variables")
+    sort!(terms; by = t -> t["name"])
+    return terms
+end
+
+function observed_turing(model, posterior)
+    DP = Turing.DynamicPPL
+    reference = nothing
+    for chain in FlexiChains.chain_indices(posterior), iter in FlexiChains.iter_indices(posterior)
+        params = FlexiChains.parameters_at(posterior; iter, chain)
+        vi = DP.setacc!!(DP.VarInfo(), ObservedSites(Pair{String,Any}[]))
+        _, vi = DP.init!!(model, vi, DP.InitFromParams(params, nothing), DP.UnlinkAll())
+        terms = observed_terms(DP.getacc(vi, Val(:ObservedSites)).values)
+        if reference === nothing
+            reference = terms
+        elseif !isequal(terms, reference)
+            error("observed values change across posterior draws")
+        end
+    end
+    reference === nothing && error("the posterior has no draws")
+    return Dict("schema_version" => 1, "terms" => reference)
+end
+
+function observed_bugs(model)
+    model = base_bugs(model)
+    gd = model.graph_evaluation_data
+    APPL = JuliaBUGS.AbstractPPL
+    values = Pair{String,Any}[
+        string(vn) => APPL.getvalue(model.evaluation_env, vn) for (i, vn) in enumerate(gd.sorted_nodes)
+        if gd.is_stochastic_vals[i] && gd.is_observed_vals[i]
+    ]
+    return Dict("schema_version" => 1, "terms" => observed_terms(values))
+end
+
 # JuliaBUGS posterior prediction: condition the (target-blanked) model on the
 # posterior parameter columns, then evaluate!! ancestral-samples the remaining
 # latents once per posterior draw. No sampler or gradient runs.
@@ -1346,7 +1415,21 @@ function handle_request(request)
         modelmod = load_model_module(request["model"]["file"]; checkpoint = checkpointing)
         entry = resolve_entry(modelmod, get(request["model"], "entry", nothing))
 
-        wire = if mode == "loglik"
+        wire = if mode == "observed"
+            if backend == "juliabugs"
+                model = Base.invokelatest(entry, bugs_namedtuple(request["data"]))
+                stage = "observed"
+                Base.invokelatest(observed_bugs, model)
+            else
+                data = ModelData(to_namedtuple(request["data"]))
+                model = Base.invokelatest(entry, data)
+                model = Base.invokelatest(condition_on_data, model, data)
+                stage = "load_samples"
+                chn = wire_to_vnchain(JSON.parsefile(request["samples"]), String[])
+                stage = "observed"
+                Base.invokelatest(observed_turing, model, chn)
+            end
+        elseif mode == "loglik"
             if backend == "juliabugs"
                 model = Base.invokelatest(entry, bugs_namedtuple(request["data"]))
                 stage = "load_samples"
