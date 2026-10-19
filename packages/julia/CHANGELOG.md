@@ -1,5 +1,12 @@
 # @mcmcjs/julia
 
+## 0.23.4
+
+### Patch Changes
+
+- Updated dependencies [118f11d]
+  - @mcmcjs/engine@0.7.2
+
 ## 0.23.3
 
 ### Patch Changes
