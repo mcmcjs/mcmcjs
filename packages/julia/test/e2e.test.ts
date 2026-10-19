@@ -1558,6 +1558,62 @@ d("julia e2e: juliabugs discrete latents through every sampler", () => {
     expect([...(depths ?? [])].every((depth) => depth <= 1)).toBe(true);
   }, 300_000);
 
+  it("restores marginalized JuliaBUGS NUTS draws and discrete latents", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const invocation = { command: env.command, args: env.args };
+    const configured = mixtureSpec(nuts({ draws: 8, warmup: 20, chains: 1 }), "marginalized");
+    const fullPath = join(dir, "marginalized-checkpoint-full.json");
+    const full = await runFit(configured, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: fullPath,
+    });
+    expect(full.status, full.error).toBe("ok");
+
+    const partialPath = join(dir, "marginalized-checkpoint-partial.json");
+    const checkpointDir = join(dir, "marginalized-checkpoints");
+    const scope = "9".repeat(64);
+    const partial = await runFit(
+      { ...configured, sampler: { ...configured.sampler, draws: 4 } },
+      invocation,
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath: partialPath,
+        checkpointDir,
+        checkpointScopeSha256: scope,
+        drawBatchSize: 4,
+      },
+    );
+    expect(partial.status, partial.error).toBe("ok");
+
+    const checkpoint = join(checkpointDir, "chain-0-iteration-4.bin");
+    const tailPath = join(dir, "marginalized-checkpoint-tail.json");
+    const tail = await runFit(
+      { ...configured, sampler: { ...configured.sampler, draws: 4 } },
+      invocation,
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath: tailPath,
+        resumeFrom: checkpoint,
+        resumeSha256: createHash("sha256").update(readFileSync(checkpoint)).digest("hex"),
+        checkpointScopeSha256: scope,
+      },
+    );
+    expect(tail.status, tail.error).toBe("ok");
+
+    const baseline = parseSamples(readFileSync(fullPath, "utf8"));
+    const first = parseSamples(readFileSync(partialPath, "utf8"));
+    const continued = parseSamples(readFileSync(tailPath, "utf8"));
+    expect(baseline.variables).toContain("z[1]");
+    for (const leaf of [...baseline.variables, ...baseline.sampleStats.keys()]) {
+      const expected = Array.from(chainView(baseline, leaf, 0));
+      expect(Array.from(chainView(first, leaf, 0))).toEqual(expected.slice(0, 4));
+      expect(Array.from(chainView(continued, leaf, 0))).toEqual(expected.slice(4));
+    }
+  }, 900_000);
+
   it("marginalizes the latents out under NUTS and still reports them", async () => {
     const { result, outPath } = await fitMixture("mix_marginal", nuts(), "marginalized");
     expect(result.status).toBe("ok");
