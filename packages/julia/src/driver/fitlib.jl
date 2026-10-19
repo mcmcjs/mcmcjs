@@ -1090,7 +1090,8 @@ Turing.DynamicPPL.combine(a::ObservedSites, b::ObservedSites) =
     ObservedSites(vcat(a.values, b.values))
 Turing.DynamicPPL.accumulate_assume!!(acc::ObservedSites, _args...) = acc
 function Turing.DynamicPPL.accumulate_observe!!(acc::ObservedSites, _right, left, vn, _template)
-    vn isa VarName && push!(acc.values, string(vn) => deepcopy(left))
+    vn isa VarName || error("an observed site has no variable name")
+    push!(acc.values, string(vn) => deepcopy(left))
     return acc
 end
 
