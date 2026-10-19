@@ -355,7 +355,8 @@ function draw_streamer(
     draws_per_chain::Int, batch_size::Int, chains::Int;
     report_progress = false, checkpoint = nothing,
     chain_base = 0, iteration_offset = 0, seq_offset = 0,
-    warmup = 0, warmup_checkpoint = nothing,
+    warmup = 0, warmup_offset = 0, total_warmup = warmup,
+    warmup_checkpoint = nothing,
 )
     batch_size > 0 || error("draw batch size must be positive")
     states = [DrawStreamState() for _ in 1:chains]
@@ -399,7 +400,8 @@ function draw_streamer(
                     info = warmup_checkpoint(_rng, _state, c, iteration, 0)
                     emit_wire(Dict(
                         "mcmcjs" => "warmup_checkpoint", "chain" => c + chain_base,
-                        "iteration" => iteration, "warmup" => warmup, "checkpoint" => info,
+                        "iteration" => iteration + warmup_offset,
+                        "warmup" => total_warmup, "checkpoint" => info,
                     ))
                 end
                 return
@@ -477,10 +479,9 @@ function build_and_sample(
             )
         elseif get(resume, "phase", nothing) == "warmup"
             Turing.AbstractMCMC.mcmcsample(
-                resume["rng"], model, sampler, draws;
+                resume["rng"], model, sampler, draws + visible_warmup;
                 chain_type = FlexiChains.VNChain, initial_state = resume["state"],
-                nadapts = total_warmup,
-                discard_initial = total_warmup - resume["warmup_iteration"],
+                nadapts = total_warmup, discard_initial = 0,
                 progress = progress_enabled, kw...,
             )
         else
@@ -1270,7 +1271,7 @@ function checkpoint_writer(dir, identity; offset = 0, chain_base = 0, phase = "s
         chain_id = chain + chain_base
         absolute_iteration = iteration + offset
         path = phase == "warmup" ?
-            joinpath(dir, "chain-$(chain_id)-warmup-$(iteration).bin") :
+            joinpath(dir, "chain-$(chain_id)-warmup-$(absolute_iteration).bin") :
             joinpath(dir, "chain-$(chain_id)-iteration-$(absolute_iteration).bin")
         isfile(path) && error("checkpoint already exists: $path")
         tmp = tempname(dir)
@@ -1282,7 +1283,7 @@ function checkpoint_writer(dir, identity; offset = 0, chain_base = 0, phase = "s
                 "next_seq" => phase == "warmup" ? 0 : seq + 1,
                 "rng" => deepcopy(rng), "state" => state,
             ),
-            phase == "warmup" ? Dict("phase" => phase, "warmup_iteration" => iteration) : Dict(),
+            phase == "warmup" ? Dict("phase" => phase, "warmup_iteration" => absolute_iteration) : Dict(),
             extra,
         )
         try
@@ -1453,11 +1454,21 @@ function handle_request(request)
                         chain_base = resumed !== nothing ? resumed["chain"] :
                             chain_selection === nothing ? 0 : chain_selection["index"],
                     ) : nothing
-                visible_warmup = checkpoint !== nothing && resumed === nothing ? warmup : 0
-                warmup_checkpoint = visible_warmup > 0 ?
+                warmup_offset = resumed !== nothing && get(resumed, "phase", nothing) == "warmup" ?
+                    resumed["warmup_iteration"] : 0
+                visible_warmup = if resumed === nothing
+                    checkpoint === nothing ? 0 : warmup
+                elseif warmup_offset > 0
+                    warmup - warmup_offset
+                else
+                    0
+                end
+                warmup_checkpoint = checkpoint !== nothing && visible_warmup > 0 ?
                     checkpoint_writer(
                         request["checkpoint_dir"], identity;
-                        chain_base = chain_selection === nothing ? 0 : chain_selection["index"],
+                        chain_base = resumed !== nothing ? resumed["chain"] :
+                            chain_selection === nothing ? 0 : chain_selection["index"],
+                        offset = warmup_offset,
                         phase = "warmup",
                     ) : nothing
                 cb = (get(request, "stream_draws", false) || checkpoint !== nothing) && parallel != "distributed" ?
@@ -1468,7 +1479,8 @@ function handle_request(request)
                             chain_selection === nothing ? 0 : chain_selection["index"],
                         iteration_offset = resumed === nothing ? 0 : resumed["iteration"],
                         seq_offset = resumed === nothing ? 0 : resumed["next_seq"],
-                        warmup = visible_warmup, warmup_checkpoint,
+                        warmup = visible_warmup, warmup_offset, total_warmup = warmup,
+                        warmup_checkpoint,
                     ) : nothing
                 extra = sampling_kwargs(request["sampler"], warmup, chains)
                 if resumed !== nothing

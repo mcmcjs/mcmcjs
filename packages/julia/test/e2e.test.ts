@@ -334,16 +334,41 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
     }
     const checkpoint = join(checkpointDir, "chain-0-warmup-6.bin");
     expect(existsSync(checkpoint)).toBe(true);
+    const resumedCheckpointDir = join(dir, "warmup-resumed-checkpoints");
+    const secondController = new AbortController();
+    const continuedWarmup: WarmupCheckpoint[] = [];
+    const interruptedAgain = await runFit(configured, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: join(dir, "warmup-interrupted-again.json"),
+      resumeFrom: checkpoint,
+      resumeSha256: createHash("sha256").update(readFileSync(checkpoint)).digest("hex"),
+      checkpointScopeSha256: scope,
+      checkpointDir: resumedCheckpointDir,
+      drawBatchSize: 3,
+      signal: secondController.signal,
+      onWarmupCheckpoint: (saved) => {
+        continuedWarmup.push(saved);
+        if (saved.iteration === 10) secondController.abort();
+      },
+    });
+    expect(interruptedAgain.status).toBe("cancelled");
+    expect(continuedWarmup.map(({ iteration, warmup }) => ({ iteration, warmup }))).toEqual([
+      { iteration: 9, warmup: 10 },
+      { iteration: 10, warmup: 10 },
+    ]);
+    const secondCheckpoint = join(resumedCheckpointDir, "chain-0-warmup-10.bin");
+    expect(existsSync(secondCheckpoint)).toBe(true);
     const resumedPath = join(dir, "warmup-resumed.json");
     const batches: DrawBatch[] = [];
     const resumed = await runFit(configured, invocation, {
       spawn: createFitRunner(),
       projectDir: env.projectDir,
       outPath: resumedPath,
-      resumeFrom: checkpoint,
-      resumeSha256: createHash("sha256").update(readFileSync(checkpoint)).digest("hex"),
+      resumeFrom: secondCheckpoint,
+      resumeSha256: createHash("sha256").update(readFileSync(secondCheckpoint)).digest("hex"),
       checkpointScopeSha256: scope,
-      checkpointDir: join(dir, "warmup-resumed-checkpoints"),
+      checkpointDir: join(dir, "warmup-final-checkpoints"),
       drawBatchSize: 3,
       onDraws: (batch) => batches.push(batch),
     });
@@ -358,6 +383,49 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
       const expected = Array.from(chainView(baselineSamples, leaf, 0));
       expect(Array.from(chainView(resumedSamples, leaf, 0))).toEqual(expected);
     }
+  }, 900_000);
+
+  it("keeps the selected chain index in continued warmup checkpoints", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const invocation = { command: env.command, args: env.args };
+    const configured = spec(2, 1);
+    configured.sampler.warmup = 6;
+    const scope = "b".repeat(64);
+    const checkpointDir = join(dir, "selected-warmup-checkpoints");
+    const controller = new AbortController();
+    const first = await runFit(configured, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: join(dir, "selected-warmup-interrupted.json"),
+      checkpointDir,
+      checkpointScopeSha256: scope,
+      chainSelection: { index: 1, count: 2 },
+      drawBatchSize: 3,
+      signal: controller.signal,
+      onWarmupCheckpoint: (checkpoint) => {
+        expect(checkpoint.chain).toBe(1);
+        controller.abort();
+      },
+    });
+    expect(first.status).toBe("cancelled");
+    const saved = join(checkpointDir, "chain-1-warmup-3.bin");
+    expect(existsSync(saved)).toBe(true);
+    const continued: WarmupCheckpoint[] = [];
+    const second = await runFit(configured, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: join(dir, "selected-warmup-resumed.json"),
+      resumeFrom: saved,
+      resumeSha256: createHash("sha256").update(readFileSync(saved)).digest("hex"),
+      checkpointScopeSha256: scope,
+      checkpointDir: join(dir, "selected-warmup-resumed-checkpoints"),
+      drawBatchSize: 3,
+      onWarmupCheckpoint: (checkpoint) => continued.push(checkpoint),
+    });
+    expect(second.status, second.error).toBe("ok");
+    expect(continued.map(({ chain, iteration }) => ({ chain, iteration }))).toEqual([
+      { chain: 1, iteration: 6 },
+    ]);
   }, 900_000);
 
   it("streams threaded Turing draws from both chains", async () => {
