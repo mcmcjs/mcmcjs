@@ -9,7 +9,13 @@ import {
   type ResolvedSpec,
   type Samples,
 } from "@mcmcjs/core";
-import { createFitRunner, createRunner, type DrawBatch, type FitProgress } from "@mcmcjs/engine";
+import {
+  createFitRunner,
+  createRunner,
+  type DrawBatch,
+  type FitProgress,
+  type WarmupCheckpoint,
+} from "@mcmcjs/engine";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { detectJuliaup } from "../src/environment";
 import { runFit } from "../src/fit";
@@ -284,6 +290,73 @@ d("julia e2e reference (load model + JSON data, stream, reconstruct, cancel)", (
         expect(Array.from(chainView(partialSamples, leaf, chain))).toEqual(expected.slice(0, 40));
         expect(Array.from(chainView(tail, leaf, 0))).toEqual(expected.slice(40));
       }
+    }
+  }, 900_000);
+
+  it("restores Turing NUTS from a warmup checkpoint", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const invocation = { command: env.command, args: env.args };
+    const configured = spec(6, 1);
+    configured.sampler.warmup = 10;
+    const baselinePath = join(dir, "warmup-baseline.json");
+    const baseline = await runFit(configured, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: baselinePath,
+    });
+    expect(baseline.status, baseline.error).toBe("ok");
+
+    const checkpointDir = join(dir, "warmup-checkpoints");
+    const scope = "a".repeat(64);
+    const controller = new AbortController();
+    const warmupCheckpoints: WarmupCheckpoint[] = [];
+    const interrupted = await runFit(configured, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: join(dir, "warmup-interrupted.json"),
+      checkpointDir,
+      checkpointScopeSha256: scope,
+      drawBatchSize: 3,
+      signal: controller.signal,
+      onWarmupCheckpoint: (checkpoint) => {
+        warmupCheckpoints.push(checkpoint);
+        if (checkpoint.iteration === 6) controller.abort();
+      },
+    });
+    expect(interrupted.status).toBe("cancelled");
+    expect(warmupCheckpoints.map(({ iteration }) => iteration)).toEqual([3, 6]);
+    for (const saved of warmupCheckpoints) {
+      expect(saved.chain).toBe(0);
+      expect(saved.warmup).toBe(10);
+      expect(saved.checkpoint.sha256).toBe(
+        createHash("sha256").update(readFileSync(saved.checkpoint.path)).digest("hex"),
+      );
+    }
+    const checkpoint = join(checkpointDir, "chain-0-warmup-6.bin");
+    expect(existsSync(checkpoint)).toBe(true);
+    const resumedPath = join(dir, "warmup-resumed.json");
+    const batches: DrawBatch[] = [];
+    const resumed = await runFit(configured, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: resumedPath,
+      resumeFrom: checkpoint,
+      resumeSha256: createHash("sha256").update(readFileSync(checkpoint)).digest("hex"),
+      checkpointScopeSha256: scope,
+      checkpointDir: join(dir, "warmup-resumed-checkpoints"),
+      drawBatchSize: 3,
+      onDraws: (batch) => batches.push(batch),
+    });
+    expect(resumed.status, resumed.error).toBe("ok");
+    expect(batches.map(({ seq, iteration }) => ({ seq, iteration }))).toEqual([
+      { seq: 0, iteration: 3 },
+      { seq: 1, iteration: 6 },
+    ]);
+    const baselineSamples = parseSamples(readFileSync(baselinePath, "utf8"));
+    const resumedSamples = parseSamples(readFileSync(resumedPath, "utf8"));
+    for (const leaf of [...baselineSamples.variables, ...baselineSamples.sampleStats.keys()]) {
+      const expected = Array.from(chainView(baselineSamples, leaf, 0));
+      expect(Array.from(chainView(resumedSamples, leaf, 0))).toEqual(expected);
     }
   }, 900_000);
 

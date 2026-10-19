@@ -7,7 +7,13 @@ import {
   RUN_RECORD_SCHEMA_VERSION,
   type RunRecord,
 } from "@mcmcjs/core";
-import type { DrawBatch, FitProgress, FitResult, FitRunner } from "@mcmcjs/engine";
+import type {
+  DrawBatch,
+  FitProgress,
+  FitResult,
+  FitRunner,
+  WarmupCheckpoint,
+} from "@mcmcjs/engine";
 import { driverPath, lastJsonLine, sha256, sharedTmpParent, toStage } from "./runner-common";
 
 export interface FitIo {
@@ -24,6 +30,8 @@ export interface FitIo {
   /** Streamed draw batches as sampling proceeds. */
   /** A returned Promise holds the producer until the batch is consumed. */
   onDraws?: (batch: DrawBatch) => unknown;
+  /** Sampler state saved during warmup, before any retained draws. */
+  onWarmupCheckpoint?: (checkpoint: WarmupCheckpoint) => unknown;
   /** Raw console lines from the sampler as they arrive (structured progress/draws
    * lines are filtered out), for surfacing solver logs live. */
   onLog?: (line: string, stream: "stdout" | "stderr") => void;
@@ -228,6 +236,7 @@ export async function runFit(
     ({ stdout, stderr, code, cancelled } = await io.spawn(resolved.command, args, {
       onProgress: io.onProgress,
       onDraws: io.onDraws,
+      onWarmupCheckpoint: io.onWarmupCheckpoint,
       onLog: io.onLog,
       signal: io.signal,
     }));

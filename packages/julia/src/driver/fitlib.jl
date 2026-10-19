@@ -355,7 +355,9 @@ function draw_streamer(
     draws_per_chain::Int, batch_size::Int, chains::Int;
     report_progress = false, checkpoint = nothing,
     chain_base = 0, iteration_offset = 0, seq_offset = 0,
+    warmup = 0, warmup_checkpoint = nothing,
 )
+    batch_size > 0 || error("draw batch size must be positive")
     states = [DrawStreamState() for _ in 1:chains]
     for state in states
         state.seq = seq_offset
@@ -391,6 +393,18 @@ function draw_streamer(
         c = Int(chain_number) - 1
         state = states[c + 1]
         lock(state.lock) do
+            if iteration <= warmup
+                if warmup_checkpoint !== nothing &&
+                   (iteration % batch_size == 0 || iteration == warmup)
+                    info = warmup_checkpoint(_rng, _state, c, iteration, 0)
+                    emit_wire(Dict(
+                        "mcmcjs" => "warmup_checkpoint", "chain" => c + chain_base,
+                        "iteration" => iteration, "warmup" => warmup, "checkpoint" => info,
+                    ))
+                end
+                return
+            end
+            iteration -= warmup
             leaves = flatten_draw(transition)
             if isempty(state.names)
                 for (n, _) in leaves
@@ -435,7 +449,7 @@ end
 function build_and_sample(
     entry, data, sampler, draws, chains, rng;
     callback = nothing, extra = (;), parallel = "serial", resume = nothing,
-    chain_selection = nothing,
+    chain_selection = nothing, visible_warmup = 0, total_warmup = 0,
 )
     model = condition_on_data(entry(data), data)
     kw = callback === nothing ? extra : merge(extra, (; callback))
@@ -448,9 +462,27 @@ function build_and_sample(
             Random.seed!(rng, seeds[chain_selection["index"] + 1])
             selected_kw = haskey(kw, :initial_params) ?
                 merge(kw, (; initial_params = only(kw.initial_params))) : kw
-            sample(rng, model, sampler, draws; progress = progress_enabled, selected_kw...)
+            sample(
+                rng, model, sampler, draws + visible_warmup;
+                progress = progress_enabled,
+                (visible_warmup > 0 ? (; discard_adapt = false) : (;))...,
+                selected_kw...,
+            )
         elseif resume === nothing
-            sample(rng, model, sampler, ensemble, draws, chains; progress = progress_enabled, kw...)
+            sample(
+                rng, model, sampler, ensemble, draws + visible_warmup, chains;
+                progress = progress_enabled,
+                (visible_warmup > 0 ? (; discard_adapt = false) : (;))...,
+                kw...,
+            )
+        elseif get(resume, "phase", nothing) == "warmup"
+            Turing.AbstractMCMC.mcmcsample(
+                resume["rng"], model, sampler, draws;
+                chain_type = FlexiChains.VNChain, initial_state = resume["state"],
+                nadapts = total_warmup,
+                discard_initial = total_warmup - resume["warmup_iteration"],
+                progress = progress_enabled, kw...,
+            )
         else
             sample(
                 resume["rng"], model, sampler, draws;
@@ -502,11 +534,13 @@ end
 # into scalar leaves (theta -> theta[1], theta[2]) in the (iter, chain, param)
 # orientation; the sampler's statistics become the internals section. `keep`
 # decides by leaf name which columns are written; nothing keeps them all.
-function vnchain_to_wire(chn; keep = nothing)
+function vnchain_to_wire(chn; keep = nothing, drop_initial = 0)
     da = DimensionalData.DimArray(chn)
     names = string.(collect(DimensionalData.lookup(da, :param)))
     arr = parent(da)
-    nIter, nChains, _ = size(arr)
+    totalIter, nChains, _ = size(arr)
+    0 <= drop_initial < totalIter || error("invalid initial draw count")
+    nIter = totalIter - drop_initial
     kept = keep === nothing ? eachindex(names) : findall(keep, names)
     pnames = names[kept]
     nParams = length(kept)
@@ -520,12 +554,12 @@ function vnchain_to_wire(chn; keep = nothing)
     # prior) becomes null, which the samples parser reads back as NaN.
     cell(v) = v === missing || !isfinite(v) ? nothing : Float64(v)
     for c in 1:nChains, (p, src) in enumerate(kept), i in 1:nIter
-        flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(arr[i, c, src])
+        flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(arr[i + drop_initial, c, src])
     end
     for (k, (_, draw)) in enumerate(extras)
         p = nParams + k
         for c in 1:nChains, i in 1:nIter
-            flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(draw(i, c))
+            flat[i + (p - 1) * nIter + (c - 1) * nIter * total] = cell(draw(i + drop_initial, c))
         end
     end
 
@@ -1215,27 +1249,40 @@ function read_checkpoint(request, identity)
     for (key, value) in identity
         get(saved, key, nothing) == value || error("checkpoint $key does not match this fit")
     end
-    get(saved, "iteration", 0) > 0 || error("checkpoint has no completed draws")
+    if get(saved, "phase", nothing) == "warmup"
+        backend = get(get(request, "backend", Dict()), "id", "turing")
+        backend == "turing" || error("warmup checkpoint requires Turing")
+        count = Int(get(request["sampler"], "warmup", 1000))
+        0 < get(saved, "warmup_iteration", 0) <= count ||
+            error("checkpoint has no valid warmup state")
+        get(saved, "iteration", -1) == 0 || error("warmup checkpoint has draws")
+    else
+        get(saved, "iteration", 0) > 0 || error("checkpoint has no completed draws")
+    end
     get(saved, "chain", -1) >= 0 || error("checkpoint has no chain identity")
     get(saved, "next_seq", -1) >= 0 || error("checkpoint has no batch sequence")
     return saved
 end
 
-function checkpoint_writer(dir, identity; offset = 0, chain_base = 0)
+function checkpoint_writer(dir, identity; offset = 0, chain_base = 0, phase = "sampling")
     mkpath(dir)
     return function (rng, state, chain, iteration, seq; extra = Dict())
         chain_id = chain + chain_base
         absolute_iteration = iteration + offset
-        path = joinpath(dir, "chain-$(chain_id)-iteration-$(absolute_iteration).bin")
+        path = phase == "warmup" ?
+            joinpath(dir, "chain-$(chain_id)-warmup-$(iteration).bin") :
+            joinpath(dir, "chain-$(chain_id)-iteration-$(absolute_iteration).bin")
         isfile(path) && error("checkpoint already exists: $path")
         tmp = tempname(dir)
         saved = merge(
             identity,
             Dict(
-                "chain" => chain_id, "iteration" => absolute_iteration,
-                "next_seq" => seq + 1,
+                "chain" => chain_id,
+                "iteration" => phase == "warmup" ? 0 : absolute_iteration,
+                "next_seq" => phase == "warmup" ? 0 : seq + 1,
                 "rng" => deepcopy(rng), "state" => state,
             ),
+            phase == "warmup" ? Dict("phase" => phase, "warmup_iteration" => iteration) : Dict(),
             extra,
         )
         try
@@ -1406,6 +1453,13 @@ function handle_request(request)
                         chain_base = resumed !== nothing ? resumed["chain"] :
                             chain_selection === nothing ? 0 : chain_selection["index"],
                     ) : nothing
+                visible_warmup = checkpoint !== nothing && resumed === nothing ? warmup : 0
+                warmup_checkpoint = visible_warmup > 0 ?
+                    checkpoint_writer(
+                        request["checkpoint_dir"], identity;
+                        chain_base = chain_selection === nothing ? 0 : chain_selection["index"],
+                        phase = "warmup",
+                    ) : nothing
                 cb = (get(request, "stream_draws", false) || checkpoint !== nothing) && parallel != "distributed" ?
                     draw_streamer(
                         draws, Int(get(request, "draw_batch_size", 25)), chains;
@@ -1414,6 +1468,7 @@ function handle_request(request)
                             chain_selection === nothing ? 0 : chain_selection["index"],
                         iteration_offset = resumed === nothing ? 0 : resumed["iteration"],
                         seq_offset = resumed === nothing ? 0 : resumed["next_seq"],
+                        warmup = visible_warmup, warmup_checkpoint,
                     ) : nothing
                 extra = sampling_kwargs(request["sampler"], warmup, chains)
                 if resumed !== nothing
@@ -1422,8 +1477,9 @@ function handle_request(request)
                 chn = Base.invokelatest(
                     build_and_sample, entry, data, sampler, draws, chains, rng;
                     callback = cb, extra, parallel, resume = resumed, chain_selection,
+                    visible_warmup, total_warmup = warmup,
                 )
-                vnchain_to_wire(chn)
+                vnchain_to_wire(chn; drop_initial = visible_warmup)
             end
         end
 

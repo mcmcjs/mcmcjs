@@ -128,6 +128,14 @@ export interface DrawBatch {
   checkpoint?: { path: string; sha256: string };
 }
 
+/** A sampler state saved before the first retained draw. */
+export interface WarmupCheckpoint {
+  chain: number;
+  iteration: number;
+  warmup: number;
+  checkpoint: { path: string; sha256: string };
+}
+
 /** Captures stdout, stderr, and exit code without throwing on a nonzero exit. */
 export type FitRunner = (
   command: string,
@@ -137,6 +145,8 @@ export type FitRunner = (
     onProgress?: (progress: FitProgress) => void;
     /** A returned Promise holds the producer until the batch is consumed. */
     onDraws?: (batch: DrawBatch) => unknown;
+    /** A returned Promise holds the producer until the checkpoint is consumed. */
+    onWarmupCheckpoint?: (checkpoint: WarmupCheckpoint) => unknown;
     /** Raw console lines from the sampler (the structured progress/draws lines
      * are filtered out), as they arrive. For surfacing solver logs live. */
     onLog?: (line: string, stream: "stdout" | "stderr") => void;
@@ -194,6 +204,39 @@ export function parseDrawBatchLine(line: string): DrawBatch | undefined {
     ...(checkpoint && typeof checkpoint.path === "string" && typeof checkpoint.sha256 === "string"
       ? { checkpoint: { path: checkpoint.path, sha256: checkpoint.sha256 } }
       : {}),
+  };
+}
+
+/** Parses an mcmcjs warmup-checkpoint line. */
+export function parseWarmupCheckpointLine(line: string): WarmupCheckpoint | undefined {
+  const text = line.trim();
+  if (!text.startsWith("{") || !text.includes('"mcmcjs"')) return undefined;
+  let doc: unknown;
+  try {
+    doc = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  const record = doc as Record<string, unknown>;
+  const checkpoint = record.checkpoint as Record<string, unknown> | undefined;
+  if (
+    record.mcmcjs !== "warmup_checkpoint" ||
+    typeof record.chain !== "number" ||
+    !Number.isInteger(record.chain) ||
+    typeof record.iteration !== "number" ||
+    !Number.isInteger(record.iteration) ||
+    typeof record.warmup !== "number" ||
+    !Number.isInteger(record.warmup) ||
+    !checkpoint ||
+    typeof checkpoint.path !== "string" ||
+    typeof checkpoint.sha256 !== "string"
+  )
+    return undefined;
+  return {
+    chain: record.chain as number,
+    iteration: record.iteration as number,
+    warmup: record.warmup as number,
+    checkpoint: { path: checkpoint.path, sha256: checkpoint.sha256 },
   };
 }
 
@@ -262,6 +305,11 @@ export function createFitRunner(timeoutMs = 30 * 60_000): FitRunner {
         const batch = parseDrawBatchLine(line);
         if (batch) {
           await opts?.onDraws?.(batch);
+          return;
+        }
+        const warmup = parseWarmupCheckpointLine(line);
+        if (warmup) {
+          await opts?.onWarmupCheckpoint?.(warmup);
           return;
         }
         opts?.onLog?.(line, "stderr");

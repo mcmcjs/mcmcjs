@@ -9,6 +9,7 @@ import {
   killTree,
   parseDrawBatchLine,
   parseProgressLine,
+  parseWarmupCheckpointLine,
 } from "../src/runner";
 
 const DETACHED = process.platform !== "win32";
@@ -128,6 +129,29 @@ describe("parseDrawBatchLine", () => {
     expect(parseDrawBatchLine('{"mcmcjs":"progress","chain":1}')).toBeUndefined();
     expect(parseDrawBatchLine("plain note")).toBeUndefined();
     expect(parseDrawBatchLine("{not json")).toBeUndefined();
+  });
+});
+
+describe("parseWarmupCheckpointLine", () => {
+  it("parses a warmup checkpoint", () => {
+    expect(
+      parseWarmupCheckpointLine(
+        '{"mcmcjs":"warmup_checkpoint","chain":1,"iteration":6,"warmup":10,"checkpoint":{"path":"/tmp/warmup.bin","sha256":"abc"}}',
+      ),
+    ).toEqual({
+      chain: 1,
+      iteration: 6,
+      warmup: 10,
+      checkpoint: { path: "/tmp/warmup.bin", sha256: "abc" },
+    });
+  });
+
+  it("rejects a checkpoint without an iteration", () => {
+    expect(
+      parseWarmupCheckpointLine(
+        '{"mcmcjs":"warmup_checkpoint","chain":1,"warmup":10,"checkpoint":{"path":"/tmp/warmup.bin","sha256":"abc"}}',
+      ),
+    ).toBeUndefined();
   });
 });
 
