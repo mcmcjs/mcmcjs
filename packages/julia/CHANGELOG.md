@@ -1,5 +1,11 @@
 # @mcmcjs/julia
 
+## 0.23.7
+
+### Patch Changes
+
+- b82363e: Turing NUTS fits interrupted again during warmup reused an older checkpoint instead of the latest step.
+
 ## 0.23.6
 
 ### Patch Changes

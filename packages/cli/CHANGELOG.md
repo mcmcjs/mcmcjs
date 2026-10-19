@@ -1,5 +1,12 @@
 # mcmcjs
 
+## 0.36.15
+
+### Patch Changes
+
+- Updated dependencies [b82363e]
+  - @mcmcjs/julia@0.23.7
+
 ## 0.36.14
 
 ### Patch Changes
