@@ -1,5 +1,12 @@
 # @mcmcjs/stan
 
+## 0.1.14
+
+### Patch Changes
+
+- Updated dependencies [118f11d]
+  - @mcmcjs/engine@0.7.2
+
 ## 0.1.13
 
 ### Patch Changes

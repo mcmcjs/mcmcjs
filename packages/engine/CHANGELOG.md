@@ -1,5 +1,11 @@
 # @mcmcjs/engine
 
+## 0.7.2
+
+### Patch Changes
+
+- 118f11d: Missing or non-finite streamed draws were read as zero instead of NaN.
+
 ## 0.7.1
 
 ### Patch Changes
