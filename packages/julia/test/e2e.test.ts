@@ -20,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { detectJuliaup } from "../src/environment";
 import { runFit } from "../src/fit";
 import { runLogLik } from "../src/loglik";
+import { parseObservedData, runObserved } from "../src/observed";
 import { runPredict } from "../src/predict";
 import { managedProjectDir, managedProjectReady } from "../src/project";
 import { resolveVersion } from "../src/versions";
@@ -1212,6 +1213,88 @@ d("julia e2e: prior sampling and the prior predictive", () => {
 });
 
 d("julia e2e: pointwise log-likelihood", () => {
+  it("records vector and scalar observed sites by their model term names", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const vectorModelPath = join(dir, "observed_vector.jl");
+    writeFileSync(
+      vectorModelPath,
+      `using Turing
+using LinearAlgebra
+@model function build_model(data)
+    mu ~ Normal()
+    y = data["y"]
+    y ~ MvNormal(fill(mu, length(y)), I)
+end
+`,
+    );
+    const samplesPath = join(dir, "observed.post.json");
+    writeFileSync(
+      samplesPath,
+      JSON.stringify({
+        size: [2, 1, 1],
+        value_flat: [0.25, -0.5],
+        parameters: ["mu"],
+        name_map: { parameters: ["mu"], internals: [] },
+      }),
+    );
+    const vectorSpec: ResolvedSpec = {
+      ...spec(2, 1),
+      model: { kind: "file", path: vectorModelPath, entry: "build_model" },
+      modelPath: vectorModelPath,
+      data: { y: [1.5, 2.5] },
+    };
+    const vectorPath = join(dir, "observed.vector.json");
+    const vector = await runObserved(
+      vectorSpec,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath: vectorPath,
+        samplesPath,
+      },
+    );
+    expect(vector.status, vector.status === "error" ? vector.error : "").toBe("ok");
+    expect(parseObservedData(readFileSync(vectorPath, "utf8")).terms).toEqual([
+      { name: "y", value: [1.5, 2.5] },
+    ]);
+
+    const loopModelPath = join(dir, "observed_loop.jl");
+    writeFileSync(
+      loopModelPath,
+      `using Turing
+@model function build_model(data)
+    mu ~ Normal()
+    y = data["y"]
+    for i in eachindex(y)
+        y[i] ~ Normal(mu)
+    end
+end
+`,
+    );
+    const loopSpec: ResolvedSpec = {
+      ...vectorSpec,
+      model: { kind: "file", path: loopModelPath, entry: "build_model" },
+      modelPath: loopModelPath,
+    };
+    const loopPath = join(dir, "observed.loop.json");
+    const loop = await runObserved(
+      loopSpec,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath: loopPath,
+        samplesPath,
+      },
+    );
+    expect(loop.status, loop.status === "error" ? loop.error : "").toBe("ok");
+    expect(parseObservedData(readFileSync(loopPath, "utf8")).terms).toEqual([
+      { name: "y[1]", value: 1.5 },
+      { name: "y[2]", value: 2.5 },
+    ]);
+  }, 300_000);
+
   it("matches the chain's total loglikelihood, observation by observation", async () => {
     const env = ENV as NonNullable<typeof ENV>;
     const tableModelPath = join(dir, "loglik_table.jl");
@@ -1305,6 +1388,22 @@ d("julia e2e: pointwise log-likelihood", () => {
       },
     );
     expect(result.status).toBe("ok");
+
+    const observedPath = join(dir, "bugs.observed.json");
+    const observed = await runObserved(
+      bugsSpec,
+      { command: env.command, args: env.args },
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath: observedPath,
+        samplesPath: postPath,
+      },
+    );
+    expect(observed.status, observed.status === "error" ? observed.error : "").toBe("ok");
+    expect(parseObservedData(readFileSync(observedPath, "utf8")).terms).toEqual(
+      TABLE_DATA.y.map((value, i) => ({ name: `y[${i + 1}]`, value })),
+    );
 
     // dnorm(mu, tau) has logpdf 0.5 log(tau/2pi) - 0.5 tau (y - mu)^2; the
     // driver's per-node walk must reproduce it at every posterior draw.

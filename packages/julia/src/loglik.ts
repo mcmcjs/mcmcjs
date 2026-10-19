@@ -15,7 +15,7 @@ export interface LogLikIo {
   /** Spawns the Julia process; injectable so runLogLik is testable without Julia. */
   spawn: FitRunner;
   projectDir: string;
-  /** Where the pointwise log-likelihood file is written (samples wire, one column per observation). */
+  /** Where the log-likelihood file is written (samples wire, one column per observed model term). */
   outPath: string;
   /** The posterior samples file the log-likelihood is evaluated at. */
   samplesPath: string;
@@ -23,9 +23,8 @@ export interface LogLikIo {
 }
 
 /**
- * Computes the pointwise log-likelihood of the observed data at each posterior
- * draw: one column per observation, in the same wire format as a samples file.
- * This is the input LOO/WAIC model comparison needs.
+ * Computes log-likelihood values for observed model terms at each posterior draw.
+ * A vector-valued term may contain more than one observation.
  */
 export async function runLogLik(
   spec: ResolvedSpec,
