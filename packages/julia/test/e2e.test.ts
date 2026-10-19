@@ -629,6 +629,202 @@ d("julia e2e: turing predict recovers the posterior predictive via FlexiChains",
 });
 
 d("julia e2e: juliabugs streams draws that reconstruct the final samples", () => {
+  it("continues a generated-mode NUTS chain after a batch boundary", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const model = join(dir, "generated-checkpoint-bugs.jl");
+    writeFileSync(model, BUGS_MODEL);
+    const configured: ResolvedSpec = {
+      ...spec(8, 1),
+      backend: { id: "juliabugs", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
+      model: {
+        kind: "file",
+        path: model,
+        entry: "build_model",
+        evaluation_mode: "generated",
+      },
+      modelPath: model,
+      data: { N: TABLE_DATA.y.length, ...TABLE_DATA },
+    };
+    configured.sampler.warmup = 10;
+    const invocation = { command: env.command, args: env.args };
+    const fullPath = join(dir, "generated-checkpoint-full.json");
+    const full = await runFit(configured, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: fullPath,
+    });
+    expect(full.status, full.error).toBe("ok");
+
+    const partialPath = join(dir, "generated-checkpoint-partial.json");
+    const checkpointDir = join(dir, "generated-checkpoints");
+    const partial = await runFit(
+      { ...configured, sampler: { ...configured.sampler, draws: 4 } },
+      invocation,
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath: partialPath,
+        checkpointDir,
+        checkpointScopeSha256: "f".repeat(64),
+        drawBatchSize: 4,
+      },
+    );
+    expect(partial.status, partial.error).toBe("ok");
+    const checkpoint = join(checkpointDir, "chain-0-iteration-4.bin");
+    const tailPath = join(dir, "generated-checkpoint-tail.json");
+    const tail = await runFit(
+      { ...configured, sampler: { ...configured.sampler, draws: 4 } },
+      invocation,
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath: tailPath,
+        resumeFrom: checkpoint,
+        resumeSha256: createHash("sha256").update(readFileSync(checkpoint)).digest("hex"),
+        checkpointScopeSha256: "f".repeat(64),
+      },
+    );
+    expect(tail.status, tail.error).toBe("ok");
+    const baseline = parseSamples(readFileSync(fullPath, "utf8"));
+    const first = parseSamples(readFileSync(partialPath, "utf8"));
+    const continued = parseSamples(readFileSync(tailPath, "utf8"));
+    for (const leaf of [...baseline.variables, ...baseline.sampleStats.keys()]) {
+      const expected = Array.from(chainView(baseline, leaf, 0));
+      expect(Array.from(chainView(first, leaf, 0))).toEqual(expected.slice(0, 4));
+      expect(Array.from(chainView(continued, leaf, 0))).toEqual(expected.slice(4));
+    }
+  }, 900_000);
+
+  it("replays one threaded NUTS chain from its original seed", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const model = join(dir, "selected-bugs.jl");
+    writeFileSync(model, BUGS_MODEL);
+    const configured: ResolvedSpec = {
+      ...spec(6, 2),
+      backend: { id: "juliabugs", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
+      model: { kind: "file", path: model, entry: "build_model" },
+      modelPath: model,
+      data: { N: TABLE_DATA.y.length, ...TABLE_DATA },
+    };
+    configured.sampler.warmup = 10;
+    configured.sampler.parallel = "threads";
+    const invocation = { command: env.command, args: env.args };
+    const fullPath = join(dir, "selected-bugs-full.json");
+    const full = await runFit(configured, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: fullPath,
+    });
+    expect(full.status, full.error).toBe("ok");
+
+    const selectedPath = join(dir, "selected-bugs-chain.json");
+    const batches: DrawBatch[] = [];
+    const selected = await runFit(
+      { ...configured, sampler: { ...configured.sampler, chains: 1, parallel: "serial" } },
+      invocation,
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath: selectedPath,
+        checkpointDir: join(dir, "selected-bugs-checkpoints"),
+        checkpointScopeSha256: "e".repeat(64),
+        chainSelection: { index: 1, count: 2 },
+        onDraws: (batch) => batches.push(batch),
+      },
+    );
+    expect(selected.status, selected.error).toBe("ok");
+    expect(batches.map(({ chain, seq, iteration }) => [chain, seq, iteration])).toEqual([
+      [1, 0, 6],
+    ]);
+    const baseline = parseSamples(readFileSync(fullPath, "utf8"));
+    const replayed = parseSamples(readFileSync(selectedPath, "utf8"));
+    for (const leaf of [...baseline.variables, ...baseline.sampleStats.keys()]) {
+      expect(Array.from(chainView(replayed, leaf, 0))).toEqual(
+        Array.from(chainView(baseline, leaf, 1)),
+      );
+    }
+  }, 900_000);
+
+  it("continues threaded NUTS chains from verified checkpoints", async () => {
+    const env = ENV as NonNullable<typeof ENV>;
+    const model = join(dir, "checkpoint-bugs.jl");
+    writeFileSync(model, BUGS_MODEL);
+    const configured: ResolvedSpec = {
+      ...spec(12, 2),
+      backend: { id: "juliabugs", runtime: "julia", version: DEFAULT_JULIA_CHANNEL },
+      model: { kind: "file", path: model, entry: "build_model" },
+      modelPath: model,
+      data: { N: TABLE_DATA.y.length, ...TABLE_DATA },
+    };
+    configured.sampler.warmup = 10;
+    configured.sampler.parallel = "threads";
+    const invocation = { command: env.command, args: env.args };
+    const fullPath = join(dir, "checkpoint-bugs-full.json");
+    const full = await runFit(configured, invocation, {
+      spawn: createFitRunner(),
+      projectDir: env.projectDir,
+      outPath: fullPath,
+    });
+    expect(full.status, full.error).toBe("ok");
+
+    const partialPath = join(dir, "checkpoint-bugs-partial.json");
+    const checkpointDir = join(dir, "checkpoint-bugs");
+    const scope = "d".repeat(64);
+    const batches: DrawBatch[] = [];
+    const partial = await runFit(
+      { ...configured, sampler: { ...configured.sampler, draws: 8 } },
+      invocation,
+      {
+        spawn: createFitRunner(),
+        projectDir: env.projectDir,
+        outPath: partialPath,
+        checkpointDir,
+        checkpointScopeSha256: scope,
+        drawBatchSize: 4,
+        onDraws: (batch) => batches.push(batch),
+      },
+    );
+    expect(partial.status, partial.error).toBe("ok");
+    expect(batches).toHaveLength(4);
+
+    const baseline = parseSamples(readFileSync(fullPath, "utf8"));
+    const first = parseSamples(readFileSync(partialPath, "utf8"));
+    for (const chain of [0, 1]) {
+      const checkpoint = join(checkpointDir, `chain-${chain}-iteration-8.bin`);
+      const last = batches.find((batch) => batch.chain === chain && batch.iteration === 8);
+      expect(last?.checkpoint?.sha256).toBe(
+        createHash("sha256").update(readFileSync(checkpoint)).digest("hex"),
+      );
+      const tailPath = join(dir, `checkpoint-bugs-tail-${chain}.json`);
+      const tailBatches: DrawBatch[] = [];
+      const tail = await runFit(
+        { ...configured, sampler: { ...configured.sampler, chains: 1, draws: 4 } },
+        invocation,
+        {
+          spawn: createFitRunner(),
+          projectDir: env.projectDir,
+          outPath: tailPath,
+          resumeFrom: checkpoint,
+          resumeSha256: last?.checkpoint?.sha256,
+          checkpointDir: join(dir, `checkpoint-bugs-resumed-${chain}`),
+          checkpointScopeSha256: scope,
+          drawBatchSize: 4,
+          onDraws: (batch) => tailBatches.push(batch),
+        },
+      );
+      expect(tail.status, tail.error).toBe("ok");
+      expect(tailBatches.map(({ chain: id, seq, iteration }) => [id, seq, iteration])).toEqual([
+        [chain, 2, 12],
+      ]);
+      const continued = parseSamples(readFileSync(tailPath, "utf8"));
+      for (const leaf of [...baseline.variables, ...baseline.sampleStats.keys()]) {
+        const expected = Array.from(chainView(baseline, leaf, chain));
+        expect(Array.from(chainView(first, leaf, chain))).toEqual(expected.slice(0, 8));
+        expect(Array.from(chainView(continued, leaf, 0))).toEqual(expected.slice(8));
+      }
+    }
+  }, 900_000);
+
   it("streams threaded JuliaBUGS draws from both chains", async () => {
     const env = ENV as NonNullable<typeof ENV>;
     const model = join(dir, "threaded-bugs.jl");

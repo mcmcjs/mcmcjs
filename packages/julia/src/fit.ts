@@ -33,7 +33,7 @@ export interface FitIo {
   checkpointDir?: string;
   /** Digest of the immutable model source bundle and runtime image. */
   checkpointScopeSha256?: string;
-  /** Resume one NUTS chain from a checkpoint written by this runtime. */
+  /** Resume one Turing or JuliaBUGS NUTS chain from a checkpoint written by this runtime. */
   resumeFrom?: string;
   /** Expected SHA-256 of the checkpoint bytes, checked before deserialization. */
   resumeSha256?: string;
