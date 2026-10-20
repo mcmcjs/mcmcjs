@@ -50,9 +50,9 @@ mcmc julia version status
 
 ```
 juliaup  1.20.7  /home/you/.juliaup/bin/juliaup
-julia    1.12.6  /home/you/.juliaup/bin/julia
+julia    1.12.7  /home/you/.juliaup/bin/julia
 
-* release    1.12.6     .../julia-1.12.6/bin/julia
+* 1.12       1.12.7     .../julia-1.12.7/bin/julia
   1.11       1.11.9     .../julia-1.11.9/bin/julia
 ```
 

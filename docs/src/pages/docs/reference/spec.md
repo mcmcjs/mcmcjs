@@ -50,7 +50,7 @@ y = [5.2, 7.7, 11.1, 13.8, 17.4, 19.9, 23.3, 25.6, 29.2, 31.8]
 | --- | --- | --- | --- |
 | `id` | `"turing"` \| `"juliabugs"` \| `"stan"` | required | the probabilistic-programming backend |
 | `runtime` | `"julia"` \| `"cmdstan"` | per backend | `"julia"` for `turing` and `juliabugs`, `"cmdstan"` for `stan` |
-| `version` | string | per runtime | Julia: the juliaup channel to run, e.g. `"1.12.6"` (default: the toolchain's pinned channel); Stan: a CmdStan version, e.g. `"2.39.0"`, or `"installed"` (the default), which resolves the newest local CmdStan |
+| `version` | string | per runtime | Julia: the juliaup channel to run, e.g. `"1.12.7"` (default: the toolchain's pinned channel); Stan: a CmdStan version, e.g. `"2.39.0"`, or `"installed"` (the default), which resolves the newest local CmdStan |
 | `packages` | table of name to version | optional | Julia-only: version pins for managed Julia packages, e.g. `Turing = "0.45"` |
 
 Pinned packages provision into their own managed environment, so different pins can be compared without interfering.
