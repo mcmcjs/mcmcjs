@@ -1,5 +1,13 @@
 # @mcmcjs/julia
 
+## 0.23.9
+
+### Patch Changes
+
+- 1b06cff: Default Julia runs now use the shipped 1.12.7 package set, including MCMCChains.
+- Updated dependencies [1b06cff]
+  - @mcmcjs/core@0.14.3
+
 ## 0.23.8
 
 ### Patch Changes
