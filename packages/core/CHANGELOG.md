@@ -1,5 +1,12 @@
 # @mcmcjs/core
 
+## 0.14.3
+
+### Patch Changes
+
+- 1b06cff: - The default Julia version now matches the shipped 1.12.7 Manifest.
+  - Managed Julia projects now include MCMCChains in the shipped pinned environment.
+
 ## 0.14.2
 
 ### Patch Changes
