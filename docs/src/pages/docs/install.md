@@ -83,7 +83,7 @@ mcmc doctor
 ```
 Julia
 juliaup  1.20.7  /home/you/.juliaup/bin/juliaup
-julia    1.12.6  /home/you/.juliaup/bin/julia
+julia    1.12.7  /home/you/.juliaup/bin/julia
 ready for inference
 
 Stan (CmdStan)

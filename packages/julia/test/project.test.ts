@@ -1,6 +1,7 @@
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_JULIA_CHANNEL } from "@mcmcjs/core";
 import { type CommandRunner, createRunner } from "@mcmcjs/engine";
 import { describe, expect, it } from "vitest";
 import {
@@ -15,6 +16,15 @@ import { pinnedEnvDir } from "../src/runner-common";
 const freshDir = (): string => mkdtempSync(join(tmpdir(), "mcmcjs-proj-"));
 
 describe("ensureProject", () => {
+  it("ships a complete project for the default Julia version", () => {
+    const project = readFileSync(join(pinnedEnvDir(), "Project.toml"), "utf8");
+    const manifest = readFileSync(join(pinnedEnvDir(), "Manifest.toml"), "utf8");
+    expect(manifest).toContain(`julia_version = "${DEFAULT_JULIA_CHANNEL}"`);
+    for (const pkg of ["Turing", "JuliaBUGS", "MCMCChains", "Mooncake", "ReverseDiff"]) {
+      expect(project).toMatch(new RegExp(`^${pkg} = "[0-9a-f-]+"$`, "m"));
+    }
+  });
+
   it("provisions a fresh dir with the inference packages and marks it ready", async () => {
     const dir = freshDir();
     let code = "";

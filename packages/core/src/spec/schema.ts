@@ -8,7 +8,7 @@ export const SPEC_SCHEMA_VERSION = "0";
  * resolved package set the toolchain ships. Override per spec or with
  * `--julia-version` to run on another channel.
  */
-export const DEFAULT_JULIA_CHANNEL = "1.12.6";
+export const DEFAULT_JULIA_CHANNEL = "1.12.7";
 
 /**
  * The default CmdStan channel: "installed" resolves to whatever CmdStan the
