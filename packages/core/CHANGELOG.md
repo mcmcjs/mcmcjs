@@ -4,8 +4,7 @@
 
 ### Patch Changes
 
-- 1b06cff: - The default Julia version now matches the shipped 1.12.7 Manifest.
-  - Managed Julia projects now include MCMCChains in the shipped pinned environment.
+- 1b06cff: Default Julia runs now use the shipped 1.12.7 package set, including MCMCChains.
 
 ## 0.14.2
 
