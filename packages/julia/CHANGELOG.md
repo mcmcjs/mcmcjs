@@ -1,5 +1,12 @@
 # @mcmcjs/julia
 
+## 0.23.8
+
+### Patch Changes
+
+- c9ce44b: `runObserved` captures observed Turing and JuliaBUGS model terms and their values at posterior draws.
+- 4bc22e4: Unnamed Turing observations were omitted from `runObserved` output when a model also had named observations.
+
 ## 0.23.7
 
 ### Patch Changes
