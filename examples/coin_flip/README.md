@@ -11,6 +11,7 @@ mcmc run coin_flip.jl
 ```
 
 The data has 23 heads in 40 tosses, so `p` concentrates near 0.575.
+The posterior is `Beta(24, 18)` with the `Beta(1, 1)` prior.
 
 ## Stan version
 
