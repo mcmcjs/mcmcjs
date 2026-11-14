@@ -51,9 +51,9 @@ version = "5.16.0"
 
 [[deps.AbstractPPL]]
 deps = ["ADTypes", "AbstractMCMC", "Accessors", "BangBang", "DensityInterface", "JSON", "LinearAlgebra", "MacroTools", "OrderedCollections", "Random", "StatsBase"]
-git-tree-sha1 = "31fb177c9952267ac2dc54a44868cb768390e6ef"
+git-tree-sha1 = "142f3d8cdf7c3cc800adb1662133d1dc21280c39"
 uuid = "7a57a42e-76ec-4ea3-a279-07e840d6d9cf"
-version = "0.15.5"
+version = "0.15.7"
 weakdeps = ["DiffResults", "DifferentiationInterface", "Distributions", "ForwardDiff", "Mooncake", "Test"]
 
     [deps.AbstractPPL.extensions]
@@ -902,9 +902,9 @@ version = "1.6.1"
 
 [[deps.JuliaBUGS]]
 deps = ["ADTypes", "AbstractMCMC", "AbstractPPL", "Accessors", "AdvancedMH", "BangBang", "Bijectors", "Distributions", "Documenter", "Graphs", "JSON", "JuliaSyntax", "LinearAlgebra", "LogDensityProblems", "LogExpFunctions", "MacroTools", "MetaGraphsNext", "OrderedCollections", "PDMats", "Random", "Serialization", "SpecialFunctions", "StaticArrays", "Statistics"]
-git-tree-sha1 = "7684b434facf69621c2254ffd69a600a5eaa685e"
+git-tree-sha1 = "d84356ae09659a803a36d1c43d2540154a632240"
 uuid = "ba9fb4c0-828e-4473-b6a1-cd2560fee5bf"
-version = "0.18.0"
+version = "0.18.1"
 
     [deps.JuliaBUGS.extensions]
     JuliaBUGSAdvancedHMCExt = "AdvancedHMC"
@@ -1139,25 +1139,24 @@ version = "1.11.0"
 
 [[deps.Mooncake]]
 deps = ["ADTypes", "ChainRulesCore", "DispatchDoctor", "ExprTools", "LinearAlgebra", "MistyClosures", "PrecompileTools", "Random", "Test"]
-git-tree-sha1 = "c2a14d9d10690235f270006a09cdb5aaad030199"
+git-tree-sha1 = "db1f562dd9f87e7aaed2dfdfa821b0d5a107ee10"
 uuid = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
-version = "0.5.37"
+version = "0.5.70"
 
     [deps.Mooncake.extensions]
     MooncakeAllocCheckExt = "AllocCheck"
     MooncakeBFloat16sExt = "BFloat16s"
-    MooncakeCUDAExt = "CUDA"
+    MooncakeCUDAExt = ["CUDA", "Statistics"]
     MooncakeChainRulesExt = "ChainRules"
+    MooncakeDistancesExt = "Distances"
     MooncakeDistributionsExt = "Distributions"
     MooncakeDynamicExpressionsExt = "DynamicExpressions"
-    MooncakeFluxExt = "Flux"
     MooncakeFunctionWrappersExt = "FunctionWrappers"
     MooncakeJETExt = "JET"
     MooncakeLogExpFunctionsExt = "LogExpFunctions"
     MooncakeLuxLibExt = ["LuxLib", "MLDataDevices", "Static"]
     MooncakeLuxLibNNlibExt = ["LuxLib", "NNlib"]
     MooncakeLuxLibSLEEFPiratesExtension = ["LuxLib", "SLEEFPirates"]
-    MooncakeNNlibExt = ["NNlib", "LinearAlgebra"]
     MooncakeSpecialFunctionsExt = "SpecialFunctions"
     MooncakecuDNNExt = ["CUDA", "cuDNN"]
 
@@ -1166,6 +1165,7 @@ version = "0.5.37"
     BFloat16s = "ab4f0b2a-ad5b-11e8-123f-65d77653426b"
     CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
     ChainRules = "082447d4-558c-5d27-93f4-14fc19e9eca2"
+    Distances = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
     Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
     DynamicExpressions = "a40a106e-89c9-4ca8-8020-a735e8728b6b"
     Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
@@ -1179,6 +1179,7 @@ version = "0.5.37"
     SLEEFPirates = "476501e8-09a2-5ece-8869-fb82de89a1fa"
     SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
     Static = "aedffcd0-7271-4cad-89d0-dc628f76c6d3"
+    Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
     cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 
 [[deps.MozillaCACerts_jll]]
