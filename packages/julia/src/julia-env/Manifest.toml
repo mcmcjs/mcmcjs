@@ -51,9 +51,9 @@ version = "5.16.0"
 
 [[deps.AbstractPPL]]
 deps = ["ADTypes", "AbstractMCMC", "Accessors", "BangBang", "DensityInterface", "JSON", "LinearAlgebra", "MacroTools", "OrderedCollections", "Random", "StatsBase"]
-git-tree-sha1 = "31fb177c9952267ac2dc54a44868cb768390e6ef"
+git-tree-sha1 = "142f3d8cdf7c3cc800adb1662133d1dc21280c39"
 uuid = "7a57a42e-76ec-4ea3-a279-07e840d6d9cf"
-version = "0.15.5"
+version = "0.15.7"
 weakdeps = ["DiffResults", "DifferentiationInterface", "Distributions", "ForwardDiff", "Mooncake", "Test"]
 
     [deps.AbstractPPL.extensions]
@@ -902,9 +902,9 @@ version = "1.6.1"
 
 [[deps.JuliaBUGS]]
 deps = ["ADTypes", "AbstractMCMC", "AbstractPPL", "Accessors", "AdvancedMH", "BangBang", "Bijectors", "Distributions", "Documenter", "Graphs", "JSON", "JuliaSyntax", "LinearAlgebra", "LogDensityProblems", "LogExpFunctions", "MacroTools", "MetaGraphsNext", "OrderedCollections", "PDMats", "Random", "Serialization", "SpecialFunctions", "StaticArrays", "Statistics"]
-git-tree-sha1 = "7684b434facf69621c2254ffd69a600a5eaa685e"
+git-tree-sha1 = "d84356ae09659a803a36d1c43d2540154a632240"
 uuid = "ba9fb4c0-828e-4473-b6a1-cd2560fee5bf"
-version = "0.18.0"
+version = "0.18.1"
 
     [deps.JuliaBUGS.extensions]
     JuliaBUGSAdvancedHMCExt = "AdvancedHMC"
