@@ -44,6 +44,10 @@ const ADAPT_DELTA = Dict(:blockers => 0.99, :dyes => 0.99, :magnesium => 0.99)
 # diverges at every edge and cannot cross between the corners of Square minus Circle.
 # A slice sampler one coordinate at a time with the square's width covers each region.
 const SHAPES = (:circle, :hollow_square, :parallelogram, :ring, :square_minus_circle)
+# Summing out the discrete latents of Cervix and Eye Tracking makes each NUTS step slow
+# enough that 10,000 updates a chain do not finish in the six-hour job, so these keep
+# their 1000 draws unthinned.
+const UNTHINNED = (:cervix, :eye_tracking)
 
 length(ARGS) >= 1 ||
     error("usage: emit.jl <out-dir> [volume_1|volume_2|volume_3|all|<key>[,<key>...]]")
@@ -230,6 +234,7 @@ function write_example(dir, vol, key, ex, p)
     )
     isempty(p.inits) || (sampler["initial_params"] = p.inits)
     haskey(ADAPT_DELTA, key) && (sampler["adapt_delta"] = ADAPT_DELTA[key])
+    key in UNTHINNED && delete!(sampler, "thin")
     if key in SHAPES
         sampler["algorithm"] = "Slice"
         sampler["slice_width"] = 2
