@@ -34,4 +34,14 @@ describe("computeRhat", () => {
     const c = Float64Array.from({ length: 100 }, () => 3);
     expect(Number.isNaN(computeRhat([c, c]))).toBe(true);
   });
+
+  it("is defined for a discrete variable whose split chains all start on one value", () => {
+    const binary = (seed: number) => {
+      const c = uniformChain(500, seed).map((u) => (u < 0.3 ? 1 : 0));
+      c[0] = 0;
+      c[250] = 0;
+      return c;
+    };
+    expect(computeRhat([binary(1), binary(2)])).toBeLessThan(1.05);
+  });
 });
