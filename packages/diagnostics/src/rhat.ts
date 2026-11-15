@@ -136,15 +136,10 @@ export function _splitChains(chains: Float64Array[], splitN = 2): Float64Array[]
 }
 
 /**
- * Mirrors Stan's `is_finite_and_varies` (analyze/mcmc/check_chains.hpp).
- * Returns false when:
- *   - any element is non-finite, or
- *   - any single chain is effectively constant (every element equals its
- *     first draw under Eigen's isApprox tolerance), or
- *   - num_chains > 1 and every chain's first draw is the same value.
- * In any of these cases Stan returns NaN for ESS/R-hat/MCSE because the
- * within-chain variance estimate is dominated by FP residue and the formulas
- * explode. We mirror that behavior.
+ * Whether every element is finite and no single chain is effectively constant
+ * (every element equal to its first draw under Eigen's isApprox tolerance).
+ * R-hat and ESS are NaN otherwise, which is how a discrete latent that never
+ * moves in one chain reads as undiagnosable rather than unconverged.
  *
  * Tolerance follows Eigen's `internal::isApprox(a, b, prec) = |a - b| <= prec * min(|a|, |b|)`
  * with prec = 1e-12 (NumTraits<double>::dummy_precision()).
@@ -166,19 +161,6 @@ export function _isFiniteAndVaries(chains: Float64Array[], prec = 1e-12): boolea
       }
     }
     if (approxConstant) return false;
-  }
-  if (chains.length > 1) {
-    const first0 = (chains[0] as Float64Array)[0] as number;
-    let allFirstsApprox = true;
-    for (let i = 1; i < chains.length; i++) {
-      const fi = (chains[i] as Float64Array)[0] as number;
-      const tol = prec * Math.min(Math.abs(fi), Math.abs(first0));
-      if (Math.abs(fi - first0) > tol) {
-        allFirstsApprox = false;
-        break;
-      }
-    }
-    if (allFirstsApprox) return false;
   }
   return true;
 }
